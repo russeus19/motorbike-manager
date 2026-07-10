@@ -4,6 +4,7 @@ import { useGoogleFonts } from "./hooks/useGoogleFonts.js";
 import { NotificationCenterModal } from "./components/NotificationCenter.jsx";
 import { RiderProfileModal } from "./components/RiderProfileModal.jsx";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
+import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "./data/circuits.js";
 import { COLORS } from "./data/colors.js";
@@ -18,6 +19,7 @@ import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
 import { MarketScreen } from "./pages/Transfers.jsx";
 import { advanceTeamProjects, bikeAvg, canStartProject, rolloverBike, startProjectOnTeam } from "./utils/bikeDevelopment.js";
+import { validateAndRepairTeams } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
@@ -57,6 +59,7 @@ export default function MotorbikeManager() {
   const [saveError, setSaveError] = useState(null);
   const [saveOk, setSaveOk] = useState(false);
   const [profileTarget, setProfileTarget] = useState(null);
+  const [teamProfileTarget, setTeamProfileTarget] = useState(null);
 
   const storageOk = typeof window !== "undefined" && window.storage;
   const inGame = phase === "season" || phase === "result" || phase === "seasonend" || phase === "market" || phase === "career-offers" || phase === "market-summary" || phase === "substitute-select";
@@ -158,6 +161,29 @@ export default function MotorbikeManager() {
     const fa = freeAgents.find((r) => r.id === id);
     if (fa) return { rider: fa, teamName: "Agente libre", categoryKey: profileTarget.categoryKey };
     return profileTarget;
+  }
+
+  function openTeamProfile(team, categoryKey) {
+    setTeamProfileTarget({ teamId: team.id, categoryKey });
+  }
+
+  /* Same idea as resolveLiveProfileTarget: re-resolve the team by id
+     against live state every render so budget/development/roster changes
+     show up immediately without needing to close and reopen the modal. */
+  function resolveLiveTeamProfileTarget() {
+    if (!teamProfileTarget) return null;
+    const { teamId, categoryKey } = teamProfileTarget;
+    if (categoryKey === category) {
+      if (playerTeam && playerTeam.id === teamId) return { team: playerTeam, categoryKey };
+      const rival = rivalTeams.find((t) => t.id === teamId);
+      if (rival) return { team: rival, categoryKey };
+    }
+    const catState = otherCategories[categoryKey];
+    if (catState) {
+      const found = catState.teams.find((t) => t.id === teamId);
+      if (found) return { team: found, categoryKey };
+    }
+    return null;
   }
 
   function getUpperCategory(catKey) {
@@ -933,6 +959,18 @@ export default function MotorbikeManager() {
       nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map(rolloverBike) };
     });
 
+    // --- Season-boundary validation: guarantees every AI-controlled team
+    // starts the new season with a non-negative budget, exactly 2 valid
+    // riders and a valid warehouse. Root causes are fixed at their source
+    // (raceWeekend.js, transferMarket.js); this is the safety net that
+    // also rescues save files that had already drifted into a broken
+    // state before those fixes existed. ---
+    ({ teams: evolvedRivals } = validateAndRepairTeams(evolvedRivals, scale));
+    Object.keys(nextOther).forEach((key) => {
+      const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale);
+      nextOther[key] = { ...nextOther[key], teams: repairedTeams };
+    });
+
     const rsFixed = {};
     finalRoster.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: playerTeam.name, points: 0 }; });
     evolvedRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
@@ -1040,6 +1078,7 @@ export default function MotorbikeManager() {
           onExitGame={() => setShowExitConfirm(true)}
           onStartWarehouseProduction={startWarehouseProduction}
           onStartUrgentWarehouseProduction={startUrgentWarehouseProduction}
+          onOpenTeamProfile={openTeamProfile}
         />
       )}
       {phase === "result" && lastResult && playerTeam && (
@@ -1084,6 +1123,11 @@ export default function MotorbikeManager() {
         playerTeam={phase === "season" ? playerTeam : null}
         category={category}
         onSignFreeAgent={signFreeAgentNow}
+      />
+      <TeamProfileModal
+        target={resolveLiveTeamProfileTarget()}
+        onClose={() => setTeamProfileTarget(null)}
+        onOpenRiderProfile={openProfile}
       />
 
       {showNotifications && (
