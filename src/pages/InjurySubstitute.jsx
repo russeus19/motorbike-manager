@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { CountryFlag } from "../components/CountryFlag.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { AttrGrid, OverallBadge, RiderNameButton } from "../components/UIPrimitives.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
@@ -43,7 +44,7 @@ export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, 
                 </span>
                 <span className="text-xs font-mono" style={{ color: COLORS.muted }}>€{cost.toLocaleString()}</span>
               </div>
-              <div className="text-xs mb-2" style={{ color: COLORS.muted }}>{r.nat} {r.age} años · Agente libre</div>
+              <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Agente libre</div>
               <AttrGrid rider={r} accent={accent} />
               <button disabled={!canAfford} onClick={() => onConfirm(r)}
                 className="mt-2 text-xs px-2 py-1.5 rounded w-full font-semibold disabled:opacity-40"

@@ -4,7 +4,7 @@ import { Panel, RiderNameButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 
-export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile }) {
+export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
   const [tab, setTab] = useState(category);
   const [showAll, setShowAll] = useState(false);
 
@@ -12,25 +12,30 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
   const rs = isCurrent ? riderStandings : (otherCategories[tab]?.riderStandings || {});
   const ts = isCurrent ? teamStandings : (otherCategories[tab]?.teamStandings || {});
 
-  // Reliable id -> real team name lookup (this used to fall back to the raw
-  // internal id, which is what produced garbled team names).
-  const teamNameById = {};
+  // Reliable id -> real team lookup (this used to only keep the name,
+  // which meant a clicked row had no way to open that team's profile).
+  const teamById = {};
   if (isCurrent) {
-    teamNameById[playerTeam.id] = playerTeam.name;
-    rivalTeams.forEach((t) => { teamNameById[t.id] = t.name; });
+    teamById[playerTeam.id] = playerTeam;
+    rivalTeams.forEach((t) => { teamById[t.id] = t; });
   } else {
-    (otherCategories[tab]?.teams || []).forEach((t) => { teamNameById[t.id] = t.name; });
+    (otherCategories[tab]?.teams || []).forEach((t) => { teamById[t.id] = t; });
   }
 
   const riderRowsAll = Object.entries(rs).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
   const riderRows = showAll ? riderRowsAll : riderRowsAll.slice(0, 8);
   const teamRows = Object.entries(ts)
-    .map(([id, pts]) => ({ id, name: teamNameById[id] || id, points: pts }))
+    .map(([id, pts]) => ({ id, name: teamById[id]?.name || id, points: pts }))
     .sort((a, b) => b.points - a.points);
 
   function handleRiderClick(id) {
     const found = findRiderInCategory(tab, id);
     if (found) openProfile(found.rider, found.teamName, tab);
+  }
+
+  function handleTeamClick(id) {
+    const team = teamById[id];
+    if (team && onOpenTeamProfile) onOpenTeamProfile(team, tab);
   }
 
   return (
@@ -73,7 +78,11 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
         <ol className="text-sm space-y-1">
           {teamRows.map((t, i) => (
             <li key={t.id} className="flex justify-between">
-              <span style={{ color: isCurrent && t.id === playerTeam.id ? accent : COLORS.text, fontWeight: isCurrent && t.id === playerTeam.id ? 700 : 400 }}>{i + 1}. {t.name}</span>
+              <button onClick={() => handleTeamClick(t.id)}
+                className="text-left underline decoration-dotted hover:opacity-80"
+                style={{ color: isCurrent && t.id === playerTeam.id ? accent : COLORS.text, fontWeight: isCurrent && t.id === playerTeam.id ? 700 : 400 }}>
+                {i + 1}. {t.name}
+              </button>
               <span className="font-mono" style={{ color: COLORS.muted }}>{t.points}</span>
             </li>
           ))}
@@ -88,7 +97,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
 /* ---------------------------------------------------------------------- */
 
 
-export function DetailedStandingsPanel({ category, riderStandings, teamStandings, riderWins, riderPodiums, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile }) {
+export function DetailedStandingsPanel({ category, riderStandings, teamStandings, riderWins, riderPodiums, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
   const [tab, setTab] = useState(category);
   const isCurrent = tab === category;
   const rs = isCurrent ? riderStandings : (otherCategories[tab]?.riderStandings || {});
@@ -114,6 +123,11 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
   function handleRiderClick(id) {
     const found = findRiderInCategory(tab, id);
     if (found) openProfile(found.rider, found.teamName, tab);
+  }
+
+  function handleTeamClick(id) {
+    const team = teamsList.find((t) => t.id === id);
+    if (team && onOpenTeamProfile) onOpenTeamProfile(team, tab);
   }
 
   return (
@@ -163,7 +177,11 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
         {teamRows.map((t, i) => (
           <div key={t.id} className="flex items-center px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
             <span className="w-6 text-right font-mono" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}</span>
-            <span className="flex-1 ml-2 min-w-0 truncate" style={{ color: isCurrent && t.id === "player" ? accent : COLORS.text, fontWeight: isCurrent && t.id === "player" ? 700 : 400 }}>{t.name}</span>
+            <button onClick={() => handleTeamClick(t.id)}
+              className="flex-1 ml-2 min-w-0 truncate text-left underline decoration-dotted hover:opacity-80"
+              style={{ color: isCurrent && t.id === "player" ? accent : COLORS.text, fontWeight: isCurrent && t.id === "player" ? 700 : 400 }}>
+              {t.name}
+            </button>
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.wins}</span>
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.podiums}</span>
             <span className="w-12 text-right font-mono" style={{ color: accent }}>{t.points}</span>

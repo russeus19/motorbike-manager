@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, MapPin, Save, Star, Wrench } from "lucide-react";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
+import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, StandingsPanel } from "../components/Standings.jsx";
@@ -17,7 +18,7 @@ import { raceLineup } from "../utils/raceSimulation.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile }) {
   const accent = playerTeam.color;
   const circuit = CIRCUITS[round];
   const circuitProfile = CIRCUIT_PROFILES[round];
@@ -100,7 +101,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                     </span>
                     <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
                   </div>
-                  <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{r.nat} {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
+                  <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
                   {r.injury && r.injury.gpRemaining > 0 && (
                     <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
                       <AlertTriangle size={11} />
@@ -161,6 +162,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             accent={accent}
             findRiderInCategory={findRiderInCategory}
             openProfile={openProfile}
+            onOpenTeamProfile={onOpenTeamProfile}
           />
           <button onClick={runRace} disabled={!canRace}
             className="w-full mt-6 py-4 rounded-md font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-40"
@@ -196,7 +198,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                   </span>
                   <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
                 </div>
-                <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{r.nat} {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
+                <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
                 {r.injury && r.injury.gpRemaining > 0 && (
                   <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
                     <AlertTriangle size={11} />
@@ -287,6 +289,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             accent={accent}
             findRiderInCategory={findRiderInCategory}
             openProfile={openProfile}
+            onOpenTeamProfile={onOpenTeamProfile}
           />
         </div>
       )}

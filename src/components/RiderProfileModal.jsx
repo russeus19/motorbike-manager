@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertTriangle, Medal, X } from "lucide-react";
+import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { AttrGrid } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
@@ -28,7 +29,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
             <RiderPhoto rider={rider} size={88} className="rounded-xl" />
             <div className="min-w-0">
               <h3 className="text-2xl font-bold flex items-center gap-2 truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>
-                {rider.nat && <span style={{ fontSize: "1.1em" }}>{rider.nat}</span>} {rider.name}
+                {rider.nat && <CountryFlag nat={rider.nat} width={24} />} {rider.name}
               </h3>
               <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{teamName || "Sin equipo"} {categoryKey ? `· ${CATEGORY_DATA[categoryKey]?.label}` : ""} · {rider.age} años {rider.personality ? `· ${rider.personality}` : ""}</div>
             </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronRight, Flag, PackageCheck } from "lucide-react";
 import { BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
@@ -7,6 +7,20 @@ import { COLORS } from "../data/colors.js";
 export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category }) {
   const { circuitName, isWet, results, arrivals } = lastResult;
   const [tab, setTab] = useState(category);
+
+  // This screen used to inherit whatever scroll position the previous
+  // screen was left at, so it could open showing the bottom of the
+  // classification instead of the winner. It always mounts fresh (this
+  // is a new "result" phase render, never a reused instance), so a
+  // single scroll-to-top on mount is enough — and switching category
+  // tabs below should behave the same way, never carrying over scroll.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab]);
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">

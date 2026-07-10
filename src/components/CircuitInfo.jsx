@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
+import { CountryFlag } from "./CountryFlag.jsx";
 import { Panel, StatBar } from "./UIPrimitives.jsx";
 import { ATTRS } from "../data/attributes.js";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
@@ -17,7 +18,7 @@ export function CircuitInfoPanel({ circuitProfile, accent }) {
       onHeaderClick={() => setExpanded((v) => !v)}
       headerRight={
         <span className="flex items-center gap-2">
-          <span className="text-xs">{c.flag} {c.country}</span>
+          <span className="text-xs flex items-center gap-1.5"><CountryFlag nat={c.flag} width={20} /> {c.country}</span>
           {expanded ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}
         </span>
       }
@@ -75,7 +76,7 @@ export function CalendarPanel({ round, accent }) {
               <div key={i} className="flex items-center justify-between text-sm py-1.5" style={{ borderBottom: `1px solid ${COLORS.rule}`, opacity: i < round ? 0.5 : 1 }}>
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-6 text-right font-mono text-xs flex-shrink-0" style={{ color: COLORS.muted }}>{i + 1}</span>
-                  <span className="flex-shrink-0">{prof.flag}</span>
+                  <CountryFlag nat={prof.flag} width={18} className="flex-shrink-0" />
                   <span className="truncate">{c.split("—")[0].replace("Gran Premio de ", "").trim()}</span>
                 </span>
                 <span className="text-xs font-semibold flex-shrink-0 ml-2" style={{ color: statusColor }}>{status}</span>
