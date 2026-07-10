@@ -91,6 +91,7 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
     const tier = teamExpectationTier(t);
     const [r1, r2] = t.riders;
     const kept = [];
+    let teamBudget = t.budget || 0;
     t.riders.forEach((r) => {
       const teammatePts = r.id === r1?.id ? (riderStandingsForCategory[r2?.id]?.points || 0) : (riderStandingsForCategory[r1?.id]?.points || 0);
       const evalLabel = evaluateRiderSeason(r, riderStandingsForCategory[r.id]?.points || 0, teammatePts, tier, r.crashesThisSeason || 0);
@@ -106,30 +107,36 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
         return;
       }
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
-      if (aiRenewalDecision(r, evalLabel, t)) {
+      const renewalCost = Math.round((r.marketValue || 0) * 0.08);
+      if (aiRenewalDecision(r, evalLabel, t) && renewalCost <= teamBudget) {
         kept.push({ ...r, contractYears: randInt(1, 3) });
+        teamBudget -= renewalCost;
         log.push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (temporada ${evalLabel.toLowerCase()})`, category: categoryLabel });
       } else {
         freeAgentPool.push({ ...r, seasonsUnsigned: 0 });
         log.push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabel.toLowerCase()}`, category: categoryLabel });
       }
     });
-    return { ...t, riders: kept };
+    return { ...t, riders: kept, budget: teamBudget };
   });
 
   return updated.map((t) => {
     if (t.id === excludeTeamId || t.riders.length >= 2) return t;
     const riders = [...t.riders];
+    let teamBudget = t.budget || 0;
     while (riders.length < 2) {
-      const eligible = freeAgentPool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
-      if (!eligible.length) break;
-      eligible.sort((a, b) => overallRating(b) - overallRating(a));
-      const signed = eligible[0];
-      freeAgentPool.splice(freeAgentPool.findIndex((r) => r.id === signed.id), 1);
-      riders.push({ ...signed, contractYears: randInt(1, 3), isNewTeamThisSeason: true, seasonsUnsigned: 0 });
-      log.push({ type: "fichaje", riderId: photoIdFor(signed), text: `${signed.name} ficha como agente libre por ${t.name}`, category: categoryLabel });
+      const eligible = freeAgentPool
+        .filter((r) => isFreeAgentEligibleForCategory(r, categoryKey))
+        .sort((a, b) => overallRating(b) - overallRating(a));
+      const affordable = eligible.find((r) => Math.round(overallRating(r) * 5000) <= teamBudget);
+      if (!affordable) break; // nothing this team can pay for — the free promotion/rookie fallback picks up the vacancy
+      const signingCost = Math.round(overallRating(affordable) * 5000);
+      freeAgentPool.splice(freeAgentPool.findIndex((r) => r.id === affordable.id), 1);
+      teamBudget -= signingCost;
+      riders.push({ ...affordable, contractYears: randInt(1, 3), isNewTeamThisSeason: true, seasonsUnsigned: 0 });
+      log.push({ type: "fichaje", riderId: photoIdFor(affordable), text: `${affordable.name} ficha como agente libre por ${t.name}`, category: categoryLabel });
     }
-    return { ...t, riders };
+    return { ...t, riders, budget: teamBudget };
   });
 }
 

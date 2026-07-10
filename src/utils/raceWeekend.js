@@ -18,23 +18,34 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     }
   });
 
-  let afterAI = team;
+  // Race income/running costs never push a team into debt on their own:
+  // if costs outrun what was earned this weekend, the team just ends the
+  // race at 0 rather than owing money nobody ever pays back. This is the
+  // single biggest source of AI teams drifting into invalid, negative
+  // budgets over a season — the fix is here, not a later patch.
+  let runningBudget = team.budget || 0;
   if (!ctx.isPlayer) {
     const prizeUnit = Math.max(1, Math.round(28000 * ctx.scale));
     const prize = teamResults.reduce((s, r) => s + (r.crashed ? Math.round(20000 * ctx.scale) : Math.max(Math.round(20000 * ctx.scale), (16 - r.position) * prizeUnit)), 0);
     const runningCost = Math.round(130000 * ctx.scale);
-    const budgetAfterRace = (team.budget || 0) + prize - runningCost;
-    const { team: afterProjects } = advanceTeamProjects({ ...team, budget: budgetAfterRace });
-    afterAI = aiConsiderProject(afterProjects, ctx);
+    runningBudget = Math.max(0, runningBudget + prize - runningCost);
   }
 
+  let afterAI = { ...team, budget: runningBudget };
+
+  // Priority order (highest first): 1) make sure the team can actually
+  // race — substitute a sidelined rider, keep the warehouse stocked —
+  // 2) opportunistic firing/signing, 3) only then discretionary R&D
+  // spending with whatever's left over. Development/research used to run
+  // first and could starve the essentials of funds; it now always runs
+  // last.
   let substitutes = { ...(afterAI.substitutes || {}) };
-  let budgetAfterSubs = afterAI.budget;
   Object.entries(substitutes).forEach(([ownerId, sub]) => {
     const subResult = teamResults.find((x) => x.seatOwnerId === ownerId);
     if (subResult) substitutes[ownerId] = bumpCareerStats(sub, categoryKey, subResult.position, subResult.crashed);
   });
 
+  let budgetAfterSubs = afterAI.budget;
   const riders = afterAI.riders.map((r) => {
     const ownResult = teamResults.find((x) => x.id === r.id);
     let next = r;
@@ -57,7 +68,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
             if (sub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
-              budgetAfterSubs -= substituteHireCost(sub, ctx.scale);
+              budgetAfterSubs = Math.max(0, budgetAfterSubs - substituteHireCost(sub, ctx.scale));
               notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${team.name} hasta su recuperación.` });
             } else {
               notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${team.name} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
@@ -90,12 +101,19 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   if (!ctx.isPlayer) {
     const managed = aiManageWarehouse({ ...afterAI, warehouse, budget: finalBudget }, ctx.scale, notifQueue, categoryKey);
     warehouse = managed.warehouse;
-    finalBudget = managed.budget;
+    finalBudget = Math.max(0, managed.budget);
   }
 
-  const finalTeam = { ...afterAI, riders, substitutes, warehouse, budget: finalBudget };
-  if (ctx.isPlayer) return finalTeam;
-  return aiMaybeFireRider(finalTeam, categoryKey, ctx, poolRef, notifQueue);
+  let midTeam = { ...afterAI, riders, substitutes, warehouse, budget: finalBudget };
+  if (!ctx.isPlayer) midTeam = aiMaybeFireRider(midTeam, categoryKey, ctx, poolRef, notifQueue);
+
+  // R&D (development/research) is the lowest priority spend: it only ever
+  // touches whatever budget is left once racing capability and roster
+  // needs have already been paid for.
+  if (ctx.isPlayer) return midTeam;
+  const afterProjects = advanceTeamProjects(midTeam).team;
+  const afterRD = aiConsiderProject(afterProjects, ctx);
+  return { ...afterRD, budget: Math.max(0, afterRD.budget) };
 }
 
 /* End of season: next year's bike is generated from a blend of how the
