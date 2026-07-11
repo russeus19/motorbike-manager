@@ -1,5 +1,5 @@
 import { WAREHOUSE_LABELS } from "../data/warehouseParts.js";
-import { advanceTeamProjects, aiConsiderProject } from "./bikeDevelopment.js";
+import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject } from "./bikeDevelopment.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
 import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
@@ -109,16 +109,14 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
 
   // R&D (development/research) is the lowest priority spend: it only ever
   // touches whatever budget is left once racing capability and roster
-  // needs have already been paid for.
+  // needs have already been paid for. Factory/Staff upgrades tick down
+  // and get considered right alongside it — same low-priority tier,
+  // since they're long-term infrastructure bets rather than weekly needs.
   if (ctx.isPlayer) return midTeam;
   const afterProjects = advanceTeamProjects(midTeam).team;
-  const afterRD = aiConsiderProject(afterProjects, ctx);
-  return { ...afterRD, budget: Math.max(0, afterRD.budget) };
+  const afterFacilities = advanceFacilityUpgrades(afterProjects).team;
+  const afterRD = aiConsiderProject(afterFacilities, ctx);
+  const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterRD, ctx.scale);
+  return { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) };
 }
-
-/* End of season: next year's bike is generated from a blend of how the
-   current bike ended up (55%) and how much was banked in research this
-   year (45%), plus a little uncertainty — not simply "keep developing
-   forever". Also clears research and any unfinished projects for the new
-   season. */
 

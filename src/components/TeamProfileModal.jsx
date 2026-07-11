@@ -7,7 +7,7 @@ import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
-import { bikeAvg } from "../utils/bikeDevelopment.js";
+import { bikeAvg, ensureRD } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
 
 /**
@@ -21,7 +21,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
   const { team, categoryKey } = target;
   const accent = team.color || COLORS.gold;
   const devAvg = Math.round(bikeAvg(team.bike));
-  const researchAvg = Math.round(bikeAvg(team.research));
+  const { factory, staff } = ensureRD(team);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
@@ -38,7 +38,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
         </div>
 
         <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
-          <div className="grid grid-cols-3 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
+          <div className="grid grid-cols-4 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
             <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Presupuesto</div>
               <div className="font-mono text-sm" style={{ color: (team.budget || 0) < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(team.budget || 0).toLocaleString()}</div>
@@ -48,8 +48,12 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
               <div className="font-mono text-sm" style={{ color: COLORS.text }}>{devAvg}</div>
             </div>
             <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="uppercase">Investigación media</div>
-              <div className="font-mono text-sm" style={{ color: COLORS.text }}>{researchAvg}</div>
+              <div className="uppercase">Fábrica</div>
+              <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {factory.level}</div>
+            </div>
+            <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+              <div className="uppercase">Staff</div>
+              <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {staff.level}</div>
             </div>
           </div>
 
@@ -57,13 +61,6 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
             <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Desarrollo de la moto</div>
             {BIKE_AREA_KEYS.map((k) => (
               <StatBar key={k} label={BIKE_LABELS[k]} value={team.bike[k]} accent={accent} />
-            ))}
-          </div>
-
-          <div className="mb-4">
-            <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Investigación (temporada que viene)</div>
-            {BIKE_AREA_KEYS.map((k) => (
-              <StatBar key={k} label={BIKE_LABELS[k]} value={team.research[k]} accent={accent} />
             ))}
           </div>
 
@@ -96,7 +93,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
                   style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <RiderPhoto rider={r} size={44} className="rounded-lg" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate underline decoration-dotted">{r.name}</div>
+                    <div className="text-sm font-semibold truncate">{r.name}</div>
                     <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.muted }}>
                       <CountryFlag nat={r.nat} width={16} /> {r.age} años · CA {overallRating(r)} · PA {r.pa} · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}
                     </div>

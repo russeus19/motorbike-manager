@@ -1,4 +1,6 @@
+import { BIKE_AREA_KEYS } from "../data/bikeAreas.js";
 import { WAREHOUSE_PARTS } from "../data/warehouseParts.js";
+import { ensureRD } from "./bikeDevelopment.js";
 import { makeRookie } from "./riderGeneration.js";
 import { initWarehouse } from "./warehouseEngine.js";
 
@@ -57,6 +59,23 @@ export function validateAndRepairTeam(team, scale) {
     }
   });
   repaired.warehouse = warehouse;
+
+  // R&D fields introduced by the Base Tecnológica redesign: older saves
+  // won't have techBase/factory/staff at all, and even newer ones could
+  // in principle end up with a malformed value (missing area, corrupt
+  // level, stray upgrade object) after an interrupted save. ensureRD
+  // already knows how to fill in sensible defaults for anything missing,
+  // so repairing here is just "trust its output, always".
+  const { techBase, factory, staff } = ensureRD(repaired);
+  const validTechBase = BIKE_AREA_KEYS.every((k) => Number.isFinite(team.techBase?.[k]));
+  const validFactory = team.factory && Number.isFinite(team.factory.level);
+  const validStaff = team.staff && Number.isFinite(team.staff.level);
+  if (!validTechBase) issues.push("base tecnológica inválida o ausente, reconstruida a partir de la moto actual");
+  if (!validFactory) issues.push("nivel de Fábrica inválido o ausente, restablecido");
+  if (!validStaff) issues.push("nivel de Staff inválido o ausente, restablecido");
+  repaired.techBase = techBase;
+  repaired.factory = factory;
+  repaired.staff = staff;
 
   return { team: repaired, issues };
 }

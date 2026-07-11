@@ -18,7 +18,7 @@ import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
 import { MarketScreen } from "./pages/Transfers.jsx";
-import { advanceTeamProjects, bikeAvg, canStartProject, rolloverBike, startProjectOnTeam } from "./utils/bikeDevelopment.js";
+import { advanceFacilityUpgrades, advanceTeamProjects, bikeAvg, canStartFacilityUpgrade, canStartProject, rolloverBike, startFacilityUpgrade, startProjectOnTeam } from "./utils/bikeDevelopment.js";
 import { validateAndRepairTeams } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
@@ -27,6 +27,7 @@ import { clamp, randInt } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, makeRookie, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
+import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { computeMarket, fillFromLowerCategory, fillWithRookies, findBestReplacement, getLowerTeamsFor, runCategoryMarket } from "./utils/transferMarket.js";
 import { queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
@@ -42,7 +43,7 @@ export default function MotorbikeManager() {
 
   const [gameMode, setGameMode] = useState(null); // 'quick' | 'career'
   const [activeSlot, setActiveSlot] = useState(null);
-  const [slotsMeta, setSlotsMeta] = useState({ 1: null, 2: null, 3: null });
+  const [slotsMeta, setSlotsMeta] = useState(() => Object.fromEntries(SAVE_SLOT_IDS.map((n) => [n, null])));
   const [careerStarterOptions, setCareerStarterOptions] = useState(null); // { allTeams, choices }
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -213,9 +214,9 @@ export default function MotorbikeManager() {
   }
 
   async function loadAllSlots() {
-    const next = { 1: null, 2: null, 3: null };
+    const next = Object.fromEntries(SAVE_SLOT_IDS.map((n) => [n, null]));
     if (!storageOk) { setSlotsMeta(next); return; }
-    for (const n of [1, 2, 3]) {
+    for (const n of SAVE_SLOT_IDS) {
       try {
         const res = await window.storage.get(`mbman-slot-${n}`, false);
         if (res && res.value) next[n] = JSON.parse(res.value);
@@ -255,11 +256,60 @@ export default function MotorbikeManager() {
     }
   }
 
+  const ONBOARDING_PHASES = ["home", "setup", "career-name", "career-picker", "slotpick-new", "loadslots"];
+
   function loadFromSlot(n, data) {
     setActiveSlot(n);
-    setGameMode(data.gameMode || "quick");
-    setGame({ notifications: { motogp: [], moto2: [], moto3: [] }, pendingSubstitution: null, riderPodiums: {}, ...data });
-    setPhase(data.phase || (data.round >= CIRCUITS.length ? "seasonend" : "season"));
+    const restoredGameMode = data.gameMode || "quick";
+    setGameMode(restoredGameMode);
+
+    // Compatibility: a save made before a feature existed (techBase,
+    // factory, staff, warehouse fields added along the way...) still
+    // needs to load into a fully valid team shape. This reuses the exact
+    // same repair pass already trusted at season-end — no separate
+    // "load-time" normalization logic to keep in sync with it.
+    const category = data.category || "moto3";
+    const playerTeam = data.playerTeam
+      ? validateAndRepairTeams([data.playerTeam], CATEGORY_DATA[category]?.scale ?? 1).teams[0]
+      : null;
+    const rivalTeams = validateAndRepairTeams(data.rivalTeams || [], CATEGORY_DATA[category]?.scale ?? 1).teams;
+    const otherCategories = {};
+    Object.entries(data.otherCategories || {}).forEach(([key, catState]) => {
+      const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1);
+      otherCategories[key] = { ...catState, teams };
+    });
+
+    setGame({
+      notifications: { motogp: [], moto2: [], moto3: [] },
+      pendingSubstitution: null,
+      riderPodiums: {},
+      ...data,
+      gameMode: restoredGameMode,
+      playerTeam,
+      rivalTeams,
+      otherCategories,
+    });
+
+    // Bulletproof phase restoration — this is the actual fix for "loading
+    // a save shows the manager-creation screen again". A save that has a
+    // valid playerTeam is unambiguously an in-progress game: whatever
+    // `phase` was recorded as, it must never resolve to an onboarding
+    // screen (those only make sense when there's no game yet at all).
+    // This guarantees the bug can't recur even if some future change
+    // reintroduces whatever originally caused phase to be wrong.
+    let restoredPhase = data.phase;
+    if (!playerTeam) {
+      restoredPhase = "home";
+    } else if (!restoredPhase || ONBOARDING_PHASES.includes(restoredPhase)) {
+      restoredPhase = (data.round ?? 0) >= CIRCUITS.length ? "seasonend" : "season";
+    }
+    setPhase(restoredPhase);
+  }
+
+  async function deleteSlot(n) {
+    if (!storageOk) return;
+    await window.storage.delete(`mbman-slot-${n}`);
+    await loadAllSlots();
   }
 
   function submitCareerName() {
@@ -504,7 +554,7 @@ export default function MotorbikeManager() {
     try {
       setSaving(true);
       setSaveError(null);
-      const payload = { ...game, phase, savedAt: new Date().toISOString() };
+      const payload = { ...game, phase, gameMode, savedAt: new Date().toISOString() };
       const result = await window.storage.set(`mbman-slot-${slot}`, JSON.stringify(payload), false);
       if (!result) throw new Error("La operación de guardado no devolvió confirmación.");
       setSaveOk(true);
@@ -516,7 +566,7 @@ export default function MotorbikeManager() {
       setSaving(false);
       return false;
     }
-  }, [storageOk, activeSlot, game, phase]);
+  }, [storageOk, activeSlot, game, phase, gameMode]);
 
   useEffect(() => {
     if (phase === "season" || phase === "result") doSave();
@@ -530,9 +580,23 @@ export default function MotorbikeManager() {
     setPlayerTeam((t) => startProjectOnTeam(t, area, kind, spec));
   }
 
+  function startFactoryUpgrade() {
+    const spec = canStartFacilityUpgrade(playerTeam, "factory", budget, scale);
+    if (!spec) return;
+    setBudget((b) => b - spec.money);
+    setPlayerTeam((t) => startFacilityUpgrade(t, "factory", spec));
+  }
+
+  function startStaffUpgrade() {
+    const spec = canStartFacilityUpgrade(playerTeam, "staff", budget, scale);
+    if (!spec) return;
+    setBudget((b) => b - spec.money);
+    setPlayerTeam((t) => startFacilityUpgrade(t, "staff", spec));
+  }
+
   function startWarehouseProduction(part) {
     if (!playerTeam) return;
-    const cost = warehouseCost(part, scale, false);
+    const cost = warehouseCost(part, scale, false, playerTeam.factory?.level);
     if (cost > budget) return;
     setBudget((b) => b - cost);
     setPlayerTeam((t) => ({ ...t, warehouse: queueWarehouseProduction(t.warehouse, part) }));
@@ -540,7 +604,7 @@ export default function MotorbikeManager() {
 
   function startUrgentWarehouseProduction(part) {
     if (!playerTeam) return;
-    const cost = warehouseCost(part, scale, true);
+    const cost = warehouseCost(part, scale, true, playerTeam.factory?.level);
     if (cost > budget) return;
     setBudget((b) => b - cost);
     setPlayerTeam((t) => ({ ...t, warehouse: urgentWarehouseProduction(t.warehouse, part) }));
@@ -591,10 +655,15 @@ export default function MotorbikeManager() {
     // --- Played category: player + rivals ---
     const { results, poleRiderId } = simulateRound(playerTeam, rivalTeams, circuitProfile, isWet, roundsLeft);
     const { team: playerAfterProjects, arrivals } = advanceTeamProjects(playerTeam);
+    const { team: playerAfterFacilities, arrivals: facilityArrivals } = advanceFacilityUpgrades(playerAfterProjects);
 
     let newPendingSub = pendingSubstitution;
     const playerCtx = { isPlayer: true, scale, setPendingSub: (info) => { newPendingSub = info; } };
-    const playerProcessed = processTeamAfterRace(playerAfterProjects, results, category, playerCtx, poolRef, notifQueue);
+    const playerProcessed = processTeamAfterRace(playerAfterFacilities, results, category, playerCtx, poolRef, notifQueue);
+    facilityArrivals.forEach((a) => {
+      const label = a.kind === "factory" ? "Fábrica" : "Staff técnico";
+      notifQueue.push({ type: "dev", category, text: `Mejora de ${label} completada: nivel ${a.newLevel}.` });
+    });
 
     const rows = [
       { id: "player", points: teamStandings.player || 0 },
@@ -1046,11 +1115,11 @@ export default function MotorbikeManager() {
       )}
 
       {phase === "slotpick-new" && (
-        <SlotPickScreen mode="new" slotsMeta={slotsMeta} onPick={pickSlotForNewGame} goHome={goHome} storageOk={storageOk} />
+        <SlotPickScreen mode="new" slotsMeta={slotsMeta} onPick={pickSlotForNewGame} onDeleteSlot={deleteSlot} goHome={goHome} storageOk={storageOk} />
       )}
 
       {phase === "loadslots" && (
-        <SlotPickScreen mode="load" slotsMeta={slotsMeta} onLoad={loadFromSlot} goHome={goHome} storageOk={storageOk} />
+        <SlotPickScreen mode="load" slotsMeta={slotsMeta} onLoad={loadFromSlot} onDeleteSlot={deleteSlot} goHome={goHome} storageOk={storageOk} />
       )}
 
       {phase === "setup" && teams && (
@@ -1079,6 +1148,8 @@ export default function MotorbikeManager() {
           onStartWarehouseProduction={startWarehouseProduction}
           onStartUrgentWarehouseProduction={startUrgentWarehouseProduction}
           onOpenTeamProfile={openTeamProfile}
+          onStartFactoryUpgrade={startFactoryUpgrade}
+          onStartStaffUpgrade={startStaffUpgrade}
         />
       )}
       {phase === "result" && lastResult && playerTeam && (
@@ -1163,6 +1234,7 @@ export default function MotorbikeManager() {
           onPick={pickSlotToSave}
           onConfirmOverwrite={() => performSaveToSlot(saveModal.pendingOverwrite)}
           onCancelOverwrite={() => setSaveModal((m) => ({ ...m, pendingOverwrite: null }))}
+          onDeleteSlot={deleteSlot}
           onClose={closeSaveModal}
         />
       )}

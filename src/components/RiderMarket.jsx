@@ -51,8 +51,23 @@ export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
 }
 
 
-export function AdvancedFreeAgentSearch({ freeAgents, category, accent, openProfile }) {
+/**
+ * General rider search — covers every rider in play for this category
+ * (your team, every rival, and every free agent), not just free agents.
+ * The "Estado del contrato" filter decides which of those show up;
+ * everything else (name/team/nationality search, age, CA, PA) is exactly
+ * the same filtering logic as before, just applied over the wider list.
+ *
+ * Eligibility for actually signing/substituting a free agent (the
+ * age <= 27 rule for Moto2/Moto3) is intentionally NOT applied here —
+ * this panel is for browsing/searching, so an over-27 free agent can
+ * still be found and viewed even though they can't be fielded in Moto2
+ * or Moto3. That restriction is enforced where it matters: the sign
+ * button in the rider profile and the substitute-selection screen.
+ */
+export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, category, accent, openProfile }) {
   const [search, setSearch] = useState("");
+  const [contractFilter, setContractFilter] = useState("all"); // all | contracted | free
   const [minAge, setMinAge] = useState(14);
   const [maxAge, setMaxAge] = useState(45);
   const [minCA, setMinCA] = useState(0);
@@ -60,26 +75,48 @@ export function AdvancedFreeAgentSearch({ freeAgents, category, accent, openProf
   const [minPA, setMinPA] = useState(0);
   const [maxPA, setMaxPA] = useState(100);
 
-  const eligible = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, category));
-  const filtered = eligible.filter((r) => {
+  const contractedEntries = [
+    ...playerTeam.riders.map((r) => ({ rider: r, teamName: playerTeam.name })),
+    ...Object.values(playerTeam.substitutes || {}).map((r) => ({ rider: r, teamName: playerTeam.name })),
+    ...rivalTeams.flatMap((t) => [
+      ...t.riders.map((r) => ({ rider: r, teamName: t.name })),
+      ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: t.name })),
+    ]),
+  ];
+  const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null }));
+  const allEntries = [...contractedEntries, ...freeAgentEntries];
+
+  const filtered = allEntries.filter((e) => {
+    if (contractFilter === "contracted" && !e.teamName) return false;
+    if (contractFilter === "free" && e.teamName) return false;
+    const r = e.rider;
     const ca = overallRating(r);
     if (r.age < minAge || r.age > maxAge) return false;
     if (ca < minCA || ca > maxCA) return false;
     if (r.pa < minPA || r.pa > maxPA) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      if (!r.name.toLowerCase().includes(q) && !lastTeamName(r).toLowerCase().includes(q) && !(r.nat || "").includes(q)) return false;
+      const teamNameForSearch = e.teamName || lastTeamName(r);
+      if (!r.name.toLowerCase().includes(q) && !teamNameForSearch.toLowerCase().includes(q) && !(r.nat || "").includes(q)) return false;
     }
     return true;
-  }).sort((a, b) => overallRating(b) - overallRating(a));
+  }).sort((a, b) => overallRating(b.rider) - overallRating(a.rider));
 
   return (
-    <Panel title="Buscador avanzado de pilotos libres" icon={Search} accent={accent}>
+    <Panel title="Buscador avanzado de pilotos" icon={Search} accent={accent}>
       <div className="flex items-center gap-2 mb-3 rounded-md px-3 py-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
         <Search size={14} style={{ color: COLORS.muted }} />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, escudería o nacionalidad…"
           className="flex-1 bg-transparent outline-none text-sm" style={{ color: COLORS.text }} />
       </div>
+      <label className="flex flex-col gap-1 mb-3 text-xs" style={{ color: COLORS.muted }}>Estado del contrato
+        <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value)}
+          className="px-2 py-1.5 rounded" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }}>
+          <option value="all">Todos</option>
+          <option value="contracted">Con contrato</option>
+          <option value="free">Sin contrato (Pilotos libres)</option>
+        </select>
+      </label>
       <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
         <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Edad mín.
           <input type="number" value={minAge} onChange={(e) => setMinAge(Number(e.target.value))} className="px-2 py-1 rounded" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
@@ -103,19 +140,21 @@ export function AdvancedFreeAgentSearch({ freeAgents, category, accent, openProf
         </label>
       </div>
       <div className="space-y-2" style={{ maxHeight: 320, overflowY: "auto" }}>
-        {filtered.map((r) => (
-          <button key={r.id} onClick={() => openProfile(r, "Agente libre", null)}
+        {filtered.map((e) => (
+          <button key={e.rider.id} onClick={() => openProfile(e.rider, e.teamName || "Agente libre", e.teamName ? category : null)}
             className="w-full text-left flex items-center justify-between rounded-md px-3 py-2"
             style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
             <span className="flex items-center gap-2 text-sm min-w-0">
-              <RiderPhoto rider={r} size={28} className="rounded" />
-              <span className="truncate">{r.name}</span>
-              <OverallBadge value={overallRating(r)} accent={accent} />
+              <RiderPhoto rider={e.rider} size={28} className="rounded" />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 truncate">{e.rider.name} <OverallBadge value={overallRating(e.rider)} accent={accent} /></span>
+                <span className="block text-xs truncate" style={{ color: COLORS.muted }}>{e.teamName || "Agente libre"}</span>
+              </span>
             </span>
-            <span className="text-xs font-mono flex-shrink-0 ml-2" style={{ color: COLORS.muted }}>PA {r.pa} · {r.age}a</span>
+            <span className="text-xs font-mono flex-shrink-0 ml-2" style={{ color: COLORS.muted }}>PA {e.rider.pa} · {e.rider.age}a</span>
           </button>
         ))}
-        {filtered.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Ningún piloto libre coincide con la búsqueda/filtros.</p>}
+        {filtered.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Ningún piloto coincide con la búsqueda/filtros.</p>}
       </div>
     </Panel>
   );

@@ -3,20 +3,39 @@ import { bikeAvg } from "./bikeDevelopment.js";
 import { clamp } from "./random.js";
 import { overallRating } from "./riders.js";
 
+/* Builds this season's history entry for a single rider, if they actually
+   have a standings entry (i.e. they raced at least once this season under
+   this category/team). Shared by both titular riders and substitutes below
+   so the exact same rules apply to either — no duplicated logic. */
+function buildHistoryEntryIfRaced(rider, teamName, standingsForCategory, posById, categoryKey, seasonNum) {
+  const pos = posById[rider.id];
+  if (!pos) return rider;
+  const points = standingsForCategory[rider.id]?.points ?? 0;
+  const badge = pos === 1 ? "campeon" : pos === 2 ? "subcampeon" : pos === 3 ? "tercero" : null;
+  const entry = { season: seasonNum, category: categoryKey, position: pos, teamName, points, badge };
+  return { ...rider, history: [...(rider.history || []), entry] };
+}
+
+/* Every rider who raced at least one Grand Prix this season under this
+   category — titular or substitute — gets a history entry for it. A
+   substitute's points and final standing already belong to them (not to
+   the rider they replaced), so they must be recorded exactly the same
+   way a titular rider is. This runs once per category, so a rider who
+   competed in two categories in the same season (e.g. substituting in
+   both) naturally ends up with two separate entries — one per call —
+   never overwriting each other. */
 export function recordSeasonHistory(teams, standingsForCategory, categoryKey, seasonNum) {
   const sorted = Object.entries(standingsForCategory).sort((a, b) => b[1].points - a[1].points);
   const posById = {};
   sorted.forEach(([id], i) => { posById[id] = i + 1; });
-  return teams.map((t) => ({
-    ...t,
-    riders: t.riders.map((r) => {
-      const pos = posById[r.id];
-      if (!pos) return r;
-      const badge = pos === 1 ? "campeon" : pos === 2 ? "subcampeon" : pos === 3 ? "tercero" : null;
-      const entry = { season: seasonNum, category: categoryKey, position: pos, teamName: t.name, badge };
-      return { ...r, history: [...(r.history || []), entry] };
-    }),
-  }));
+  return teams.map((t) => {
+    const riders = t.riders.map((r) => buildHistoryEntryIfRaced(r, t.name, standingsForCategory, posById, categoryKey, seasonNum));
+    const substitutes = {};
+    Object.entries(t.substitutes || {}).forEach(([ownerId, sub]) => {
+      substitutes[ownerId] = buildHistoryEntryIfRaced(sub, t.name, standingsForCategory, posById, categoryKey, seasonNum);
+    });
+    return { ...t, riders, substitutes };
+  });
 }
 
 

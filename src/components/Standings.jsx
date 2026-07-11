@@ -79,7 +79,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
           {teamRows.map((t, i) => (
             <li key={t.id} className="flex justify-between">
               <button onClick={() => handleTeamClick(t.id)}
-                className="text-left underline decoration-dotted hover:opacity-80"
+                className="text-left hover:opacity-80 cursor-pointer"
                 style={{ color: isCurrent && t.id === playerTeam.id ? accent : COLORS.text, fontWeight: isCurrent && t.id === playerTeam.id ? 700 : 400 }}>
                 {i + 1}. {t.name}
               </button>
@@ -178,7 +178,7 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
           <div key={t.id} className="flex items-center px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
             <span className="w-6 text-right font-mono" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}</span>
             <button onClick={() => handleTeamClick(t.id)}
-              className="flex-1 ml-2 min-w-0 truncate text-left underline decoration-dotted hover:opacity-80"
+              className="flex-1 ml-2 min-w-0 truncate text-left hover:opacity-80 cursor-pointer"
               style={{ color: isCurrent && t.id === "player" ? accent : COLORS.text, fontWeight: isCurrent && t.id === "player" ? 700 : 400 }}>
               {t.name}
             </button>

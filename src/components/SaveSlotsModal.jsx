@@ -1,8 +1,11 @@
-import { X } from "lucide-react";
+import { useState } from "react";
+import { Trash2, X } from "lucide-react";
 import { COLORS } from "../data/colors.js";
-import { slotSummary } from "../utils/saveSlotFormat.js";
+import { SAVE_SLOT_IDS, slotSummary } from "../utils/saveSlotFormat.js";
 
-export function SaveSlotsModal({ slotsMeta, pendingOverwrite, saving, saveError, onPick, onConfirmOverwrite, onCancelOverwrite, onClose }) {
+export function SaveSlotsModal({ slotsMeta, pendingOverwrite, saving, saveError, onPick, onConfirmOverwrite, onCancelOverwrite, onDeleteSlot, onClose }) {
+  const [confirmDelete, setConfirmDelete] = useState(null); // slot number pending delete confirmation, or null
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }}>
       <div className="w-full max-w-md rounded-lg border p-5" style={{ background: COLORS.panel, borderColor: COLORS.rule }}>
@@ -35,14 +38,38 @@ export function SaveSlotsModal({ slotsMeta, pendingOverwrite, saving, saveError,
               </div>
             )}
             <div className="space-y-3">
-              {[1, 2, 3].map((n) => {
+              {SAVE_SLOT_IDS.map((n) => {
                 const data = slotsMeta[n];
                 const summary = slotSummary(data);
+                if (confirmDelete === n) {
+                  return (
+                    <div key={n} className="w-full rounded-lg border p-3" style={{ background: COLORS.panel2, borderColor: COLORS.danger }}>
+                      <div className="font-bold text-sm mb-1.5" style={{ fontFamily: "Rajdhani, sans-serif" }}>Slot {n}</div>
+                      <p className="text-xs mb-2" style={{ color: COLORS.text }}>¿Seguro que quieres eliminar esta partida? Esta acción no se puede deshacer.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => { onDeleteSlot(n); setConfirmDelete(null); }} className="flex-1 py-1.5 rounded font-semibold text-xs" style={{ background: COLORS.danger, color: "#fff" }}>
+                          Sí, eliminar
+                        </button>
+                        <button onClick={() => setConfirmDelete(null)} className="flex-1 py-1.5 rounded text-xs" style={{ background: COLORS.panel, color: COLORS.muted }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <button key={n} disabled={saving} onClick={() => onPick(n)}
                     className="w-full text-left rounded-lg border p-3 disabled:opacity-50"
                     style={{ background: COLORS.panel2, borderColor: COLORS.rule }}>
-                    <div className="font-bold text-sm mb-0.5" style={{ fontFamily: "Rajdhani, sans-serif" }}>Slot {n}</div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="font-bold text-sm" style={{ fontFamily: "Rajdhani, sans-serif" }}>Slot {n}</div>
+                      {summary && onDeleteSlot && (
+                        <span onClick={(e) => { e.stopPropagation(); setConfirmDelete(n); }} role="button" aria-label={`Eliminar slot ${n}`}
+                          className="p-1 rounded hover:opacity-80" style={{ color: COLORS.muted }}>
+                          <Trash2 size={13} />
+                        </span>
+                      )}
+                    </div>
                     {summary ? (
                       <div className="text-xs" style={{ color: COLORS.muted }}>
                         <div>{summary.team} · {summary.manager}</div>
@@ -62,4 +89,3 @@ export function SaveSlotsModal({ slotsMeta, pendingOverwrite, saving, saveError,
     </div>
   );
 }
-

@@ -43,9 +43,11 @@ export function Panel({ title, icon: Icon, accent, children, className = "", onH
 }
 
 
-export function CheckerStrip({ accent }) {
+export function CheckerStrip({ accent, solid = false }) {
   return (
-    <div className="h-1.5 w-full" style={{ backgroundImage: `repeating-linear-gradient(90deg, ${accent} 0 10px, transparent 10px 20px)`, opacity: 0.55 }} />
+    <div className="h-1.5 w-full" style={solid
+      ? { background: accent }
+      : { backgroundImage: `repeating-linear-gradient(90deg, ${accent} 0 10px, transparent 10px 20px)`, opacity: 0.55 }} />
   );
 }
 
@@ -63,7 +65,7 @@ export function OverallBadge({ value, accent }) {
 export function RiderNameButton({ rider, accent, onClick, className = "" }) {
   return (
     <button onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`underline decoration-dotted text-left hover:opacity-80 ${className}`}
+      className={`text-left hover:opacity-80 cursor-pointer ${className}`}
       style={{ color: "inherit" }}>
       {rider.name}
     </button>

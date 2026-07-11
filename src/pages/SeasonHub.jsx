@@ -4,6 +4,8 @@ import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
+import { FactoryPanel } from "../components/FactoryPanel.jsx";
+import { StaffPanel } from "../components/StaffPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
@@ -18,7 +20,7 @@ import { raceLineup } from "../utils/raceSimulation.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade }) {
   const accent = playerTeam.color;
   const circuit = CIRCUITS[round];
   const circuitProfile = CIRCUIT_PROFILES[round];
@@ -32,17 +34,12 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8" style={{ paddingBottom: 96 }}>
-      <CheckerStrip accent={accent} />
+      <CheckerStrip accent={accent} solid />
       <div className="flex flex-wrap justify-between items-end gap-3 py-4">
         <div className="flex items-center gap-3">
           {seasonTab === "inicio" && <TeamLogo team={playerTeam} size={48} className="rounded-lg" />}
           <div>
             <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{playerTeam.name}</span></div>
-            {seasonTab === "inicio" && (
-              <h2 className="font-bold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif", fontSize: "1.4rem" }}>
-                <MapPin size={17} style={{ color: accent }} /> {circuit}
-              </h2>
-            )}
           </div>
         </div>
         {seasonTab === "inicio" && (
@@ -64,6 +61,24 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       </div>
 
       {seasonTab === "inicio" && (
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <h2 className="font-bold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif", fontSize: "1.4rem" }}>
+            <MapPin size={17} style={{ color: accent }} /> {circuit}
+          </h2>
+          <button onClick={runRace} disabled={!canRace}
+            className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+            style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
+            <Flag size={18} /> Simular GP
+          </button>
+        </div>
+      )}
+      {seasonTab === "inicio" && !canRace && (
+        <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
+          No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.
+        </p>
+      )}
+
+      {seasonTab === "inicio" && (
         <>
           {lowStockParts.length > 0 && (
             <button onClick={() => setSeasonTab("escuderia")}
@@ -76,10 +91,6 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
           <div className="mb-4">
             <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} />
-          </div>
-
-          <div className="mb-4">
-            <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} />
           </div>
 
           <div className="mb-4">
@@ -152,6 +163,10 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </Panel>
           </div>
 
+          <div className="mb-4">
+            <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} />
+          </div>
+
           <StandingsPanel
             category={category}
             riderStandings={riderStandings}
@@ -164,16 +179,6 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             openProfile={openProfile}
             onOpenTeamProfile={onOpenTeamProfile}
           />
-          <button onClick={runRace} disabled={!canRace}
-            className="w-full mt-6 py-4 rounded-md font-bold text-lg flex items-center justify-center gap-2 disabled:opacity-40"
-            style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-            <Flag size={20} /> Simular {circuit.split("—")[0].trim()}
-          </button>
-          {!canRace && (
-            <p className="text-center text-xs mt-2" style={{ color: COLORS.danger }}>
-              No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.
-            </p>
-          )}
           <div className="text-center text-xs mt-2" style={{ color: COLORS.muted }}>{saving ? "Guardando partida…" : " "}</div>
         </>
       )}
@@ -249,7 +254,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           </Panel>
 
           <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
-          <AdvancedFreeAgentSearch freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
+          <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} category={category} accent={accent} openProfile={openProfile} />
         </div>
       )}
 
@@ -269,6 +274,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </div>
           </Panel>
           <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} />
+          <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} accent={accent} scale={scale} />
+          <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} accent={accent} scale={scale} />
           <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} />
         </div>
       )}

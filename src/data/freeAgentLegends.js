@@ -9,4 +9,6 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Augusto Fernández", photoId: 84, nat: "🇪🇸", age: 28, potential: 55, tecnica: 80, ritmo: 78, adelantamientos: 76, mental: 72, adaptabilidad: 74, fisico: 72 },
   { name: "Jonás Folger", photoId: 85, nat: "🇩🇪", age: 32, potential: 35, tecnica: 76, ritmo: 68, adelantamientos: 66, mental: 72, adaptabilidad: 70, fisico: 64 },
   { name: "Takaaki Nakagami", photoId: 86, nat: "🇯🇵", age: 34, potential: 30, tecnica: 78, ritmo: 74, adelantamientos: 68, mental: 76, adaptabilidad: 74, fisico: 66 },
+  { name: "Dennis Foggia", photoId: 87, nat: "🇮🇹", age: 25, potential: 68, tecnica: 74, ritmo: 76, adelantamientos: 78, mental: 68, adaptabilidad: 70, fisico: 72 },
+  { name: "Xabier Zurutuza", photoId: 88, nat: "🇪🇸", age: 20, potential: 80, tecnica: 68, ritmo: 72, adelantamientos: 70, mental: 62, adaptabilidad: 66, fisico: 70 },
 ];

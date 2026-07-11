@@ -7,8 +7,12 @@ export function initWarehouse() {
 }
 
 
-export function warehouseCost(part, scale, urgent) {
-  return Math.round(WAREHOUSE_BASE_COST[part] * (scale || 1) * (urgent ? 3 : 1));
+/* Factory level shaves a little off fabrication cost (better tooling,
+   less waste) — capped at 25% cheaper at max level. `factoryLevel`
+   defaults to 0 so every existing call site keeps working unchanged. */
+export function warehouseCost(part, scale, urgent, factoryLevel = 0) {
+  const discount = Math.max(0.75, 1 - (factoryLevel || 0) * 0.0025);
+  return Math.round(WAREHOUSE_BASE_COST[part] * (scale || 1) * (urgent ? 3 : 1) * discount);
 }
 
 /* Production always takes 1 GP: an order placed now arrives after the
@@ -81,17 +85,18 @@ export function canFieldRace(warehouse, ridersNeeded) {
 export function aiManageWarehouse(team, scale, notifQueue, categoryKey) {
   let warehouse = team.warehouse || initWarehouse();
   let budget = team.budget || 0;
+  const factoryLevel = team.factory?.level ?? 0;
   WAREHOUSE_PARTS.forEach((part) => {
     const projected = warehouse[part].stock + warehouse[part].orders.length;
     if (projected < WAREHOUSE_MIN_TO_RACE) {
       const shortfall = WAREHOUSE_MIN_TO_RACE - projected;
       for (let i = 0; i < shortfall; i++) {
-        const normalCost = warehouseCost(part, scale, false);
+        const normalCost = warehouseCost(part, scale, false, factoryLevel);
         if (budget >= normalCost) {
           warehouse = queueWarehouseProduction(warehouse, part);
           budget -= normalCost;
         } else {
-          const urgentCost = warehouseCost(part, scale, true);
+          const urgentCost = warehouseCost(part, scale, true, factoryLevel);
           if (budget >= urgentCost) {
             warehouse = urgentWarehouseProduction(warehouse, part);
             budget -= urgentCost;
@@ -100,7 +105,7 @@ export function aiManageWarehouse(team, scale, notifQueue, categoryKey) {
         }
       }
     } else if (warehouse[part].stock <= WAREHOUSE_MIN_TO_RACE && warehouse[part].orders.length === 0) {
-      const normalCost = warehouseCost(part, scale, false);
+      const normalCost = warehouseCost(part, scale, false, factoryLevel);
       if (budget >= normalCost) {
         warehouse = queueWarehouseProduction(warehouse, part);
         budget -= normalCost;

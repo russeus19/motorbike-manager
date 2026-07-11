@@ -22,7 +22,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
   const signCost = Math.round(overallRating(rider) * 5000);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           <div className="flex items-center gap-3 min-w-0">
@@ -134,7 +134,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
             {history.map((h, i) => (
               <li key={i} className="flex justify-between">
                 <span>T{h.season} · {CATEGORY_DATA[h.category]?.label} · {h.teamName}</span>
-                <span>{h.position}º {badgeEmoji(h.badge)}</span>
+                <span>{h.position}º · {h.points ?? 0} pts {badgeEmoji(h.badge)}</span>
               </li>
             ))}
           </ul>

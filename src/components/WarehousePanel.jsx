@@ -34,8 +34,8 @@ export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentP
             const p = warehouse[part];
             const Icon = WAREHOUSE_ICONS[part];
             const stockColor = p.stock <= 1 ? COLORS.danger : p.stock <= 2 ? COLORS.gold : "#3F9142";
-            const normalCost = warehouseCost(part, scale, false);
-            const urgentCost = warehouseCost(part, scale, true);
+            const normalCost = warehouseCost(part, scale, false, playerTeam.factory?.level);
+            const urgentCost = warehouseCost(part, scale, true, playerTeam.factory?.level);
             return (
               <div key={part} className="rounded-md p-3" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                 <div className="flex items-center justify-between mb-1.5">
