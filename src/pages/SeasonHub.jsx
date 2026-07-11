@@ -32,9 +32,39 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   const missingParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock < ridersNeeded);
   const canRace = missingParts.length === 0;
 
+  // Small render helpers for the notification bell, budget display and
+  // Simular GP button — defined once here and reused as-is in both the
+  // desktop/tablet layout (unchanged) and the new mobile-only compact
+  // row below, so there's a single source of truth for each rather than
+  // two independently-maintained copies.
+  const renderBell = () => (
+    <button onClick={onOpenNotifications} className="relative flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 40, height: 40, background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+      <Bell size={18} style={{ color: COLORS.text }} />
+      {notifCount > 0 && (
+        <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold" style={{ minWidth: 16, height: 16, padding: "0 3px", background: COLORS.gold, color: "#12151A" }}>
+          {notifCount > 99 ? "99+" : notifCount}
+        </span>
+      )}
+    </button>
+  );
+  const renderBudget = (compact) => (
+    <div className={compact ? "text-center" : "text-right"}>
+      <div className={compact ? "text-[10px] uppercase tracking-wider" : "text-xs uppercase tracking-wider"} style={{ color: COLORS.muted }}>Presupuesto</div>
+      <div className={compact ? "text-base font-mono" : "text-2xl font-mono"} style={{ color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
+    </div>
+  );
+  const renderSimularButton = () => (
+    <button onClick={runRace} disabled={!canRace}
+      className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
+      style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
+      <Flag size={18} /> Simular GP
+    </button>
+  );
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-8" style={{ paddingBottom: 96 }}>
       <CheckerStrip accent={accent} solid />
+
       <div className="flex flex-wrap justify-between items-end gap-3 py-4">
         <div className="flex items-center gap-3">
           {seasonTab === "inicio" && <TeamLogo team={playerTeam} size={48} className="rounded-lg" />}
@@ -42,36 +72,34 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{playerTeam.name}</span></div>
           </div>
         </div>
+        {/* Bell + Presupuesto: desktop/tablet only here, same row as the identity block. On mobile these move into the compact row below the circuit name instead. */}
         {seasonTab === "inicio" && (
-          <div className="flex items-start gap-3">
-            <button onClick={onOpenNotifications} className="relative flex items-center justify-center rounded-full" style={{ width: 40, height: 40, background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
-              <Bell size={18} style={{ color: COLORS.text }} />
-              {notifCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold" style={{ minWidth: 16, height: 16, padding: "0 3px", background: COLORS.gold, color: "#12151A" }}>
-                  {notifCount > 99 ? "99+" : notifCount}
-                </span>
-              )}
-            </button>
-            <div className="text-right">
-              <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Presupuesto</div>
-              <div className="text-2xl font-mono" style={{ color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
-            </div>
+          <div className="hidden sm:flex items-start gap-3">
+            {renderBell()}
+            {renderBudget(false)}
           </div>
         )}
       </div>
 
       {seasonTab === "inicio" && (
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-2 sm:mb-4">
           <h2 className="font-bold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif", fontSize: "1.4rem" }}>
             <MapPin size={17} style={{ color: accent }} /> {circuit}
           </h2>
-          <button onClick={runRace} disabled={!canRace}
-            className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-            style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-            <Flag size={18} /> Simular GP
-          </button>
+          {/* Simular GP: desktop/tablet only here, inline with the circuit name. On mobile it moves into the compact row below instead. */}
+          <div className="hidden sm:block">{renderSimularButton()}</div>
         </div>
       )}
+
+      {/* Mobile-only compact row: Notificaciones (izquierda) · Presupuesto (centro) · Simular GP (derecha) — same elements as above, just reused in a different layout for small screens. */}
+      {seasonTab === "inicio" && (
+        <div className="flex sm:hidden items-center justify-between gap-2 mb-4">
+          {renderBell()}
+          {renderBudget(true)}
+          {renderSimularButton()}
+        </div>
+      )}
+
       {seasonTab === "inicio" && !canRace && (
         <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
           No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.

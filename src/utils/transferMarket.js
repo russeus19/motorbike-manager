@@ -3,6 +3,7 @@ import { clamp, randInt } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
+import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
 export function computeMarket(playerTeam, rivalTeams, teamStandings, otherCategories, category, freeAgents, departures) {
   const rows = [
@@ -58,7 +59,13 @@ export function computeMarket(playerTeam, rivalTeams, teamStandings, otherCatego
    situation, not just their raw championship position. */
 
 
-export function aiRenewalDecision(rider, evalLabel, team) {
+/* `expectationVerdict` (from evaluateSeasonVsExpectation, see
+   teamExpectations.js) is optional and additive: when the caller doesn't
+   have one (or the team has no expectation assigned yet, e.g. an old
+   save), this behaves exactly as before. When present, it's the main
+   new signal this system adds — whether the rider actually met what was
+   realistically expected of them matters more than their raw rating. */
+export function aiRenewalDecision(rider, evalLabel, team, expectationVerdict) {
   let chance = 0.5;
   const upside = rider.pa - overallRating(rider);
   if (rider.age <= 23 && rider.pa >= 75) chance += 0.35;
@@ -69,6 +76,10 @@ export function aiRenewalDecision(rider, evalLabel, team) {
   else if (evalLabel === "Buena") chance += 0.15;
   else if (evalLabel === "Mala") chance -= 0.2;
   else if (evalLabel === "Desastrosa") chance -= 0.4;
+  if (expectationVerdict === "extraordinaria") chance += 0.25;
+  else if (expectationVerdict === "sobresaliente") chance += 0.1;
+  else if (expectationVerdict === "por_debajo") chance -= 0.1;
+  else if (expectationVerdict === "decepcionante") chance -= 0.25;
   if (team.budget && rider.salary > team.budget * 0.4) chance -= 0.15;
   return Math.random() < clamp(chance, 0.05, 0.95);
 }
@@ -86,6 +97,13 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
   const posMap = {};
   rows.forEach((r, i) => { posMap[r.id] = i + 1; });
 
+  // Each rider's own finishing position among every rider in the
+  // category — used below to check their result against the expectation
+  // assigned to their team at the start of the season.
+  const riderRows = Object.entries(riderStandingsForCategory).sort((a, b) => b[1].points - a[1].points);
+  const riderPosMap = {};
+  riderRows.forEach(([id], i) => { riderPosMap[id] = i + 1; });
+
   const updated = teams.map((t) => {
     if (t.id === excludeTeamId) return t;
     const tier = teamExpectationTier(t);
@@ -95,6 +113,15 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
     t.riders.forEach((r) => {
       const teammatePts = r.id === r1?.id ? (riderStandingsForCategory[r2?.id]?.points || 0) : (riderStandingsForCategory[r1?.id]?.points || 0);
       const evalLabel = evaluateRiderSeason(r, riderStandingsForCategory[r.id]?.points || 0, teammatePts, tier, r.crashesThisSeason || 0);
+      // A team's position-range expectation is expressed in constructors'
+      // terms; scaling it ×2 gives a rough equivalent band in the riders'
+      // standings (two riders per team), which is what a rider's own
+      // result actually needs to be compared against.
+      let expectationVerdict = null;
+      if (t.expectation) {
+        const riderRange = { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 };
+        expectationVerdict = evaluateSeasonVsExpectation(riderPosMap[r.id], riderRange);
+      }
       const retireCtx = {
         lostSeat: false,
         seasonsUnsigned: r.seasonsUnsigned || 0,
@@ -108,7 +135,7 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
       }
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
       const renewalCost = Math.round((r.marketValue || 0) * 0.08);
-      if (aiRenewalDecision(r, evalLabel, t) && renewalCost <= teamBudget) {
+      if (aiRenewalDecision(r, evalLabel, t, expectationVerdict) && renewalCost <= teamBudget) {
         kept.push({ ...r, contractYears: randInt(1, 3) });
         teamBudget -= renewalCost;
         log.push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (temporada ${evalLabel.toLowerCase()})`, category: categoryLabel });
@@ -167,6 +194,34 @@ export function fillFromLowerCategory(teams, lowerTeams, log, categoryLabel, low
 /* Moto3 has no category below it — any remaining vacancies there are
    filled with freshly generated young prospects. */
 
+
+/**
+ * A substitute's contract is temporary by definition — it exists only to
+ * cover an injured rider's seat, and never survives past the season it
+ * was created in unless the market separately hands them a real
+ * contract. Called once per category at the very start of the
+ * season-end market pass (before runCategoryMarket), so any substitute
+ * released here is immediately back in the shared pool and eligible to
+ * be signed permanently in that same market pass if a team happens to
+ * want them — the "excepción" the design calls for falls out naturally
+ * from the ordering, with no special-casing needed.
+ *
+ * Every team ends up with `substitutes: {}`; nothing about `team.riders`
+ * (the actual titular/contracted riders) is touched here.
+ */
+export function releaseSubstitutesToPool(teams, freeAgentPool, log, categoryLabel) {
+  let pool = [...freeAgentPool];
+  const teamsReleased = teams.map((t) => {
+    const subs = Object.values(t.substitutes || {});
+    if (!subs.length) return t;
+    subs.forEach((sub) => {
+      pool.push({ ...sub, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 });
+      if (log) log.push({ type: "salida", riderId: photoIdFor(sub), text: `${sub.name} finaliza su cesión temporal en ${t.name} y vuelve a agentes libres`, category: categoryLabel });
+    });
+    return { ...t, substitutes: {} };
+  });
+  return { teams: teamsReleased, pool };
+}
 
 export function fillWithRookies(teams, log, categoryLabel, scale) {
   return teams.map((t) => {
@@ -243,7 +298,11 @@ export function pickBestFreeAgentSub(pool, categoryKey, budget, scale) {
 export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   if (!team.riders || team.riders.length < 2) return team;
   if ((ctx.roundIndex ?? 0) < (ctx.totalRounds ?? 22) * 0.45) return team;
-  if (Math.random() > 0.015) return team;
+  // A team expecting to fight at the front is a little less patient with
+  // an underperforming rider than one with modest ambitions — but this
+  // stays a rare, exceptional event either way (0.010-0.020 range).
+  const ambitionFactor = team.expectation ? clamp(1.4 - team.expectation.min * 0.04, 0.65, 1.35) : 1;
+  if (Math.random() > 0.015 * ambitionFactor) return team;
 
   const candidate = team.riders.find((r) =>
     r.morale < 35 && r.pa < 55 && overallRating(r) < 66 && !(r.injury && r.injury.sidelined)

@@ -49,6 +49,12 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
           </div>
         </div>
 
+        {rider.expectation && (
+          <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+            Expectativa temporada: <span style={{ color: COLORS.text }}>{rider.expectation}</span>
+          </div>
+        )}
+
         <AttrGrid rider={rider} accent={accent} />
 
         <div className="grid grid-cols-3 gap-2 my-3 text-xs" style={{ color: COLORS.muted }}>

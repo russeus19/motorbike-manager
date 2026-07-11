@@ -29,7 +29,8 @@ import { instantiateTeams, makeRookie, seedLegendFreeAgents } from "./utils/ride
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
-import { computeMarket, fillFromLowerCategory, fillWithRookies, findBestReplacement, getLowerTeamsFor, runCategoryMarket } from "./utils/transferMarket.js";
+import { assignSeasonExpectations } from "./utils/teamExpectations.js";
+import { computeMarket, fillFromLowerCategory, fillWithRookies, findBestReplacement, getLowerTeamsFor, releaseSubstitutesToPool, runCategoryMarket } from "./utils/transferMarket.js";
 import { queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
 
 export default function MotorbikeManager() {
@@ -303,6 +304,13 @@ export default function MotorbikeManager() {
     } else if (!restoredPhase || ONBOARDING_PHASES.includes(restoredPhase)) {
       restoredPhase = (data.round ?? 0) >= CIRCUITS.length ? "seasonend" : "season";
     }
+    if (restoredPhase === "season") {
+      const riderNeeding = findRiderNeedingSubstitute(playerTeam);
+      if (riderNeeding) {
+        setPendingSubstitution({ teamId: playerTeam.id, riderId: riderNeeding.id, riderName: riderNeeding.name });
+        restoredPhase = "substitute-select";
+      }
+    }
     setPhase(restoredPhase);
   }
 
@@ -322,9 +330,12 @@ export default function MotorbikeManager() {
     setPhase("career-picker");
   }
 
-  function chooseCareerTeam(chosenTeam) {
+  function chooseCareerTeam(chosenTeamRaw) {
     const allTeams = careerStarterOptions.allTeams;
-    const rivals = allTeams.filter((t) => t.id !== chosenTeam.id);
+    const rivalsRaw = allTeams.filter((t) => t.id !== chosenTeamRaw.id);
+    // Season 1 has no research history yet, so it's excluded from the
+    // strength calculation here (see computeTeamStrengthScore).
+    const [chosenTeam, ...rivals] = assignSeasonExpectations([chosenTeamRaw, ...rivalsRaw], false);
     const rsFixed = {};
     chosenTeam.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosenTeam.name, points: 0 }; });
     rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
@@ -334,7 +345,7 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== "moto3");
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = instantiateTeams(k);
+      const t = assignSeasonExpectations(instantiateTeams(k), false);
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, seasonNumber: 1 };
@@ -504,8 +515,10 @@ export default function MotorbikeManager() {
 
   function chooseTeam(idx) {
     if (!draftManagerName.trim() || !teams) return;
-    const chosen = teams[idx];
-    const rivals = teams.filter((_, i) => i !== idx);
+    const rivalsRaw = teams.filter((_, i) => i !== idx);
+    // Season 1 has no research history yet, so it's excluded from the
+    // strength calculation here (see computeTeamStrengthScore).
+    const [chosen, ...rivals] = assignSeasonExpectations([teams[idx], ...rivalsRaw], false);
     const rsFixed = {};
     chosen.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosen.name, points: 0 }; });
     rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
@@ -515,7 +528,7 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== draftCategory);
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = instantiateTeams(k);
+      const t = assignSeasonExpectations(instantiateTeams(k), false);
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, seasonNumber: 1 };
@@ -757,6 +770,26 @@ export default function MotorbikeManager() {
     setShowNotifications(true);
   }
 
+  /* Detects a rider who is still injured/sidelined for the next GP and has
+     no substitute covering their seat yet — regardless of when or how
+     that injury happened (mid-season, end of last season, signed while
+     already hurt during the market...). The origin never matters; only
+     whether they're still out and uncovered right now. */
+  function findRiderNeedingSubstitute(team) {
+    if (!team) return null;
+    return team.riders.find((r) => r.injury && r.injury.sidelined && r.injury.gpRemaining > 0 && !(team.substitutes || {})[r.id]) || null;
+  }
+
+  function goToSeasonOrOfferSubstitute(team) {
+    const rider = findRiderNeedingSubstitute(team);
+    if (rider) {
+      setPendingSubstitution({ teamId: team.id, riderId: rider.id, riderName: rider.name });
+      setPhase("substitute-select");
+    } else {
+      setPhase("season");
+    }
+  }
+
   async function continueAfterResult() {
     const nextRound = round + 1;
     setRound(nextRound);
@@ -765,7 +798,7 @@ export default function MotorbikeManager() {
     } else if (pendingSubstitution) {
       setPhase("substitute-select");
     } else {
-      setPhase("season");
+      goToSeasonOrOfferSubstitute(playerTeam);
     }
   }
 
@@ -896,6 +929,17 @@ export default function MotorbikeManager() {
 
     let poolFreeAgents = [...freeAgents];
 
+    // Bug fix: a substitute only ever holds a temporary contract covering
+    // an injured rider's seat — it must never survive into a new season
+    // still attached to the team. Release the player's own substitute(s)
+    // now, before anything else touches the free-agent pool, so a
+    // substitute can still be signed to a real contract later in this
+    // same market pass if some team wants them.
+    const playerSubstitutes = Object.values(playerTeam.substitutes || {});
+    if (playerSubstitutes.length) {
+      poolFreeAgents = [...poolFreeAgents, ...playerSubstitutes.map((sub) => ({ ...sub, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 }))];
+    }
+
     selections.forEach((sel) => {
       if (sel.origin === "market") {
         const lowerTeamsForPlayed = getLowerTeamsFor(category, nextOther);
@@ -976,6 +1020,16 @@ export default function MotorbikeManager() {
     const marketLog = { motogp: [], moto2: [], moto3: [] };
     const excludeIds = { motogp: category === "motogp" ? "player" : null, moto2: category === "moto2" ? "player" : null, moto3: category === "moto3" ? "player" : null };
 
+    // Same substitute-release fix as the player's own team above, applied
+    // to every AI-controlled team across all three categories (including
+    // the rivals in the played category) — no substitute contract should
+    // ever survive a season boundary still attached to a team.
+    CATEGORY_ORDER.forEach((ck) => {
+      const released = releaseSubstitutesToPool(catTeams[ck], poolFreeAgents, marketLog[ck], CATEGORY_DATA[ck].label);
+      catTeams[ck] = released.teams;
+      poolFreeAgents = released.pool;
+    });
+
     // Renew/release/free-agent pass for every category, in no particular
     // order (independent so far — promotions are what actually cascade).
     CATEGORY_ORDER.forEach((ck) => {
@@ -1019,9 +1073,10 @@ export default function MotorbikeManager() {
       if (ck !== category) nextOther[ck] = { ...nextOther[ck], teams: catTeams[ck] };
     });
 
-    // --- New-season bikes: blend of how this season's bike ended up (55%)
-    // and how much was banked in research (45%), plus a little uncertainty.
-    // Applies to every team in the game, not just the player's. ---
+    // --- New-season bikes: rebuilt from each team's hidden Base
+    // Tecnológica plus Fábrica/Staff quality and a small random variation
+    // (see rolloverBike in bikeDevelopment.js). Applies to every team in
+    // the game, not just the player's. ---
     const rolledPlayerTeam = rolloverBike(playerTeam);
     evolvedRivals = evolvedRivals.map(rolloverBike);
     Object.keys(nextOther).forEach((key) => {
@@ -1038,6 +1093,18 @@ export default function MotorbikeManager() {
     Object.keys(nextOther).forEach((key) => {
       const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
+    });
+
+    // --- Fresh season expectations for every team and rider, recalculated
+    // from scratch now that budgets, bikes, Fábrica, Staff and rosters are
+    // all settled for the new season. Every season transition happens
+    // after season 1, so research always counts here (see
+    // computeTeamStrengthScore / the season-1-only exception at game
+    // creation). ---
+    let finalPlayerTeamWithExpectation;
+    [finalPlayerTeamWithExpectation, ...evolvedRivals] = assignSeasonExpectations([{ ...rolledPlayerTeam, riders: finalRoster, substitutes: {} }, ...evolvedRivals], true);
+    Object.keys(nextOther).forEach((key) => {
+      nextOther[key] = { ...nextOther[key], teams: assignSeasonExpectations(nextOther[key].teams, true) };
     });
 
     const rsFixed = {};
@@ -1075,7 +1142,7 @@ export default function MotorbikeManager() {
     });
     pushNotifications(seasonNotifs);
 
-    setPlayerTeam(() => ({ ...rolledPlayerTeam, riders: finalRoster }));
+    setPlayerTeam(() => finalPlayerTeamWithExpectation);
     setRivalTeams(evolvedRivals);
     setOtherCategories(finalOther);
     setFreeAgents(nextFreeAgents);
@@ -1169,7 +1236,7 @@ export default function MotorbikeManager() {
         <MarketScreen playerTeam={playerTeam} marketData={marketData} budget={budget} category={category} onConfirm={confirmMarket} openProfile={openProfile} />
       )}
       {phase === "market-summary" && marketSummary && (
-        <MarketSummaryScreen summary={marketSummary} onContinue={() => setPhase("season")} />
+        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonOrOfferSubstitute(playerTeam)} />
       )}
       {phase === "substitute-select" && playerTeam && pendingSubstitution && (
         <SubstituteScreen
