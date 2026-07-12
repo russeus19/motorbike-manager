@@ -119,6 +119,22 @@ export function fireRiderCost(rider) {
   return Math.round(Math.max(30000, base * contractFactor));
 }
 
+/**
+ * Cost of "designar para quedar libre al final de temporada" — the
+ * deferred release that lets a rider finish out the current season
+ * before actually leaving. Free when only one year (or less) is left on
+ * the contract, since that year was ending anyway and no promise is
+ * being broken. Otherwise scales with however many seasons would still
+ * remain AFTER this one — releasing someone two years early costs more
+ * than releasing them one year early, dynamically, never a flat fee.
+ */
+export function computeReleaseAtSeasonEndCost(rider, scale) {
+  const yearsOwedAfterThisSeason = Math.max(0, (rider.contractYears ?? 0) - 1);
+  if (yearsOwedAfterThisSeason <= 0) return 0;
+  const fairSalary = computeSalary(rider, scale || 1);
+  return Math.round(fairSalary * yearsOwedAfterThisSeason * 0.5);
+}
+
 
 export function finalizeRiderEconomics(rider, scale, contractYears = 1) {
   const marketValue = computeMarketValue(rider, scale);

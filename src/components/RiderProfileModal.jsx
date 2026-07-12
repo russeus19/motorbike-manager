@@ -2,14 +2,36 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Medal, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
-import { AttrGrid } from "./UIPrimitives.jsx";
+import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
-import { badgeEmoji, computeMarketValue, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
+import { badgeEmoji, computeMarketValue, computeReleaseAtSeasonEndCost, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
 import { clamp } from "../utils/random.js";
 
-export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenewContract, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, scale }) {
+/** Turns one entry of a negotiation's structured history (see
+ * createNegotiation/resolvePendingNegotiations in
+ * utils/marketNegotiations.js) into a short readable line for the
+ * "historial de negociación" trail — Oferta inicial → Contraoferta del
+ * equipo → Nueva oferta → Contraoferta del piloto → Aceptada, etc. */
+function historyStepLabel(h) {
+  if (h.actor === "player") {
+    if (h.type === "withdraw") return "Retiraste la oferta.";
+    if (h.type === "accept") return "Aceptaste la contraoferta.";
+    const amount = h.teamOfferAmount != null ? `€${Math.round(h.teamOfferAmount).toLocaleString()} de compensación` : `€${Math.round(h.riderSalary || 0).toLocaleString()}/año`;
+    return `Vuestra oferta: ${amount}.`;
+  }
+  const who = h.actor === "team" ? "El equipo" : "El piloto";
+  if (h.type === "accept") return `${who} acepta.`;
+  if (h.type === "reject") return `${who} rechaza.`;
+  if (h.type === "counter") {
+    const amount = h.teamOfferAmount != null ? `€${Math.round(h.teamOfferAmount).toLocaleString()}` : `€${Math.round(h.riderSalary || 0).toLocaleString()}/año`;
+    return `${who} contraoferta: ${amount}.`;
+  }
+  return `${who} responde.`;
+}
+
+export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, scale }) {
   const [confirmFire, setConfirmFire] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [teamOfferAmount, setTeamOfferAmount] = useState(0);
@@ -19,15 +41,26 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
   const [offerTitleBonus, setOfferTitleBonus] = useState(0);
 
   // Resets the offer form to sensible suggested values every time a
-  // different rider's profile is opened (fair value/salary depend on the
-  // rider, so they can only be computed once we know who `target` is).
+  // different rider's profile is opened — unless there's already an
+  // active counter-offer for this rider, in which case the form loads
+  // whatever's currently on the table instead (see the design's "toda
+  // la información anterior deberá mantenerse cargada").
   useEffect(() => {
     if (!target) return;
-    setTeamOfferAmount(Math.round(computeMarketValue(target.rider, scale || 1) * 1.1));
-    setOfferSalary(Math.round(computeSalary(target.rider, scale || 1) * 1.1));
-    setOfferYears(2);
-    setOfferWinBonus(0);
-    setOfferTitleBonus(0);
+    const active = (marketNegotiations || []).find((n) => n.riderId === target.rider.id && n.toTeamId === "player" && ["team_countered", "rider_countered"].includes(n.status));
+    if (active) {
+      setTeamOfferAmount(active.teamOfferAmount ?? Math.round(computeMarketValue(target.rider, scale || 1) * 1.1));
+      setOfferSalary(active.riderTerms?.salary ?? Math.round(computeSalary(target.rider, scale || 1) * 1.1));
+      setOfferYears(active.riderTerms?.years ?? 2);
+      setOfferWinBonus(active.riderTerms?.winBonus ?? 0);
+      setOfferTitleBonus(active.riderTerms?.titleBonus ?? 0);
+    } else {
+      setTeamOfferAmount(Math.round(computeMarketValue(target.rider, scale || 1) * 1.1));
+      setOfferSalary(Math.round(computeSalary(target.rider, scale || 1) * 1.1));
+      setOfferYears(2);
+      setOfferWinBonus(0);
+      setOfferTitleBonus(0);
+    }
     setShowOfferForm(false);
     setConfirmFire(false);
   }, [target?.rider?.id, scale]);
@@ -37,21 +70,64 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
   const accent = COLORS.gold;
   const overall = overallRating(rider);
   const history = [...(rider.history || [])].reverse();
-  const renewCost = Math.round((rider.marketValue || 0) * 0.08);
   const fireCost = fireRiderCost(rider);
+  const releaseCost = computeReleaseAtSeasonEndCost(rider, scale || 1);
   const isFreeAgent = teamName === "Agente libre";
   const hasVacancy = !!(playerTeam && playerTeam.riders.length < 2);
   const signEligible = isFreeAgent && hasVacancy && !isOwnRider && isFreeAgentEligibleForCategory(rider, category);
   const signCost = Math.round(overallRating(rider) * 5000);
 
   // Live transfer market (utils/marketNegotiations.js): is there already
-  // a negotiation in progress or confirmed for this rider with us?
+  // a negotiation in progress or confirmed for this rider with us? A
+  // renewal (fromTeamId === toTeamId === "player") is found the exact
+  // same way — it's just another negotiation.
   const existingNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && n.toTeamId === "player" && n.status !== "failed");
-  const isConfirmedForUs = existingNegotiation?.status === "confirmed";
+  const isConfirmedForUs = ["confirmed", "applied"].includes(existingNegotiation?.status);
+  const isCounterOffer = ["team_countered", "rider_countered"].includes(existingNegotiation?.status);
   const contractYearsLeft = rider.contractYears ?? 0;
-  const offerNeedsTeamDeal = contractYearsLeft > 1;
-  const offerLabel = offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar";
-  const offerEligible = !isOwnRider && !existingNegotiation && canStartNewOffer && isFreeAgentEligibleForCategory(rider, category);
+  // A team compensation step only ever makes sense when poaching someone
+  // else's rider who still has more than one year left — never for a
+  // renewal (nobody to compensate) and never for a rider down to their
+  // last contracted year, who behaves exactly like a free agent for
+  // negotiation purposes.
+  const offerNeedsTeamDeal = !isOwnRider && contractYearsLeft > 1;
+  const offerLabel = isOwnRider ? "Iniciar renovación de contrato" : (offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar");
+  const offerEligible = !existingNegotiation && isFreeAgentEligibleForCategory(rider, category)
+    && (isOwnRider ? !rider.releasedAtSeasonEnd : canStartNewOffer);
+
+  // Shared input fields for both a fresh offer and a counter-offer
+  // revision — same parameters either way (section 1: "el jugador podrá
+  // cambiar cualquier parámetro de la negociación").
+  function renderOfferFields(showTeamField) {
+    return (
+      <>
+        {showTeamField && (
+          <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Oferta al equipo (compensación)
+            <input type="number" value={teamOfferAmount} onChange={(e) => setTeamOfferAmount(Number(e.target.value))}
+              className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+          </label>
+        )}
+        <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Salario ofrecido / año
+          <input type="number" value={offerSalary} onChange={(e) => setOfferSalary(Number(e.target.value))}
+            className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Años
+            <input type="number" min={1} max={4} value={offerYears} onChange={(e) => setOfferYears(clamp(Number(e.target.value), 1, 4))}
+              className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+          </label>
+          <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus victoria
+            <input type="number" value={offerWinBonus} onChange={(e) => setOfferWinBonus(Number(e.target.value))}
+              className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+          </label>
+          <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus título
+            <input type="number" value={offerTitleBonus} onChange={(e) => setOfferTitleBonus(Number(e.target.value))}
+              className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+          </label>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
@@ -117,51 +193,73 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
           </div>
         )}
 
-        {isConfirmedForUs && (
+        {isConfirmedForUs && existingNegotiation.status === "confirmed" && (
           <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
             Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
           </div>
         )}
-        {existingNegotiation && !isConfirmedForUs && (
+        {isConfirmedForUs && existingNegotiation.status === "applied" && (
+          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
+            Renovación firmada — el contrato ya está actualizado.
+          </div>
+        )}
+        {existingNegotiation && !isConfirmedForUs && !isCounterOffer && (
           <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
             Negociación en curso — os avisaremos tras el próximo Gran Premio.
           </div>
         )}
 
-        {offerEligible && !isConfirmedForUs && onCreateOffer && !showOfferForm && (
-          <button onClick={() => setShowOfferForm(true)}
-            className="w-full mb-3 text-xs px-3 py-2 rounded font-semibold"
-            style={{ background: "#3F9142", color: "#fff" }}>
-            {offerLabel}
-          </button>
+        {isCounterOffer && (onAcceptCounterOffer || onModifyOffer || onWithdrawOffer) && (
+          <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #E08E45" }}>
+            <div className="font-semibold" style={{ color: "#E08E45" }}>Contraoferta recibida</div>
+            {existingNegotiation.status === "team_countered" && (
+              <p style={{ color: COLORS.text }}>{existingNegotiation.fromTeamName} pide €{Math.round(existingNegotiation.teamOfferAmount).toLocaleString()} de compensación.</p>
+            )}
+            {existingNegotiation.status === "rider_countered" && (
+              <p style={{ color: COLORS.text }}>{rider.name} pide €{Math.round(existingNegotiation.riderTerms.salary).toLocaleString()}/año.</p>
+            )}
+
+            <div className="text-xs" style={{ color: COLORS.muted }}>
+              {(existingNegotiation.history || []).map((h, i) => (
+                <div key={i}>{historyStepLabel(h)}</div>
+              ))}
+            </div>
+
+            {renderOfferFields(existingNegotiation.status === "team_countered")}
+
+            <div className="flex gap-2 pt-1">
+              {onAcceptCounterOffer && (
+                <button onClick={() => onAcceptCounterOffer(existingNegotiation.id)}
+                  className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
+                  Aceptar
+                </button>
+              )}
+              {onModifyOffer && (
+                <button
+                  onClick={() => onModifyOffer(existingNegotiation.id, teamOfferAmount, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus })}
+                  className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#E08E45", color: "#12151A" }}>
+                  Modificar
+                </button>
+              )}
+              {onWithdrawOffer && (
+                <button onClick={() => onWithdrawOffer(existingNegotiation.id)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.danger }}>
+                  Retirar
+                </button>
+              )}
+            </div>
+            <p style={{ color: COLORS.muted }}>Si modificás la oferta, la respuesta llegará tras el próximo Gran Premio.</p>
+          </div>
         )}
 
-        {offerEligible && !isConfirmedForUs && onCreateOffer && showOfferForm && (
+        {offerEligible && !existingNegotiation && onCreateOffer && !showOfferForm && (
+          <RiderActionButton tone="green" onClick={() => setShowOfferForm(true)}>
+            {offerLabel}
+          </RiderActionButton>
+        )}
+
+        {offerEligible && !existingNegotiation && onCreateOffer && showOfferForm && (
           <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #3F9142" }}>
-            {offerNeedsTeamDeal && (
-              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Oferta al equipo (compensación)
-                <input type="number" value={teamOfferAmount} onChange={(e) => setTeamOfferAmount(Number(e.target.value))}
-                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
-              </label>
-            )}
-            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Salario ofrecido / año
-              <input type="number" value={offerSalary} onChange={(e) => setOfferSalary(Number(e.target.value))}
-                className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Años
-                <input type="number" min={1} max={4} value={offerYears} onChange={(e) => setOfferYears(clamp(Number(e.target.value), 1, 4))}
-                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
-              </label>
-              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus victoria
-                <input type="number" value={offerWinBonus} onChange={(e) => setOfferWinBonus(Number(e.target.value))}
-                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
-              </label>
-              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus título
-                <input type="number" value={offerTitleBonus} onChange={(e) => setOfferTitleBonus(Number(e.target.value))}
-                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
-              </label>
-            </div>
+            {renderOfferFields(offerNeedsTeamDeal)}
             <div className="flex gap-2 pt-1">
               <button
                 onClick={() => {
@@ -187,20 +285,10 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
           </button>
         )}
 
-        {isOwnRider && onRenewContract && (
-          <button onClick={() => onRenewContract(rider.id)} disabled={renewCost > budget}
-            className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40"
-            style={{ background: COLORS.panel2, border: `1px solid ${accent}`, color: accent }}>
-            Renovar contrato (+1 año) — €{renewCost.toLocaleString()}
-          </button>
-        )}
-
         {isOwnRider && onFireRider && !confirmFire && (
-          <button onClick={() => setConfirmFire(true)} disabled={fireCost > budget}
-            className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40"
-            style={{ background: COLORS.panel2, border: `1px solid ${COLORS.danger}`, color: COLORS.danger }}>
+          <RiderActionButton tone="red" onClick={() => setConfirmFire(true)} disabled={fireCost > budget}>
             Despedir — €{fireCost.toLocaleString()}
-          </button>
+          </RiderActionButton>
         )}
 
         {isOwnRider && onFireRider && confirmFire && (
@@ -222,11 +310,9 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
         )}
 
         {isOwnRider && onMarkReleaseAtSeasonEnd && !rider.releasedAtSeasonEnd && (
-          <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, true)}
-            className="w-full mb-3 text-xs px-3 py-2 rounded"
-            style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
-            Despedir al finalizar la temporada
-          </button>
+          <RiderActionButton tone="blue" onClick={() => onMarkReleaseAtSeasonEnd(rider.id, true)} disabled={releaseCost > budget}>
+            Designar para quedar libre al final de temporada{releaseCost > 0 ? ` — €${releaseCost.toLocaleString()}` : ""}
+          </RiderActionButton>
         )}
         {isOwnRider && onMarkReleaseAtSeasonEnd && rider.releasedAtSeasonEnd && (
           <div className="mb-3 rounded-md p-2.5 text-xs flex items-center justify-between gap-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>

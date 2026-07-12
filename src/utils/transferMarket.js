@@ -3,56 +3,6 @@ import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
-import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
-
-export function computeMarket(playerTeam, rivalTeams, teamStandings, otherCategories, category, freeAgents, departures) {
-  const rows = [
-    { id: "player", points: teamStandings.player || 0 },
-    ...rivalTeams.map((t) => ({ id: t.id, points: teamStandings[t.id] || 0 })),
-  ];
-  rows.sort((a, b) => b.points - a.points);
-  const position = rows.findIndex((r) => r.id === "player") + 1;
-
-  let cap;
-  if (position <= 2) cap = 99;
-  else if (position <= 5) cap = 88;
-  else if (position <= 8) cap = 80;
-  else cap = 72;
-
-  const budgetBase = (playerTeam.tier === "Fábrica" || playerTeam.tier === "Puntero") ? 1000000 : 650000;
-  const transferBudget = Math.round(budgetBase + (12 - position) * 40000);
-
-  const sameCategory = [];
-  rivalTeams.forEach((t) => {
-    t.riders.forEach((r) => {
-      if (overallRating(r) <= cap) {
-        sameCategory.push({ rider: r, origin: "market", fromTeamId: t.id, fromTeamName: t.name, cost: Math.round((r.marketValue || overallRating(r) * 9000) * 0.6) });
-      }
-    });
-  });
-
-  const lowerKey = CATEGORY_DATA[category].lower;
-  const lowerTeams = lowerKey ? otherCategories[lowerKey]?.teams : null;
-  const promoted = [];
-  if (lowerTeams) {
-    lowerTeams.forEach((t) => {
-      t.riders.forEach((r) => {
-        if (overallRating(r) <= cap) {
-          promoted.push({ rider: r, origin: "lower", fromTeamId: t.id, fromTeamName: t.name, cost: Math.round((r.marketValue || overallRating(r) * 7000) * 0.5) });
-        }
-      });
-    });
-  }
-
-  const agents = (freeAgents || [])
-    .filter((r) => isFreeAgentEligibleForCategory(r, category))
-    .map((r) => ({ rider: r, origin: "freeagent", fromTeamId: null, fromTeamName: "Agente libre", cost: Math.round(overallRating(r) * 5000) }));
-
-  const candidates = [...sameCategory, ...promoted];
-  candidates.sort((a, b) => overallRating(b.rider) - overallRating(a.rider));
-
-  return { position, cap, transferBudget, marketRiders: candidates, freeAgentRiders: agents, departures: departures || {} };
-}
 
 /* What a team expects from its season, based on its own level — used to
    judge whether a rider's season was actually good relative to their
@@ -92,18 +42,7 @@ export function aiRenewalDecision(rider, evalLabel, team, expectationVerdict) {
    it's mixed in with its AI rivals. */
 
 
-export function runCategoryMarket(teams, riderStandingsForCategory, teamStandingsForCategory, freeAgentPool, log, categoryLabel, excludeTeamId, categoryKey) {
-  const rows = teams.map((t) => ({ id: t.id, points: teamStandingsForCategory[t.id] || 0 })).sort((a, b) => b.points - a.points);
-  const posMap = {};
-  rows.forEach((r, i) => { posMap[r.id] = i + 1; });
-
-  // Each rider's own finishing position among every rider in the
-  // category — used below to check their result against the expectation
-  // assigned to their team at the start of the season.
-  const riderRows = Object.entries(riderStandingsForCategory).sort((a, b) => b[1].points - a[1].points);
-  const riderPosMap = {};
-  riderRows.forEach(([id], i) => { riderPosMap[id] = i + 1; });
-
+export function runCategoryMarket(teams, riderStandingsForCategory, teamStandingsForCategory, freeAgentPool, log, categoryLabel, excludeTeamId, categoryKey, retiredIds) {
   const updated = teams.map((t) => {
     if (t.id === excludeTeamId) return t;
     const tier = teamExpectationTier(t);
@@ -113,15 +52,6 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
     t.riders.forEach((r) => {
       const teammatePts = r.id === r1?.id ? (riderStandingsForCategory[r2?.id]?.points || 0) : (riderStandingsForCategory[r1?.id]?.points || 0);
       const evalLabel = evaluateRiderSeason(r, riderStandingsForCategory[r.id]?.points || 0, teammatePts, tier, r.crashesThisSeason || 0);
-      // A team's position-range expectation is expressed in constructors'
-      // terms; scaling it ×2 gives a rough equivalent band in the riders'
-      // standings (two riders per team), which is what a rider's own
-      // result actually needs to be compared against.
-      let expectationVerdict = null;
-      if (t.expectation) {
-        const riderRange = { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 };
-        expectationVerdict = evaluateSeasonVsExpectation(riderPosMap[r.id], riderRange);
-      }
       const retireCtx = {
         lostSeat: false,
         seasonsUnsigned: r.seasonsUnsigned || 0,
@@ -130,17 +60,28 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
         recentSevereInjury: !!(r.injury && (r.injury.severity === "grave" || r.injury.severity === "muyGrave")),
       };
       if (shouldRetire(r, retireCtx)) {
+        retiredIds?.add(r.id);
         log.push({ type: "retiro", riderId: photoIdFor(r), text: `${r.name} se retira`, category: categoryLabel });
         return;
       }
+      // Contract truth: renewals no longer happen here at all — they're
+      // decided mid-season through the exact same negotiation engine as
+      // every other signing (see marketNegotiations.js's
+      // maybeGenerateAIRenewalNegotiations). If a rider is still at 0
+      // contract years by the time this runs, that renewal either didn't
+      // happen or was declined, and they simply become a free agent —
+      // there is no second, separate renewal system here anymore.
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
-      const renewalCost = Math.round((r.marketValue || 0) * 0.08);
-      if (aiRenewalDecision(r, evalLabel, t, expectationVerdict) && renewalCost <= teamBudget) {
-        kept.push({ ...r, contractYears: 2 });
-        teamBudget -= renewalCost;
-        log.push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (temporada ${evalLabel.toLowerCase()})`, category: categoryLabel });
+      freeAgentPool.push({ ...r, seasonsUnsigned: 0 });
+      // A young rider who was clearly out of his depth (not just an
+      // ordinary release) and still has a lower category to go back to
+      // reads as a relegation rather than a plain exit — same pool, same
+      // free-agent eligibility rules, only the framing changes.
+      const lowerKey = CATEGORY_DATA[categoryKey]?.lower;
+      const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabel);
+      if (isRelegation) {
+        log.push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: categoryLabel });
       } else {
-        freeAgentPool.push({ ...r, seasonsUnsigned: 0 });
         log.push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabel.toLowerCase()}`, category: categoryLabel });
       }
     });

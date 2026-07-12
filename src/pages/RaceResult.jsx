@@ -52,19 +52,26 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
         </div>
       )}
 
-      <div className="flex gap-2 mb-3">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setTab(ck)}
-            className="text-xs px-3 py-1.5 rounded font-semibold"
-            style={{
-              background: tab === ck ? accent : COLORS.panel2,
-              color: tab === ck ? "#12151A" : COLORS.muted,
-              border: `1px solid ${tab === ck ? accent : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
-          </button>
-        ))}
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+        <div className="flex gap-2">
+          {CATEGORY_ORDER.map((ck) => (
+            <button key={ck} onClick={() => setTab(ck)}
+              className="text-xs px-3 py-1.5 rounded font-semibold"
+              style={{
+                background: tab === ck ? accent : COLORS.panel2,
+                color: tab === ck ? "#12151A" : COLORS.muted,
+                border: `1px solid ${tab === ck ? accent : COLORS.rule}`,
+                fontFamily: "Rajdhani, sans-serif",
+              }}>
+              {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
+            </button>
+          ))}
+        </div>
+        <button onClick={continueAfterResult}
+          className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
+          style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
+          {isLastRound ? "Ver resultado final de temporada" : "Continuar"} <ChevronRight size={18} />
+        </button>
       </div>
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: COLORS.rule }}>
@@ -82,12 +89,6 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
           </div>
         ))}
       </div>
-
-      <button onClick={continueAfterResult}
-        className="w-full mt-6 py-3 rounded-md font-semibold flex items-center justify-center gap-2"
-        style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-        {isLastRound ? "Ver resultado final de temporada" : "Continuar"} <ChevronRight size={18} />
-      </button>
     </div>
   );
 }

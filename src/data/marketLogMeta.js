@@ -1,6 +1,6 @@
-export const MARKET_LOG_ICON = { fichaje: "✍️", renovacion: "🔁", salida: "🚪", ascenso: "⬆️", debut: "🌱", retiro: "🏁" };
-export const MARKET_LOG_ORDER = ["ascenso", "fichaje", "renovacion", "debut", "salida", "retiro"];
+export const MARKET_LOG_ICON = { fichaje: "✍️", renovacion: "🔁", salida: "🚪", ascenso: "⬆️", descenso: "⬇️", debut: "🌱", retiro: "🏁" };
+export const MARKET_LOG_ORDER = ["ascenso", "descenso", "fichaje", "renovacion", "salida", "retiro"];
 export const MARKET_LOG_TITLES = {
-  ascenso: "Ascensos", fichaje: "Fichajes", renovacion: "Renovaciones",
-  debut: "Debutantes", salida: "Salidas y agentes libres", retiro: "Retiradas",
+  ascenso: "Ascensos", descenso: "Descensos", fichaje: "Fichajes", renovacion: "Renovaciones",
+  salida: "Salidas", retiro: "Retiradas", debut: "Debutantes",
 };

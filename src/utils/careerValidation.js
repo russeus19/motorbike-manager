@@ -5,6 +5,57 @@ import { makeRookie } from "./riderGeneration.js";
 import { initWarehouse } from "./warehouseEngine.js";
 
 /**
+ * Whole-game integrity check, run once at the very end of a season
+ * transition, after every other piece of market/roster logic has had
+ * its say. Independent of *why* something might have gone wrong — this
+ * doesn't care whether the cause was a duplicate negotiation, a stale
+ * save, or a bug nobody's found yet. It only cares about one invariant:
+ * every rider must exist in exactly one place — one team's roster, or
+ * the free-agent pool — never zero, never two or more.
+ *
+ * If the same rider ID is found in more than one location, only the
+ * FIRST one encountered (player team, then rivals, then each background
+ * category in order, then free agents) is kept; every later occurrence
+ * is dropped as a duplicate. This can never make a rider disappear —
+ * disappearing riders are caught separately, by comparing against a
+ * snapshot taken before the transition started (see App.jsx's
+ * runSeasonTransition) — this function's only job is refusing to let
+ * the same rider exist twice.
+ */
+export function validateGlobalRiderIntegrity({ playerTeam, rivalTeams, otherCategories, freeAgents }) {
+  const seenAt = new Map();
+  const issues = [];
+
+  function claim(rider, location) {
+    if (seenAt.has(rider.id)) {
+      issues.push(`Piloto duplicado detectado: ${rider.name} (${rider.id}) ya estaba en ${seenAt.get(rider.id)}, también encontrado en ${location} — se ha eliminado la copia duplicada.`);
+      return false;
+    }
+    seenAt.set(rider.id, location);
+    return true;
+  }
+
+  const cleanedPlayerTeam = { ...playerTeam, riders: playerTeam.riders.filter((r) => claim(r, "tu equipo")) };
+  const cleanedRivalTeams = rivalTeams.map((t) => ({ ...t, riders: t.riders.filter((r) => claim(r, `equipo rival ${t.name}`)) }));
+  const cleanedOtherCategories = {};
+  Object.entries(otherCategories || {}).forEach(([key, catState]) => {
+    cleanedOtherCategories[key] = {
+      ...catState,
+      teams: catState.teams.map((t) => ({ ...t, riders: t.riders.filter((r) => claim(r, `${key}/${t.name}`)) })),
+    };
+  });
+  const cleanedFreeAgents = (freeAgents || []).filter((r) => claim(r, "agentes libres"));
+
+  return {
+    playerTeam: cleanedPlayerTeam,
+    rivalTeams: cleanedRivalTeams,
+    otherCategories: cleanedOtherCategories,
+    freeAgents: cleanedFreeAgents,
+    issues,
+  };
+}
+
+/**
  * Repairs a single team's economic/roster state so it can never leave the
  * season-end market transition in a state that would freeze the game:
  * budget floored at 0, exactly 2 valid/unique riders, valid contracts,
@@ -18,7 +69,7 @@ import { initWarehouse } from "./warehouseEngine.js";
  * those fixes get pulled back into a valid one the moment a new season
  * starts, instead of staying stuck forever.
  */
-export function validateAndRepairTeam(team, scale) {
+export function validateAndRepairTeam(team, scale, { padRosterTo2 = true } = {}) {
   const repaired = { ...team };
   const issues = [];
 
@@ -37,7 +88,7 @@ export function validateAndRepairTeam(team, scale) {
     seenIds.add(r.id);
     return true;
   });
-  while (riders.length < 2) {
+  while (padRosterTo2 && riders.length < 2) {
     riders.push(makeRookie(scale ?? 1));
     issues.push("plaza vacía cubierta con un piloto de emergencia");
   }

@@ -83,7 +83,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
       <button onClick={goToMarket}
         className="w-full py-3 rounded-md font-semibold flex items-center justify-center gap-2"
         style={{ background: accentGold, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-        <ArrowLeftRight size={18} /> {isCareer ? "Ver ofertas de fichaje" : "Ir al mercado de fichajes"}
+        <ArrowLeftRight size={18} /> {isCareer ? "Ver ofertas de fichaje" : "Cerrar la temporada"}
       </button>
     </div>
   );

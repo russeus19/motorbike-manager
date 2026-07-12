@@ -1,6 +1,29 @@
 import { ATTRS } from "../data/attributes.js";
 import { COLORS } from "../data/colors.js";
 
+/* One shared visual family for every "own rider" action button in the
+   profile modal (renovar, despedir, designar libre al final de
+   temporada, and any future one) — same height, width, radius, font,
+   padding, hover/press animation and shadow; only the background color
+   changes, so the color alone carries the meaning of the action
+   (positive/destructive/planning) instead of a mix of borders, muted
+   text and solid fills that used to make the three look unrelated. */
+const RIDER_ACTION_TONES = {
+  green: "#3F9142",
+  red: COLORS.danger,
+  blue: COLORS.ice,
+};
+
+export function RiderActionButton({ tone, onClick, disabled, className = "", children }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`w-full mb-3 text-xs px-3 py-2 rounded font-semibold text-white shadow-sm transition duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-40 disabled:hover:brightness-100 disabled:active:scale-100 ${className}`}
+      style={{ background: RIDER_ACTION_TONES[tone] }}>
+      {children}
+    </button>
+  );
+}
+
 export function StatBar({ label, value, accent }) {
   return (
     <div className="mb-1.5">

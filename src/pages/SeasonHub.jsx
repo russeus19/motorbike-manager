@@ -21,7 +21,7 @@ import { raceLineup } from "../utils/raceSimulation.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById }) {
   const accent = playerTeam.color;
   const circuit = CIRCUITS[round];
   const circuitProfile = CIRCUIT_PROFILES[round];
@@ -282,8 +282,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             })}
           </Panel>
 
-          <RumorsPanel marketRumors={marketRumors} accent={accent} />
-          <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} />
+          <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
+          <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} />
 
           <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
           <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} category={category} accent={accent} openProfile={openProfile} />
