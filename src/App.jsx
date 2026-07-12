@@ -23,9 +23,10 @@ import { validateAndRepairTeams } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
-import { clamp, randInt } from "./utils/random.js";
+import { clamp } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, makeRookie, seedLegendFreeAgents } from "./utils/riderGeneration.js";
+import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
@@ -653,7 +654,7 @@ export default function MotorbikeManager() {
     const cost = Math.round(overallRating(rider) * 5000);
     if (cost > budget) return;
     setBudget((b) => b - cost);
-    setPlayerTeam((t) => ({ ...t, riders: [...t.riders, { ...rider, contractYears: randInt(1, 3), isNewTeamThisSeason: true }] }));
+    setPlayerTeam((t) => ({ ...t, riders: [...t.riders, { ...rider, contractYears: 2, isNewTeamThisSeason: true }] }));
     setFreeAgents((prev) => prev.filter((r) => r.id !== rider.id));
     setProfileTarget(null);
   }
@@ -698,6 +699,10 @@ export default function MotorbikeManager() {
     const teamStandingsNext = { ...teamStandings };
     results.forEach((r) => { teamStandingsNext[r.teamId] = (teamStandingsNext[r.teamId] || 0) + r.points; });
 
+    const [playerWithMorale, ...rivalsWithMorale] = applyMoraleToCategoryTeams(
+      [playerProcessed, ...rivalsProcessed], riderStandingsNext, teamStandingsNext, riderWinsNext, riderPodiumsNext, scale
+    );
+
     const playerResults = results.filter((r) => r.teamId === "player");
     const prizeUnit = Math.max(1, Math.round(28000 * scale));
     const prize = playerResults.reduce((s, r) => s + (r.crashed ? Math.round(20000 * scale) : Math.max(Math.round(20000 * scale), (16 - r.position) * prizeUnit)), 0);
@@ -739,8 +744,9 @@ export default function MotorbikeManager() {
       const teamsNext = catState.teams.map((t) => processTeamAfterRace(t, catResults, key, {
         isPlayer: false, position: catPosMap[t.id] || catState.teams.length, totalTeams: catState.teams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
       }, poolRef, notifQueue));
+      const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
 
-      nextOtherCategories[key] = { ...catState, teams: teamsNext, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP };
+      nextOtherCategories[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP };
     });
 
     setGame((g) => (g ? {
@@ -751,8 +757,8 @@ export default function MotorbikeManager() {
       riderPodiums: riderPodiumsNext,
       teamStandings: teamStandingsNext,
       budget: g.budget + prize - runningCost,
-      playerTeam: playerProcessed,
-      rivalTeams: rivalsProcessed,
+      playerTeam: playerWithMorale,
+      rivalTeams: rivalsWithMorale,
       otherCategories: nextOtherCategories,
       freeAgents: poolRef.pool,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
@@ -921,7 +927,7 @@ export default function MotorbikeManager() {
 
     const finalRoster = selections.map((sel) => {
       const evolved = findEvolved(sel.origin, sel.rider.id, sel.fromTeamId) || sel.rider;
-      return sel.origin === "own" ? evolved : { ...evolved, isNewTeamThisSeason: true, contractYears: randInt(2, 3) };
+      return sel.origin === "own" ? evolved : { ...evolved, isNewTeamThisSeason: true, contractYears: 2 };
     });
 
     const keptOwnIds = selections.filter((s) => s.origin === "own").map((s) => s.rider.id);

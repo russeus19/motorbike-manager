@@ -6,6 +6,7 @@ import { AttrGrid } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { badgeEmoji, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
+import { moraleTierInfo } from "../utils/riderMorale.js";
 
 export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenewContract, onFireRider, playerTeam, category, onSignFreeAgent }) {
   const [confirmFire, setConfirmFire] = useState(false);
@@ -50,17 +51,22 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
         </div>
 
         {rider.expectation && (
-          <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+          <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
             Expectativa temporada: <span style={{ color: COLORS.text }}>{rider.expectation}</span>
           </div>
         )}
+        <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+          Moral: <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
+        </div>
 
         <AttrGrid rider={rider} accent={accent} />
 
         <div className="grid grid-cols-3 gap-2 my-3 text-xs" style={{ color: COLORS.muted }}>
           <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
             <div className="uppercase">Contrato</div>
-            <div className="font-mono text-sm" style={{ color: COLORS.text }}>{rider.contractYears ?? 0} año{(rider.contractYears ?? 0) === 1 ? "" : "s"}</div>
+            <div className="font-mono text-sm" style={{ color: (rider.contractYears ?? 0) > 0 ? COLORS.text : COLORS.muted }}>
+              {(rider.contractYears ?? 0) > 0 ? `${rider.contractYears} año${rider.contractYears === 1 ? "" : "s"}` : "Sin contrato"}
+            </div>
           </div>
           <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
             <div className="uppercase">Salario/año</div>

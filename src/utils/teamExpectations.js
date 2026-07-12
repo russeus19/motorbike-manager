@@ -11,13 +11,15 @@ import { overallRating } from "./riders.js";
  * can plug into this without reworking the architecture:
  *
  *   1. computeTeamStrengthScore   — how strong is this team, right now?
- *   2. assignSeasonExpectations   — turn strength into a realistic
- *                                   position-range for every team in a
- *                                   category, and a text expectation for
- *                                   every rider on it.
- *   3. computeRiderExpectationLabel — a rider's personal expectation,
- *                                   never just their own rating in
- *                                   isolation.
+ *   2. assignSeasonExpectations   — turn strength into a single, exclusive
+ *                                   target position for every team in a
+ *                                   category, and one of five fixed
+ *                                   expectation tiers for every rider on
+ *                                   it, based on their rank within the
+ *                                   whole category.
+ *   3. computeRiderScore          — a rider's personal, comparable rating
+ *                                   for that ranking; never just their
+ *                                   own rating in isolation.
  *   4. evaluateSeasonVsExpectation — did the actual result meet, beat, or
  *                                   miss what was expected?
  */
@@ -74,47 +76,54 @@ export function computeTeamStrengthScore(team, maxBudgetInCategory, includeResea
 }
 
 /* ----------------------------------------------------------------------
-   2. POSITION-RANGE ASSIGNMENT
+   2. SINGLE TARGET POSITION PER TEAM + RANK-BASED RIDER TIERS
    ------------------------------------------------------------------- */
 
-/** Converts a strength rank into a realistic (not exact) finishing
- * position range: tight near the very top and bottom of the grid, a
- * little wider in the competitive midfield where results are naturally
- * less predictable. */
-function formatPositionRange(rank, totalTeams) {
-  if (totalTeams <= 1) return { min: 1, max: 1, label: "1º" };
-  const normalizedPos = (rank - 1) / (totalTeams - 1); // 0 = best team, 1 = worst
-  const distFromEdge = Math.min(normalizedPos, 1 - normalizedPos); // 0 at either edge, 0.5 mid-grid
-  const halfWidth = Math.round(1 + distFromEdge * 2); // 1 at the edges, up to ~2 mid-grid
-  const min = clamp(rank - halfWidth, 1, totalTeams);
-  const max = clamp(rank + halfWidth, 1, totalTeams);
-  const label = min === max ? `${min}º` : `${min}º-${max}º`;
-  return { min, max, label };
-}
-
 /**
- * Ranks every team in a category by strength and attaches a fresh
- * `expectation` ({ min, max, label, score }) to each team, plus a
- * personal `expectation` (a short text description) to every rider in
- * `team.riders`. Meant to be called once per category at the start of
- * every season — including the very first one, where `includeResearch`
- * should be false since there's no research history yet.
+ * Ranks every team in a category by strength and gives each one a single,
+ * exclusive target position — rank 1 gets "1º", rank 2 gets "2º", and so
+ * on with no two teams ever sharing a position (ties in raw score are
+ * broken by whichever the sort settles first, which still produces a
+ * strict, gap-free 1..N sequence). This is effectively a pre-season
+ * strength ranking of the whole grid.
+ *
+ * Rider expectations are assigned the same way conceptually: every rider
+ * in the category is scored individually (see computeRiderScore — same
+ * inputs as before: their own rating/potential, the bike, the team, and
+ * the team's own expectation), then all of them are ranked against each
+ * other, and that ranking — not a raw score threshold — determines which
+ * of the five fixed tiers they land on.
+ *
+ * Called once per category at the start of every season, including the
+ * very first one, where `includeResearch` should be false.
  */
 export function assignSeasonExpectations(teams, includeResearch) {
   const maxBudget = Math.max(1, ...teams.map((t) => t.budget || 0));
   const scored = teams.map((t) => ({ team: t, score: computeTeamStrengthScore(t, maxBudget, includeResearch) }));
   const ranked = [...scored].sort((a, b) => b.score - a.score);
-  const rankById = {};
-  ranked.forEach((entry, i) => { rankById[entry.team.id] = i + 1; });
 
-  return scored.map(({ team, score }) => {
-    const rank = rankById[team.id];
-    const { min, max, label } = formatPositionRange(rank, teams.length);
-    const expectation = { min, max, label, score: Math.round(score) };
-    const riders = team.riders.map((r) => ({
-      ...r,
-      expectation: computeRiderExpectationLabel(r, team, expectation),
-    }));
+  const expectationByTeamId = {};
+  ranked.forEach((entry, i) => {
+    const rank = i + 1;
+    expectationByTeamId[entry.team.id] = { min: rank, max: rank, label: `${rank}º`, score: Math.round(entry.score) };
+  });
+
+  const riderEntries = [];
+  scored.forEach(({ team }) => {
+    const teamExpectation = expectationByTeamId[team.id];
+    team.riders.forEach((r) => {
+      riderEntries.push({ riderId: r.id, score: computeRiderScore(r, teamExpectation) });
+    });
+  });
+  riderEntries.sort((a, b) => b.score - a.score);
+  const tierByRiderId = {};
+  riderEntries.forEach((entry, i) => {
+    tierByRiderId[entry.riderId] = riderTierForRank(i + 1);
+  });
+
+  return scored.map(({ team }) => {
+    const expectation = expectationByTeamId[team.id];
+    const riders = team.riders.map((r) => ({ ...r, expectation: tierByRiderId[r.id] }));
     return { ...team, expectation, riders };
   });
 }
@@ -123,17 +132,8 @@ export function assignSeasonExpectations(teams, includeResearch) {
    3. RIDER EXPECTATION
    ------------------------------------------------------------------- */
 
-/** A rider's expectation is never just their own rating in isolation —
- * the same 88-rated rider means something completely different on a
- * factory Ducati than it would on a satellite team, which is why the
- * team's own strength/expectation feeds into this too. Every rider maps
- * onto exactly one of the five fixed tiers below — there is no other
- * wording, and no special-cased exceptions (a promising young rookie on
- * a weak team simply lands on a lower tier because their current rating
- * and team context are what they are; there's no separate "developing"
- * label to fall back on). */
-/* The only five rider expectation levels that may ever be assigned, most
-   to least demanding. No other wording is used anywhere in the game. */
+/** The only five rider expectation levels that may ever be assigned, most
+ * to least demanding. No other wording is used anywhere in the game. */
 export const RIDER_EXPECTATION_TIERS = [
   "Luchar por el campeonato",
   "Entrar en el Top 5",
@@ -142,18 +142,30 @@ export const RIDER_EXPECTATION_TIERS = [
   "Intentar puntuar",
 ];
 
-export function computeRiderExpectationLabel(rider, team, teamExpectation) {
+/** Fixed distribution by rank within the category's full rider ranking:
+ * 1-3 → tier 0, 4-7 → tier 1, 8-13 → tier 2, 14-19 → tier 3, everyone
+ * else → tier 4. */
+function riderTierForRank(rank) {
+  if (rank <= 3) return RIDER_EXPECTATION_TIERS[0];
+  if (rank <= 7) return RIDER_EXPECTATION_TIERS[1];
+  if (rank <= 13) return RIDER_EXPECTATION_TIERS[2];
+  if (rank <= 19) return RIDER_EXPECTATION_TIERS[3];
+  return RIDER_EXPECTATION_TIERS[4];
+}
+
+/** A rider's expectation is never just their own rating in isolation —
+ * the same 88-rated rider means something completely different on a
+ * factory Ducati than it would on a satellite team, which is why the
+ * team's own strength/expectation feeds into this too. This produces the
+ * raw comparable score; assignSeasonExpectations ranks every rider in
+ * the category against each other using this and only then maps that
+ * ranking onto one of the five fixed tiers (see riderTierForRank) — the
+ * tier was never meant to come from an absolute score threshold. */
+export function computeRiderScore(rider, teamExpectation) {
   const ca = overallRating(rider);
   const potentialGap = (rider.pa ?? ca) - ca;
-
   const teamScore = teamExpectation?.score ?? 50;
-  const riderScore = ca * 0.55 + teamScore * 0.30 + clamp(potentialGap, 0, 30) * 0.15;
-
-  if (riderScore >= 80) return RIDER_EXPECTATION_TIERS[0]; // Luchar por el campeonato
-  if (riderScore >= 68) return RIDER_EXPECTATION_TIERS[1]; // Entrar en el Top 5
-  if (riderScore >= 56) return RIDER_EXPECTATION_TIERS[2]; // Luchar por el Top 10
-  if (riderScore >= 44) return RIDER_EXPECTATION_TIERS[3]; // Estar regularmente en los puntos
-  return RIDER_EXPECTATION_TIERS[4]; // Intentar puntuar
+  return ca * 0.55 + teamScore * 0.30 + clamp(potentialGap, 0, 30) * 0.15;
 }
 
 /* ----------------------------------------------------------------------

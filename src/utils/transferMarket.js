@@ -1,5 +1,5 @@
 import { CATEGORY_DATA } from "../data/categories.js";
-import { clamp, randInt } from "./random.js";
+import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
@@ -136,7 +136,7 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
       const renewalCost = Math.round((r.marketValue || 0) * 0.08);
       if (aiRenewalDecision(r, evalLabel, t, expectationVerdict) && renewalCost <= teamBudget) {
-        kept.push({ ...r, contractYears: randInt(1, 3) });
+        kept.push({ ...r, contractYears: 2 });
         teamBudget -= renewalCost;
         log.push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (temporada ${evalLabel.toLowerCase()})`, category: categoryLabel });
       } else {
@@ -160,7 +160,7 @@ export function runCategoryMarket(teams, riderStandingsForCategory, teamStanding
       const signingCost = Math.round(overallRating(affordable) * 5000);
       freeAgentPool.splice(freeAgentPool.findIndex((r) => r.id === affordable.id), 1);
       teamBudget -= signingCost;
-      riders.push({ ...affordable, contractYears: randInt(1, 3), isNewTeamThisSeason: true, seasonsUnsigned: 0 });
+      riders.push({ ...affordable, contractYears: 2, isNewTeamThisSeason: true, seasonsUnsigned: 0 });
       log.push({ type: "fichaje", riderId: photoIdFor(affordable), text: `${affordable.name} ficha como agente libre por ${t.name}`, category: categoryLabel });
     }
     return { ...t, riders, budget: teamBudget };
@@ -184,7 +184,7 @@ export function fillFromLowerCategory(teams, lowerTeams, log, categoryLabel, low
       });
       if (!best) break;
       lowerTeams[bestTeamIdx] = { ...lowerTeams[bestTeamIdx], riders: lowerTeams[bestTeamIdx].riders.filter((r) => r.id !== best.id) };
-      riders.push({ ...best, contractYears: randInt(2, 3), isNewTeamThisSeason: true });
+      riders.push({ ...best, contractYears: 2, isNewTeamThisSeason: true });
       log.push({ type: "ascenso", riderId: photoIdFor(best), text: `${best.name} asciende de ${lowerLabel} a ${categoryLabel} (${t.name})`, category: categoryLabel });
     }
     return { ...t, riders };
@@ -325,7 +325,7 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   return {
     ...team,
     budget: (team.budget || 0) - fCost - sCost,
-    riders: [...remaining, { ...better, contractYears: randInt(1, 3), isNewTeamThisSeason: true }],
+    riders: [...remaining, { ...better, contractYears: 2, isNewTeamThisSeason: true }],
   };
 }
 

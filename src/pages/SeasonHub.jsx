@@ -282,7 +282,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           </Panel>
 
           <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
-          <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} category={category} accent={accent} openProfile={openProfile} />
+          <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} category={category} accent={accent} openProfile={openProfile} />
         </div>
       )}
 

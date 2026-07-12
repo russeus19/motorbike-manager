@@ -71,7 +71,7 @@ export function makeRookie(scale) {
 export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0 };
   const withPotential = { ...withId, ...initRiderPotentialFields(withId) };
-  return finalizeRiderEconomics(withPotential, 1);
+  return finalizeRiderEconomics(withPotential, 1, 0);
 }
 
 

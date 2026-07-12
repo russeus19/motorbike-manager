@@ -3,6 +3,7 @@ import { POINTS } from "../data/pointsSystem.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { circuitBikeFit, circuitRiderFit } from "./circuitFit.js";
 import { clamp, pick, randInt, weightedPick } from "./random.js";
+import { moraleSkillMultiplier } from "./riderMorale.js";
 import { riderSkill, wetRiderSkill } from "./riders.js";
 
 export function findInTeamRoster(team, id) {
@@ -93,7 +94,7 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
       0.02, 0.45
     );
     const crashed = Math.random() < dnfChance;
-    const skill = isWet ? wetRiderSkill(r) : riderSkill(r);
+    const skill = (isWet ? wetRiderSkill(r) : riderSkill(r)) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {
@@ -153,12 +154,13 @@ export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason)
 /* Increment career wins/podiums for a given category based on a race result */
 
 
-export function bumpCareerStats(rider, categoryKey, position, crashed) {
-  if (crashed) return { ...rider, crashesThisSeason: (rider.crashesThisSeason || 0) + 1 };
-  if (position > 3) return rider;
+export function bumpCareerStats(rider, categoryKey, position, crashed, points) {
+  const recentResults = [...(rider.recentResults || []), { position, points: points ?? 0, crashed: !!crashed }].slice(-3);
+  if (crashed) return { ...rider, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
+  if (position > 3) return { ...rider, recentResults };
   const careerPodiums = { ...rider.careerPodiums, [categoryKey]: (rider.careerPodiums?.[categoryKey] || 0) + 1 };
   const careerWins = position === 1 ? { ...rider.careerWins, [categoryKey]: (rider.careerWins?.[categoryKey] || 0) + 1 } : rider.careerWins;
-  return { ...rider, careerPodiums, careerWins };
+  return { ...rider, careerPodiums, careerWins, recentResults };
 }
 
 /* Record each rider's final championship position (and title badge, if any)

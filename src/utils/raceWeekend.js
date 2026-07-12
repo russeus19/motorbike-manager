@@ -42,7 +42,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   let substitutes = { ...(afterAI.substitutes || {}) };
   Object.entries(substitutes).forEach(([ownerId, sub]) => {
     const subResult = teamResults.find((x) => x.seatOwnerId === ownerId);
-    if (subResult) substitutes[ownerId] = bumpCareerStats(sub, categoryKey, subResult.position, subResult.crashed);
+    if (subResult) substitutes[ownerId] = bumpCareerStats(sub, categoryKey, subResult.position, subResult.crashed, subResult.points);
   });
 
   let budgetAfterSubs = afterAI.budget;
@@ -51,7 +51,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     let next = r;
 
     if (ownResult) {
-      next = bumpCareerStats(next, categoryKey, ownResult.position, ownResult.crashed);
+      next = bumpCareerStats(next, categoryKey, ownResult.position, ownResult.crashed, ownResult.points);
       if (ownResult.crashed && ownResult.dnfCause === "mechanical") {
         notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${team.name}) se retira por avería mecánica.` });
       }

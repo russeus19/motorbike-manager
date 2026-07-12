@@ -121,7 +121,7 @@ export function evolveRider(r, ctx) {
   next.crashesThisSeason = 0;
   next.contractYears = Math.max(0, (r.contractYears ?? 1) - 1);
   next.marketValue = computeMarketValue(next, ctx.scale ?? 1);
-  next.salary = computeSalary(next.marketValue);
+  next.salary = computeSalary(next, ctx.scale ?? 1);
 
   return { rider: next, events };
 }

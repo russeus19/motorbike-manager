@@ -14,4 +14,6 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Milan Pawelec", photoId: 89, nat: "🇵🇱", age: 20, potential: 64, tecnica: 62, ritmo: 66, adelantamientos: 64, mental: 58, adaptabilidad: 62, fisico: 68 },
   { name: "Jacob Roulstone", photoId: 90, nat: "🇦🇺", age: 20, potential: 78, tecnica: 70, ritmo: 74, adelantamientos: 72, mental: 64, adaptabilidad: 68, fisico: 70 },
   { name: "Marcos Ramírez", photoId: 91, nat: "🇪🇸", age: 27, potential: 52, tecnica: 76, ritmo: 74, adelantamientos: 72, mental: 70, adaptabilidad: 72, fisico: 70 },
+  { name: "Eduardo Gutiérrez", photoId: 92, nat: "🇪🇸", age: 19, potential: 62, tecnica: 60, ritmo: 62, adelantamientos: 60, mental: 55, adaptabilidad: 58, fisico: 64 },
+  { name: "Marcos Uriarte", photoId: 93, nat: "🇪🇸", age: 18, potential: 66, tecnica: 58, ritmo: 60, adelantamientos: 58, mental: 52, adaptabilidad: 56, fisico: 62 },
 ];

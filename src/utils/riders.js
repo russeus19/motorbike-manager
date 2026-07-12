@@ -41,22 +41,71 @@ export function isFreeAgentEligibleForCategory(rider, categoryKey) {
 }
 
 
-export function computeMarketValue(rider, scale) {
-  const ca = overallRating(rider);
-  const upside = Math.max(0, rider.pa - ca) * 1.3;
-  const ageFactor = rider.age <= 21 ? 1.35 : rider.age <= 24 ? 1.25 : rider.age <= 27 ? 1.1
-    : rider.age <= 30 ? 0.95 : rider.age <= 33 ? 0.75 : rider.age <= 36 ? 0.5 : 0.3;
-  const wins = Object.values(rider.careerWins || {}).reduce((s, v) => s + v, 0);
-  const podiums = Object.values(rider.careerPodiums || {}).reduce((s, v) => s + v, 0);
-  const resultsFactor = 1 + wins * 0.035 + podiums * 0.015;
-  const moraleFactor = 0.85 + (rider.morale / 100) * 0.3;
-  const base = (ca * 2.2 + upside) * ageFactor * resultsFactor * moraleFactor;
-  return Math.max(15000, Math.round(base * 9000 * scale));
+/* Shared by both formulas below: total wins/podiums across every
+   category a rider has ever raced in — the game's existing stand-in for
+   "palmarés"/sporting prestige, since there's no separate prestige field
+   on a rider. */
+function careerTotal(record) {
+  return Object.values(record || {}).reduce((s, v) => s + v, 0);
 }
 
+/**
+ * Market value — what it costs to sign this rider. Potential carries
+ * real weight here (on top of, not instead of, current ability): the
+ * gap between PA and CA is squared and then scaled by how much time a
+ * rider realistically has left to cash it in, so a young rider with a
+ * huge gap is worth dramatically more than a similar-CA rider close to
+ * their ceiling, while an old rider with the same gap barely benefits
+ * from it at all. Age also gently discounts the current-ability side on
+ * its own (a veteran's quality has less future to sell than a rising
+ * rider's does), separately from — and more sharply than — how it
+ * affects potential.
+ */
+export function computeMarketValue(rider, scale) {
+  const ca = clamp(overallRating(rider), 1, 99);
+  const pa = clamp(rider.pa ?? ca, ca, 100);
+  const potentialGap = pa - ca;
 
-export function computeSalary(marketValue) {
-  return Math.round(marketValue * 0.14);
+  const ageMultiplierForPotential = rider.age <= 21 ? 1.5 : rider.age <= 24 ? 1.2 : rider.age <= 27 ? 0.85
+    : rider.age <= 30 ? 0.5 : rider.age <= 33 ? 0.25 : 0.1;
+  const potentialValue = potentialGap * potentialGap * 0.55 * ageMultiplierForPotential;
+
+  const ageFactorForCA = rider.age <= 24 ? 1.15 : rider.age <= 28 ? 1.0 : rider.age <= 31 ? 0.85
+    : rider.age <= 34 ? 0.65 : rider.age <= 37 ? 0.45 : 0.3;
+
+  const wins = careerTotal(rider.careerWins);
+  const podiums = careerTotal(rider.careerPodiums);
+  const prestigeFactor = 1 + clamp(wins * 0.015 + podiums * 0.006, 0, 0.3);
+  const experienceFactor = 1 + clamp((rider.history || []).length * 0.01, 0, 0.15);
+  const moraleFactor = 0.85 + (rider.morale / 100) * 0.3;
+
+  const caValue = Math.pow(ca / 100, 2.3) * 100 * 1.6;
+  const base = (caValue + potentialValue) * ageFactorForCA;
+  return Math.max(15000, Math.round(base * prestigeFactor * experienceFactor * moraleFactor * 9000 * scale));
+}
+
+/**
+ * Salary — what this rider currently earns per season. Deliberately a
+ * separate calculation from market value, not a percentage of it:
+ * dominated by current ability (a steep curve, so elite riders clearly
+ * separate from the midfield), with sporting prestige (wins/podiums) and
+ * experience (seasons raced) adding a moderate premium, and only a mild,
+ * mostly-flat age adjustment. Potential is never used here at all — a
+ * highly-rated rookie doesn't get paid for a future that hasn't
+ * happened yet, no matter how bright it looks.
+ */
+export function computeSalary(rider, scale) {
+  const ca = clamp(overallRating(rider), 1, 99);
+  const wins = careerTotal(rider.careerWins);
+  const podiums = careerTotal(rider.careerPodiums);
+  const seasons = (rider.history || []).length;
+
+  const prestigeFactor = 1 + clamp(wins * 0.02 + podiums * 0.008, 0, 0.6);
+  const experienceFactor = 1 + clamp(seasons * 0.015, 0, 0.25);
+  const ageFactor = rider.age <= 20 ? 0.88 : rider.age <= 34 ? 1 : rider.age <= 38 ? 0.92 : 0.82;
+
+  const caValue = Math.pow(ca / 100, 2.6) * 1_500_000;
+  return Math.max(8000, Math.round(caValue * prestigeFactor * experienceFactor * ageFactor * scale));
 }
 
 /* Firing someone is never cheap: it scales with how good/valuable they
@@ -71,13 +120,13 @@ export function fireRiderCost(rider) {
 }
 
 
-export function finalizeRiderEconomics(rider, scale) {
+export function finalizeRiderEconomics(rider, scale, contractYears = 1) {
   const marketValue = computeMarketValue(rider, scale);
   return {
     ...rider,
-    contractYears: 1,
+    contractYears,
     marketValue,
-    salary: computeSalary(marketValue),
+    salary: computeSalary(rider, scale),
     personality: pick(PERSONALITIES),
     crashesThisSeason: 0,
     seasonsUnsigned: 0,
