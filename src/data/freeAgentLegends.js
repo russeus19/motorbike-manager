@@ -11,4 +11,7 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Takaaki Nakagami", photoId: 86, nat: "🇯🇵", age: 34, potential: 30, tecnica: 78, ritmo: 74, adelantamientos: 68, mental: 76, adaptabilidad: 74, fisico: 66 },
   { name: "Dennis Foggia", photoId: 87, nat: "🇮🇹", age: 25, potential: 68, tecnica: 74, ritmo: 76, adelantamientos: 78, mental: 68, adaptabilidad: 70, fisico: 72 },
   { name: "Xabier Zurutuza", photoId: 88, nat: "🇪🇸", age: 20, potential: 80, tecnica: 68, ritmo: 72, adelantamientos: 70, mental: 62, adaptabilidad: 66, fisico: 70 },
+  { name: "Milan Pawelec", photoId: 89, nat: "🇵🇱", age: 20, potential: 64, tecnica: 62, ritmo: 66, adelantamientos: 64, mental: 58, adaptabilidad: 62, fisico: 68 },
+  { name: "Jacob Roulstone", photoId: 90, nat: "🇦🇺", age: 20, potential: 78, tecnica: 70, ritmo: 74, adelantamientos: 72, mental: 64, adaptabilidad: 68, fisico: 70 },
+  { name: "Marcos Ramírez", photoId: 91, nat: "🇪🇸", age: 27, potential: 52, tecnica: 76, ritmo: 74, adelantamientos: 72, mental: 70, adaptabilidad: 72, fisico: 70 },
 ];

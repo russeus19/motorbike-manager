@@ -31,8 +31,12 @@ export function makeAffinity() {
 }
 
 
+/* Age limit for a free agent to sign or substitute in a given category.
+   MotoGP has no limit at all. Moto3 keeps the original 27-or-under
+   restriction. Moto2 is more permissive: up to and including 30. */
 export function isFreeAgentEligibleForCategory(rider, categoryKey) {
   if (categoryKey === "motogp") return true;
+  if (categoryKey === "moto2") return rider.age <= 30;
   return rider.age <= 27;
 }
 

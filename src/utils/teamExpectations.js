@@ -126,25 +126,34 @@ export function assignSeasonExpectations(teams, includeResearch) {
 /** A rider's expectation is never just their own rating in isolation —
  * the same 88-rated rider means something completely different on a
  * factory Ducati than it would on a satellite team, which is why the
- * team's own strength/expectation feeds into this too. Young riders with
- * a lot of unrealized potential get framed around development instead of
- * results, regardless of their current raw numbers. */
+ * team's own strength/expectation feeds into this too. Every rider maps
+ * onto exactly one of the five fixed tiers below — there is no other
+ * wording, and no special-cased exceptions (a promising young rookie on
+ * a weak team simply lands on a lower tier because their current rating
+ * and team context are what they are; there's no separate "developing"
+ * label to fall back on). */
+/* The only five rider expectation levels that may ever be assigned, most
+   to least demanding. No other wording is used anywhere in the game. */
+export const RIDER_EXPECTATION_TIERS = [
+  "Luchar por el campeonato",
+  "Entrar en el Top 5",
+  "Luchar por el Top 10",
+  "Estar regularmente en los puntos",
+  "Intentar puntuar",
+];
+
 export function computeRiderExpectationLabel(rider, team, teamExpectation) {
   const ca = overallRating(rider);
   const potentialGap = (rider.pa ?? ca) - ca;
-  if (rider.age <= 20 && potentialGap >= 15) {
-    return "Adaptarse a la categoría y progresar.";
-  }
 
   const teamScore = teamExpectation?.score ?? 50;
   const riderScore = ca * 0.55 + teamScore * 0.30 + clamp(potentialGap, 0, 30) * 0.15;
 
-  if (riderScore >= 85) return "Luchar por el título del campeonato.";
-  if (riderScore >= 75) return "Luchar por el podio del campeonato.";
-  if (riderScore >= 65) return "Pelear por entrar regularmente en el top 5.";
-  if (riderScore >= 55) return "Puntuar regularmente.";
-  if (riderScore >= 45) return "Sumar puntos ocasionales y ganar experiencia.";
-  return "Adaptarse a la categoría y progresar.";
+  if (riderScore >= 80) return RIDER_EXPECTATION_TIERS[0]; // Luchar por el campeonato
+  if (riderScore >= 68) return RIDER_EXPECTATION_TIERS[1]; // Entrar en el Top 5
+  if (riderScore >= 56) return RIDER_EXPECTATION_TIERS[2]; // Luchar por el Top 10
+  if (riderScore >= 44) return RIDER_EXPECTATION_TIERS[3]; // Estar regularmente en los puntos
+  return RIDER_EXPECTATION_TIERS[4]; // Intentar puntuar
 }
 
 /* ----------------------------------------------------------------------

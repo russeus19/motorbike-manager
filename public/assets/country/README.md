@@ -20,9 +20,9 @@ falta que añadas aquí tus archivos.
 argentina.png, austria.png, australia.png, belgium.png, brazil.png,
 colombia.png, czechia.png, germany.png, spain.png, finland.png,
 france.png, united_kingdom.png, hungary.png, indonesia.png, italy.png,
-japan.png, malaysia.png, netherlands.png, new_zealand.png, portugal.png,
-qatar.png, san_marino.png, thailand.png, turkey.png, united_states.png,
-south_africa.png
+japan.png, malaysia.png, netherlands.png, new_zealand.png, poland.png,
+portugal.png, qatar.png, san_marino.png, thailand.png, turkey.png,
+united_states.png, south_africa.png
 
 ## default.png
 

@@ -58,11 +58,12 @@ export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
  * everything else (name/team/nationality search, age, CA, PA) is exactly
  * the same filtering logic as before, just applied over the wider list.
  *
- * Eligibility for actually signing/substituting a free agent (the
- * age <= 27 rule for Moto2/Moto3) is intentionally NOT applied here —
- * this panel is for browsing/searching, so an over-27 free agent can
- * still be found and viewed even though they can't be fielded in Moto2
- * or Moto3. That restriction is enforced where it matters: the sign
+ * Eligibility for actually signing/substituting a free agent (age <= 27
+ * for Moto3, age <= 30 for Moto2, no limit for MotoGP — see
+ * isFreeAgentEligibleForCategory) is intentionally NOT applied here —
+ * this panel is for browsing/searching, so an ineligible free agent can
+ * still be found and viewed even though they can't be fielded in that
+ * category. That restriction is enforced where it matters: the sign
  * button in the rider profile and the substitute-selection screen.
  */
 export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, category, accent, openProfile }) {

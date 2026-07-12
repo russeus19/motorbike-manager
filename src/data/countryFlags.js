@@ -30,6 +30,7 @@ export const EMOJI_TO_COUNTRY_ID = {
   "🇳🇱": "netherlands",
   "🇳🇿": "new_zealand",
   "🇵🇹": "portugal",
+  "🇵🇱": "poland",
   "🇶🇦": "qatar",
   "🇸🇲": "san_marino",
   "🇹🇭": "thailand",
