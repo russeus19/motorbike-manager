@@ -22,6 +22,8 @@ import { advanceFacilityUpgrades, advanceTeamProjects, bikeAvg, canStartFacility
 import { validateAndRepairTeams } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
+import { buildGpHistoryEntry } from "./utils/raceHistory.js";
+import { applyConfirmedNegotiations, applyReleasedAtSeasonEnd, buildChronologicalMarketSummary, countConfirmedIncomingForTeam, createNegotiation, tickMarket } from "./utils/marketNegotiations.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
 import { clamp } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
@@ -83,6 +85,9 @@ export default function MotorbikeManager() {
   const riderPodiums = game?.riderPodiums ?? {};
   const teamStandings = game?.teamStandings ?? {};
   const lastResult = game?.lastResult ?? null;
+  const gpHistory = game?.gpHistory ?? [];
+  const marketRumors = game?.marketRumors ?? [];
+  const marketNegotiations = game?.marketNegotiations ?? [];
   const seasonEvents = game?.seasonEvents ?? [];
   const marketData = game?.marketData ?? null;
   const careerOffers = game?.careerOffers ?? [];
@@ -121,6 +126,8 @@ export default function MotorbikeManager() {
   const setLastResult = makeFieldSetter("lastResult");
   const setSeasonEvents = makeFieldSetter("seasonEvents");
   const setMarketData = makeFieldSetter("marketData");
+  const setMarketNegotiations = makeFieldSetter("marketNegotiations");
+  const setMarketRumors = makeFieldSetter("marketRumors");
   const setCareerOffers = makeFieldSetter("careerOffers");
   const setMarketSummary = makeFieldSetter("marketSummary");
   const setNotifications = makeFieldSetter("notifications");
@@ -213,6 +220,24 @@ export default function MotorbikeManager() {
       if (found) return { rider: found, teamName: t.name };
     }
     return null;
+  }
+
+  /* Shared lookups for the market negotiation engine (utils/marketNegotiations.js):
+     find a team or a rider by id within a given category, regardless of
+     whether that category is the one currently being played. */
+  function findTeamById(teamId, catKey) {
+    if (!teamId) return null;
+    if (catKey === category) {
+      if (playerTeam && playerTeam.id === teamId) return playerTeam;
+      return rivalTeams.find((t) => t.id === teamId) || null;
+    }
+    return (otherCategories[catKey]?.teams || []).find((t) => t.id === teamId) || null;
+  }
+
+  function findRiderById(riderId, catKey) {
+    const found = findRiderInCategory(catKey, riderId);
+    if (found) return found.rider;
+    return freeAgents.find((r) => r.id === riderId) || null;
   }
 
   async function loadAllSlots() {
@@ -367,6 +392,9 @@ export default function MotorbikeManager() {
       riderWins: {}, riderPodiums: {},
       teamStandings: ts,
       lastResult: null,
+      gpHistory: [],
+      marketRumors: [],
+      marketNegotiations: [],
       seasonEvents: [],
       marketData: null,
       careerOffers: [],
@@ -550,6 +578,9 @@ export default function MotorbikeManager() {
       riderWins: {}, riderPodiums: {},
       teamStandings: ts,
       lastResult: null,
+      gpHistory: [],
+      marketRumors: [],
+      marketNegotiations: [],
       seasonEvents: [],
       marketData: null,
       careerOffers: [],
@@ -659,6 +690,79 @@ export default function MotorbikeManager() {
     setProfileTarget(null);
   }
 
+  /* Where does this rider currently race, if anywhere? Used by the new
+     negotiation engine (utils/marketNegotiations.js) to know who a
+     compensation offer actually needs to go to. */
+  function findTeamOwningRider(riderId, catKey) {
+    if (catKey === category) {
+      if (playerTeam && findInTeamRoster(playerTeam, riderId)) return playerTeam;
+      for (const t of rivalTeams) { if (findInTeamRoster(t, riderId)) return t; }
+      return null;
+    }
+    const catState = otherCategories[catKey];
+    if (!catState) return null;
+    for (const t of catState.teams) { if (findInTeamRoster(t, riderId)) return t; }
+    return null;
+  }
+
+  /* How many riders are already contracted to the player's team for next
+     season — currently-contracted riders not marked to be released,
+     plus anyone already confirmed to join via a negotiation. A new
+     offer can't be started once this reaches 2 (section 11: "cada
+     equipo solo podrá tener dos pilotos con contrato para la siguiente
+     temporada"). */
+  function nextSeasonPlayerRiderCount() {
+    if (!playerTeam) return 0;
+    const staying = playerTeam.riders.filter((r) => !r.releasedAtSeasonEnd).length;
+    return staying + countConfirmedIncomingForTeam(marketNegotiations, "player");
+  }
+
+  /* Starts a new negotiation for the player — "Hacer una oferta" (rider
+     has more than a year left, so the current team's compensation is
+     negotiated first) or "Intentar contratar" (one year left or a free
+     agent, straight to the rider). Never resolves instantly — it's
+     picked up the next time a Grand Prix is run (tickMarket, inside
+     runRace). */
+  function createPlayerOffer(rider, categoryKey, teamOfferAmount, riderTerms) {
+    if (!playerTeam) return;
+    if (nextSeasonPlayerRiderCount() >= 2) return;
+    const alreadyNegotiating = marketNegotiations.some((n) => n.riderId === rider.id && n.toTeamId === "player" && !["failed"].includes(n.status));
+    if (alreadyNegotiating) return;
+    const fromTeam = findTeamOwningRider(rider.id, categoryKey);
+    const negotiation = createNegotiation({
+      kind: "signing", rider, categoryKey, fromTeam,
+      toTeamId: "player", toTeamName: playerTeam.name,
+      teamOfferAmount: fromTeam ? teamOfferAmount : null,
+      riderTerms, round, seasonNumber,
+    });
+    setGame((g) => (g ? { ...g, marketNegotiations: [...(g.marketNegotiations || []), negotiation] } : g));
+  }
+
+  /* The player's response to an unsolicited offer a rival has made for
+     one of their own riders (section 14). Accepting only moves on to
+     asking the rider themselves whether they actually want to leave —
+     it doesn't sell them outright. */
+  function respondToIncomingOffer(negotiationId, accept) {
+    setGame((g) => {
+      if (!g) return g;
+      const marketNegotiations2 = (g.marketNegotiations || []).map((n) => {
+        if (n.id !== negotiationId) return n;
+        if (accept) return { ...n, status: "pending_rider", log: [...n.log, { round, text: "Aceptáis la compensación ofrecida." }] };
+        return { ...n, status: "failed", log: [...n.log, { round, text: "Rechazáis la oferta recibida." }] };
+      });
+      return { ...g, marketNegotiations: marketNegotiations2 };
+    });
+  }
+
+  /* "Despedir al finalizar la temporada" (section 12): the rider keeps
+     racing normally all season, but their seat opens up for next season
+     — letting the player line up a replacement (via createPlayerOffer)
+     before the season is even over, without paying the immediate-
+     rescission cost of the existing fireRider(). */
+  function markReleaseAtSeasonEnd(riderId, released) {
+    setPlayerTeam((t) => ({ ...t, riders: t.riders.map((r) => (r.id === riderId ? { ...r, releasedAtSeasonEnd: released } : r)) }));
+  }
+
   function runRace() {
     const circuitProfile = CIRCUIT_PROFILES[round];
     const isWet = Math.random() * 100 < circuitProfile.wetPct;
@@ -749,9 +853,23 @@ export default function MotorbikeManager() {
       nextOtherCategories[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP };
     });
 
+    const gpResultsByCategory = { ...otherResultsByCat, [category]: results };
+    const gpHistoryEntry = buildGpHistoryEntry({ round, seasonNumber, circuitName: CIRCUITS[round], isWet, resultsByCategory: gpResultsByCategory });
+
+    const marketTick = tickMarket(
+      { marketRumors, marketNegotiations },
+      {
+        playerTeam: playerWithMorale, rivalTeams: rivalsWithMorale, otherCategories: nextOtherCategories,
+        freeAgents: poolRef.pool, category, round, totalRounds: CIRCUITS.length, seasonNumber, scale,
+        riderStandings: riderStandingsNext,
+        findTeam: findTeamById, findRider: findRiderById,
+      }
+    );
+    marketTick.notifications.forEach((text) => notifQueue.push({ type: "market", category, text }));
+
     setGame((g) => (g ? {
       ...g,
-      lastResult: { circuitName: CIRCUITS[round], circuitProfile, isWet, category, results: { ...otherResultsByCat, [category]: results }, arrivals },
+      lastResult: { circuitName: CIRCUITS[round], circuitProfile, isWet, category, results: gpResultsByCategory, arrivals },
       riderStandings: riderStandingsNext,
       riderWins: riderWinsNext,
       riderPodiums: riderPodiumsNext,
@@ -763,6 +881,9 @@ export default function MotorbikeManager() {
       freeAgents: poolRef.pool,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
       pendingSubstitution: newPendingSub,
+      gpHistory: [...(g.gpHistory || []), gpHistoryEntry],
+      marketRumors: marketTick.marketRumors,
+      marketNegotiations: marketTick.marketNegotiations,
     } : g));
 
     setPhase("result");
@@ -846,6 +967,12 @@ export default function MotorbikeManager() {
     const hasUpper = category !== "motogp";
     const departures = {};
 
+    // Start from the player's current roster, then layer the existing
+    // "wants to move up a category" morale penalty and the new market's
+    // confirmed outcomes on top of it, as plain local values — avoids
+    // ever having two setPlayerTeam calls stomp on each other.
+    let resolvedPlayerRiders = playerTeam.riders;
+
     if (hasUpper) {
       playerTeam.riders.forEach((r) => {
         const wins = riderWins[r.id] || 0;
@@ -858,14 +985,37 @@ export default function MotorbikeManager() {
       });
       const anyFailed = Object.values(departures).some((d) => !d.success);
       if (anyFailed) {
-        setPlayerTeam((t) => ({
-          ...t,
-          riders: t.riders.map((r) => (departures[r.id] && !departures[r.id].success ? { ...r, morale: clamp(r.morale - 15, 0, 100) } : r)),
-        }));
+        resolvedPlayerRiders = resolvedPlayerRiders.map((r) =>
+          departures[r.id] && !departures[r.id].success ? { ...r, morale: clamp(r.morale - 15, 0, 100) } : r
+        );
       }
     }
 
-    const data = computeMarket(playerTeam, rivalTeams, teamStandings, otherCategories, category, freeAgents, departures);
+    // --- Live transfer market resolution (utils/marketNegotiations.js):
+    // riders who agreed to join a new team, and riders the player marked
+    // to be let go at season's end, actually change hands right here —
+    // never mid-season (section 9 of the design). ---
+    const playerTeamBeforeMarket = { ...playerTeam, riders: resolvedPlayerRiders };
+    const { released: releasedAtEnd } = applyReleasedAtSeasonEnd(playerTeamBeforeMarket);
+    const playerTeamAfterReleases = { ...playerTeamBeforeMarket, riders: playerTeamBeforeMarket.riders.filter((r) => !r.releasedAtSeasonEnd) };
+    const afterNegotiations = applyConfirmedNegotiations({
+      playerTeam: playerTeamAfterReleases, rivalTeams, otherCategories, category, marketNegotiations,
+    });
+    const resolvedPlayerTeam = afterNegotiations.playerTeam;
+    const resolvedRivalTeams = afterNegotiations.rivalTeams;
+    const resolvedOtherCategories = afterNegotiations.otherCategories;
+    const resolvedFreeAgents = [
+      ...freeAgents,
+      ...releasedAtEnd.map((r) => ({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false })),
+    ];
+
+    setPlayerTeam(() => resolvedPlayerTeam);
+    setRivalTeams(resolvedRivalTeams);
+    setOtherCategories(resolvedOtherCategories);
+    setFreeAgents(resolvedFreeAgents);
+    setMarketRumors([]);
+
+    const data = computeMarket(resolvedPlayerTeam, resolvedRivalTeams, teamStandings, resolvedOtherCategories, category, resolvedFreeAgents, departures);
     setMarketData(data);
     setPhase("market");
   }
@@ -1158,7 +1308,8 @@ export default function MotorbikeManager() {
     setRiderPodiums({});
     setTeamStandings(ts);
     setSeasonEvents(ownNotable);
-    setMarketSummary(marketLog);
+    setMarketSummary(buildChronologicalMarketSummary(marketLog, marketNegotiations, CIRCUITS.length));
+    setMarketNegotiations([]);
     setRound(0);
     setSeasonNumber((s) => s + 1);
     setMarketData(null);
@@ -1213,7 +1364,7 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents }}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer: respondToIncomingOffer }}
           notifCount={countUnread(notifications.motogp) + countUnread(notifications.moto2) + countUnread(notifications.moto3)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
@@ -1242,7 +1393,7 @@ export default function MotorbikeManager() {
         <MarketScreen playerTeam={playerTeam} marketData={marketData} budget={budget} category={category} onConfirm={confirmMarket} openProfile={openProfile} />
       )}
       {phase === "market-summary" && marketSummary && (
-        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonOrOfferSubstitute(playerTeam)} />
+        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonOrOfferSubstitute(playerTeam)} totalRounds={CIRCUITS.length} />
       )}
       {phase === "substitute-select" && playerTeam && pendingSubstitution && (
         <SubstituteScreen
@@ -1267,6 +1418,11 @@ export default function MotorbikeManager() {
         playerTeam={phase === "season" ? playerTeam : null}
         category={category}
         onSignFreeAgent={signFreeAgentNow}
+        marketNegotiations={marketNegotiations}
+        onCreateOffer={createPlayerOffer}
+        canStartNewOffer={phase === "season" && nextSeasonPlayerRiderCount() < 2}
+        onMarkReleaseAtSeasonEnd={markReleaseAtSeasonEnd}
+        scale={scale}
       />
       <TeamProfileModal
         target={resolveLiveTeamProfileTarget()}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, MapPin, Save, Star, Wrench } from "lucide-react";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
+import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
@@ -20,7 +21,7 @@ import { raceLineup } from "../utils/raceSimulation.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer }) {
   const accent = playerTeam.color;
   const circuit = CIRCUITS[round];
   const circuitProfile = CIRCUIT_PROFILES[round];
@@ -281,6 +282,9 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             })}
           </Panel>
 
+          <RumorsPanel marketRumors={marketRumors} accent={accent} />
+          <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} />
+
           <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
           <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} category={category} accent={accent} openProfile={openProfile} />
         </div>
@@ -314,7 +318,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       {seasonTab === "info" && (
         <div className="space-y-4">
           <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} />
-          <CalendarPanel round={round} accent={accent} />
+          <CalendarPanel round={round} accent={accent} gpHistory={gpHistory} seasonNumber={seasonNumber} category={category} />
           <DetailedStandingsPanel
             category={category}
             riderStandings={riderStandings}

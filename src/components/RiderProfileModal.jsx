@@ -1,15 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Medal, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { AttrGrid } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
-import { badgeEmoji, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
+import { badgeEmoji, computeMarketValue, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
+import { clamp } from "../utils/random.js";
 
-export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenewContract, onFireRider, playerTeam, category, onSignFreeAgent }) {
+export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenewContract, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, scale }) {
   const [confirmFire, setConfirmFire] = useState(false);
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [teamOfferAmount, setTeamOfferAmount] = useState(0);
+  const [offerSalary, setOfferSalary] = useState(0);
+  const [offerYears, setOfferYears] = useState(2);
+  const [offerWinBonus, setOfferWinBonus] = useState(0);
+  const [offerTitleBonus, setOfferTitleBonus] = useState(0);
+
+  // Resets the offer form to sensible suggested values every time a
+  // different rider's profile is opened (fair value/salary depend on the
+  // rider, so they can only be computed once we know who `target` is).
+  useEffect(() => {
+    if (!target) return;
+    setTeamOfferAmount(Math.round(computeMarketValue(target.rider, scale || 1) * 1.1));
+    setOfferSalary(Math.round(computeSalary(target.rider, scale || 1) * 1.1));
+    setOfferYears(2);
+    setOfferWinBonus(0);
+    setOfferTitleBonus(0);
+    setShowOfferForm(false);
+    setConfirmFire(false);
+  }, [target?.rider?.id, scale]);
+
   if (!target) return null;
   const { rider, teamName, categoryKey } = target;
   const accent = COLORS.gold;
@@ -21,6 +43,15 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
   const hasVacancy = !!(playerTeam && playerTeam.riders.length < 2);
   const signEligible = isFreeAgent && hasVacancy && !isOwnRider && isFreeAgentEligibleForCategory(rider, category);
   const signCost = Math.round(overallRating(rider) * 5000);
+
+  // Live transfer market (utils/marketNegotiations.js): is there already
+  // a negotiation in progress or confirmed for this rider with us?
+  const existingNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && n.toTeamId === "player" && n.status !== "failed");
+  const isConfirmedForUs = existingNegotiation?.status === "confirmed";
+  const contractYearsLeft = rider.contractYears ?? 0;
+  const offerNeedsTeamDeal = contractYearsLeft > 1;
+  const offerLabel = offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar";
+  const offerEligible = !isOwnRider && !existingNegotiation && canStartNewOffer && isFreeAgentEligibleForCategory(rider, category);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
@@ -86,6 +117,68 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
           </div>
         )}
 
+        {isConfirmedForUs && (
+          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
+            Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
+          </div>
+        )}
+        {existingNegotiation && !isConfirmedForUs && (
+          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+            Negociación en curso — os avisaremos tras el próximo Gran Premio.
+          </div>
+        )}
+
+        {offerEligible && !isConfirmedForUs && onCreateOffer && !showOfferForm && (
+          <button onClick={() => setShowOfferForm(true)}
+            className="w-full mb-3 text-xs px-3 py-2 rounded font-semibold"
+            style={{ background: "#3F9142", color: "#fff" }}>
+            {offerLabel}
+          </button>
+        )}
+
+        {offerEligible && !isConfirmedForUs && onCreateOffer && showOfferForm && (
+          <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #3F9142" }}>
+            {offerNeedsTeamDeal && (
+              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Oferta al equipo (compensación)
+                <input type="number" value={teamOfferAmount} onChange={(e) => setTeamOfferAmount(Number(e.target.value))}
+                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+              </label>
+            )}
+            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Salario ofrecido / año
+              <input type="number" value={offerSalary} onChange={(e) => setOfferSalary(Number(e.target.value))}
+                className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Años
+                <input type="number" min={1} max={4} value={offerYears} onChange={(e) => setOfferYears(clamp(Number(e.target.value), 1, 4))}
+                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+              </label>
+              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus victoria
+                <input type="number" value={offerWinBonus} onChange={(e) => setOfferWinBonus(Number(e.target.value))}
+                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+              </label>
+              <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>Bonus título
+                <input type="number" value={offerTitleBonus} onChange={(e) => setOfferTitleBonus(Number(e.target.value))}
+                  className="px-2 py-1 rounded font-mono" style={{ background: COLORS.panel, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
+              </label>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => {
+                  onCreateOffer(rider, categoryKey, offerNeedsTeamDeal ? teamOfferAmount : null, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus });
+                  setShowOfferForm(false);
+                }}
+                className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
+                Enviar oferta
+              </button>
+              <button onClick={() => setShowOfferForm(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.muted }}>
+                Cancelar
+              </button>
+            </div>
+            <p style={{ color: COLORS.muted }}>La respuesta llegará tras disputarse el próximo Gran Premio.</p>
+          </div>
+        )}
+
         {signEligible && onSignFreeAgent && (
           <button onClick={() => onSignFreeAgent(rider)} disabled={signCost > budget}
             className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40 font-semibold"
@@ -125,6 +218,20 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onRenew
                 Cancelar
               </button>
             </div>
+          </div>
+        )}
+
+        {isOwnRider && onMarkReleaseAtSeasonEnd && !rider.releasedAtSeasonEnd && (
+          <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, true)}
+            className="w-full mb-3 text-xs px-3 py-2 rounded"
+            style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+            Despedir al finalizar la temporada
+          </button>
+        )}
+        {isOwnRider && onMarkReleaseAtSeasonEnd && rider.releasedAtSeasonEnd && (
+          <div className="mb-3 rounded-md p-2.5 text-xs flex items-center justify-between gap-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+            <span>Dejará el equipo al finalizar la temporada.</span>
+            <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, false)} className="underline-none font-semibold flex-shrink-0" style={{ color: accent }}>Deshacer</button>
           </div>
         )}
 
