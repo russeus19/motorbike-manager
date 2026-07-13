@@ -449,7 +449,7 @@ export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, rou
  */
 export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations }) {
   const confirmed = (marketNegotiations || []).filter((n) => n.status === "confirmed");
-  if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, appliedIds: [], strandedRiders: [] };
+  if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
 
   const nextPlayerRiders = [...playerTeam.riders];
   const nextRivals = rivalTeams.map((t) => ({ ...t, riders: [...t.riders] }));
@@ -469,8 +469,12 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   // Anyone who gets removed from their old team but can't be placed on
   // their new one (e.g. it unexpectedly already has 2 riders from
   // another deal processed earlier in this same pass) must never just
-  // disappear — they go back into the free-agent pool instead.
+  // disappear — they go back into the free-agent pool instead. Their
+  // negotiation's id is tracked separately (strandedNegotiationIds) so
+  // the season summary can tell it apart from a deal that actually went
+  // through.
   const strandedRiders = [];
+  const strandedNegotiationIds = [];
 
   function removeFromEverywhere(riderId, categoryKey) {
     if (categoryKey === category) {
@@ -507,12 +511,13 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       salary: neg.riderTerms?.salary ?? rider.salary,
       isNewTeamThisSeason: true,
     };
+    let placed = false;
     if (neg.toTeamId === "player") {
       // Hard safety net: never let the player's roster exceed 2 riders
       // here, even in an edge case where releases were undone after
       // offers were already lined up (see App.jsx's nextSeasonPlayerRiderCount
       // guard, which prevents this in the normal flow).
-      if (nextPlayerRiders.length < 2) nextPlayerRiders.push(signedRider);
+      if (nextPlayerRiders.length < 2) { nextPlayerRiders.push(signedRider); placed = true; }
       else strandedRiders.push(signedRider);
     } else {
       // AI-vs-AI deals always happen within a single category (see
@@ -520,10 +525,18 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       // in that same category — rivals for the played one, or the
       // matching background category's own teams otherwise.
       const destTeam = findTeamInCategory(neg.toTeamId, neg.categoryKey);
-      if (destTeam && destTeam.riders.length < 2) destTeam.riders.push(signedRider);
+      if (destTeam && destTeam.riders.length < 2) { destTeam.riders.push(signedRider); placed = true; }
       else strandedRiders.push(signedRider);
     }
-    appliedIds.push(neg.id);
+    // Only a negotiation that actually placed its rider on the
+    // destination team counts as "applied" — this is what the season
+    // summary (buildMarketSummaryByCategory) uses to decide whether a
+    // "ficha por X" entry is real. A negotiation that reached
+    // "confirmed" but got stranded here never really moved anyone; the
+    // rider's actual fate is the free-agent pool, already documented
+    // through the normal path once someone signs them.
+    if (placed) appliedIds.push(neg.id);
+    else strandedNegotiationIds.push(neg.id);
   });
 
   return {
@@ -532,6 +545,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
     otherCategories: nextOther,
     appliedIds,
     strandedRiders,
+    strandedNegotiationIds,
   };
 }
 
@@ -579,9 +593,10 @@ export function applyRenewalsToTeam(team, renewals) {
  * reach `status: "applied"`, never "confirmed" — see
  * resolvePendingNegotiations) land in Renovaciones.
  */
-export function buildMarketSummaryByCategory(marketLog, marketNegotiations) {
+export function buildMarketSummaryByCategory(marketLog, marketNegotiations, strandedNegotiationIds) {
   const summary = {};
   const seenConfirmedRiderIds = new Set();
+  const stranded = new Set(strandedNegotiationIds || []);
   CATEGORY_ORDER.forEach((ck) => {
     const groups = { ascenso: [], descenso: [], fichaje: [], renovacion: [], retiro: [], salida: [] };
 
@@ -592,6 +607,14 @@ export function buildMarketSummaryByCategory(marketLog, marketNegotiations) {
 
     (marketNegotiations || []).filter((n) => n.categoryKey === ck).forEach((n) => {
       if (n.status === "confirmed") {
+        // A negotiation that reached "confirmed" but got stranded by
+        // applyConfirmedNegotiations (its destination team was already
+        // full from another deal processed first) never actually moved
+        // anyone — the rider really became a free agent instead, which
+        // gets reported through the normal path once someone signs
+        // them. Showing this one too would be reporting a move that
+        // never happened.
+        if (stranded.has(n.id)) return;
         // Same rule as applyConfirmedNegotiations: only the first
         // confirmed negotiation for a given rider is real. A rider can
         // never have actually signed for two teams — if two

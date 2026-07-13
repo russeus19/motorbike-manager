@@ -1462,7 +1462,7 @@ export default function MotorbikeManager() {
     setRiderPodiums({});
     setTeamStandings(ts);
     setSeasonEvents(ownNotable);
-    setMarketSummary(buildMarketSummaryByCategory(marketLog, marketNegotiations));
+    setMarketSummary(buildMarketSummaryByCategory(marketLog, marketNegotiations, afterNegotiations.strandedNegotiationIds));
     setMarketNegotiations([]);
     setMarketRumors([]);
     setRound(0);
