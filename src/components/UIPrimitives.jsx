@@ -1,6 +1,30 @@
+import { AlertTriangle, Mail } from "lucide-react";
 import { ATTRS } from "../data/attributes.js";
 import { COLORS } from "../data/colors.js";
 
+// Maps buildPriorityAlerts' string iconKey to an actual icon component —
+// keeps utils/priorityAlerts.js icon-agnostic, consistent with every
+// other utils/*.js file in this project.
+const PRIORITY_ALERT_ICONS = { warning: AlertTriangle, mail: Mail };
+
+/**
+ * The single shared visual for every priority alert on the "Inicio"
+ * screen (utils/priorityAlerts.js) — same design, same animation, same
+ * behavior for the warehouse stock warning, contract-expiring notices,
+ * incoming-offer notices, and any future alert type. Only the icon and
+ * text differ.
+ */
+export function PriorityAlertBanner({ iconKey, text, onClick }) {
+  const Icon = PRIORITY_ALERT_ICONS[iconKey] || AlertTriangle;
+  return (
+    <button onClick={onClick}
+      className="w-full text-left rounded-md px-3 py-2.5 text-sm flex items-center gap-2"
+      style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}`, color: COLORS.gold }}>
+      <Icon size={16} className="flex-shrink-0" />
+      {text}
+    </button>
+  );
+}
 /* One shared visual family for every "own rider" action button in the
    profile modal (renovar, despedir, designar libre al final de
    temporada, and any future one) — same height, width, radius, font,

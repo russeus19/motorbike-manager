@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Bell, Flag, X } from "lucide-react";
 import { RiderPhoto } from "./RiderPhoto.jsx";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CATEGORY_DATA, PLAYABLE_CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { NOTIF_ICON } from "../data/notificationIcons.js";
 
@@ -19,7 +19,7 @@ export function NotificationCenterModal({ notifications, category, onClose }) {
           <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
         <div className="flex gap-2 px-5 pt-4 flex-shrink-0">
-          {CATEGORY_ORDER.map((ck) => (
+          {PLAYABLE_CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => setTab(ck)}
               className="flex-1 text-xs px-2 py-1.5 rounded font-semibold"
               style={{

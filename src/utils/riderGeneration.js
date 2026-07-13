@@ -67,6 +67,33 @@ export function makeRookie(scale) {
   return finalizeRiderEconomics(withPotential, scale ?? 0.32);
 }
 
+/**
+ * A brand-new Red Bull Rookies Cup prospect — filling a vacant seat
+ * during the category's annual grid refresh (section 20). Younger
+ * (14-18) and a notch below even makeRookie's Moto3 debutants, but with
+ * the same wide potential spread so future stars keep appearing, not
+ * just filler. Always a single year of contract, exactly like every
+ * other Rookies Cup rider.
+ */
+export function makeRookiesCupProspect() {
+  const scale = CATEGORY_DATA.rookiescup.scale;
+  const base = {
+    name: `${pick(ROOKIE_FIRST)} ${pick(ROOKIE_LAST)}`,
+    nat: pick(ROOKIE_NATS),
+    age: randInt(14, 18),
+    potential: rollRookiePotential(),
+    tecnica: randInt(35, 55),
+    ritmo: randInt(35, 53),
+    adelantamientos: randInt(33, 52),
+    mental: randInt(28, 45),
+    adaptabilidad: randInt(26, 44),
+    fisico: randInt(42, 58),
+    seasonPoints: 0,
+  };
+  const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
+  return finalizeRiderEconomics(withPotential, scale, 1);
+}
+
 
 export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0 };

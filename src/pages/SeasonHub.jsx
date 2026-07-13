@@ -11,13 +11,14 @@ import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMar
 import { DetailedStandingsPanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
-import { AttrGrid, CheckerStrip, OverallBadge, Panel, RiderNameButton } from "../components/UIPrimitives.jsx";
+import { AttrGrid, CheckerStrip, OverallBadge, Panel, PriorityAlertBanner, RiderNameButton } from "../components/UIPrimitives.jsx";
 import { WarehousePanel } from "../components/WarehousePanel.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { raceLineup } from "../utils/raceSimulation.js";
+import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
@@ -32,6 +33,19 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   const lowStockParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock <= 2);
   const missingParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock < ridersNeeded);
   const canRace = missingParts.length === 0;
+  const priorityAlerts = buildPriorityAlerts({
+    playerTeam, marketNegotiations,
+    lowStockLabel: lowStockParts.length ? lowStockParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ") : null,
+  });
+
+  function handleAlertClick(alert) {
+    const targetTab = alert.target === "warehouse" ? "escuderia" : "pilotos";
+    setSeasonTab(targetTab);
+    const scrollId = alert.target === "roster" ? "pilotos-mis-pilotos" : alert.target === "offers" ? "pilotos-ofertas" : null;
+    if (scrollId) {
+      setTimeout(() => document.getElementById(scrollId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+  }
 
   // Small render helpers for the notification bell, budget display and
   // Simular GP button — defined once here and reused as-is in both the
@@ -109,13 +123,12 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
       {seasonTab === "inicio" && (
         <>
-          {lowStockParts.length > 0 && (
-            <button onClick={() => setSeasonTab("escuderia")}
-              className="w-full text-left mb-4 rounded-md px-3 py-2.5 text-sm flex items-center gap-2"
-              style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}`, color: COLORS.gold }}>
-              <AlertTriangle size={16} />
-              ⚠ Stock bajo de {lowStockParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Toca para ir al Almacén.
-            </button>
+          {priorityAlerts.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {priorityAlerts.map((a) => (
+                <PriorityAlertBanner key={a.id} iconKey={a.iconKey} text={a.text} onClick={() => handleAlertClick(a)} />
+              ))}
+            </div>
           )}
 
           <div className="mb-4">
@@ -214,6 +227,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
       {seasonTab === "pilotos" && (
         <div className="space-y-4">
+          <div id="pilotos-mis-pilotos">
           <Panel
             title="Mis pilotos"
             icon={Gauge}
@@ -281,9 +295,12 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
               );
             })}
           </Panel>
+          </div>
 
           <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
+          <div id="pilotos-ofertas">
           <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} />
+          </div>
 
           <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
           <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} category={category} accent={accent} openProfile={openProfile} />

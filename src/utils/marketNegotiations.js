@@ -501,9 +501,18 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   }
 
   confirmed.forEach((neg) => {
-    if (processedRiderIds.has(neg.riderId)) return; // duplicate confirmed negotiation for the same rider — skip, don't reprocess
+    if (processedRiderIds.has(neg.riderId)) {
+      // A duplicate confirmed negotiation for a rider already placed by
+      // an earlier one in this pass — this one never took effect
+      // either, exactly like a stranded one.
+      strandedNegotiationIds.push(neg.id);
+      return;
+    }
     const rider = removeFromEverywhere(neg.riderId, neg.categoryKey);
-    if (!rider) return;
+    if (!rider) {
+      strandedNegotiationIds.push(neg.id);
+      return;
+    }
     processedRiderIds.add(neg.riderId);
     const signedRider = {
       ...rider,

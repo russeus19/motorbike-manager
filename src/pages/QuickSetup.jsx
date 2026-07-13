@@ -2,7 +2,7 @@ import { Box, Flag } from "lucide-react";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { OverallBadge, Panel } from "../components/UIPrimitives.jsx";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CATEGORY_DATA, PLAYABLE_CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { computeTechCapacity } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
@@ -32,7 +32,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
       <div className="mb-4">
         <label className="text-xs uppercase tracking-wider block mb-2" style={{ color: COLORS.muted }}>Categoría</label>
         <div className="flex gap-2">
-          {CATEGORY_ORDER.map((ck) => (
+          {PLAYABLE_CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => pickCategory(ck)}
               className="px-4 py-2 rounded-md text-sm font-semibold"
               style={{

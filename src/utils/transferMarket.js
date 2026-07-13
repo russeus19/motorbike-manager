@@ -1,6 +1,6 @@
 import { CATEGORY_DATA } from "../data/categories.js";
 import { clamp } from "./random.js";
-import { makeRookie } from "./riderGeneration.js";
+import { makeRookie, makeRookiesCupProspect } from "./riderGeneration.js";
 import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 
@@ -32,6 +32,34 @@ export function aiRenewalDecision(rider, evalLabel, team, expectationVerdict) {
   else if (expectationVerdict === "decepcionante") chance -= 0.25;
   if (team.budget && rider.salary > team.budget * 0.4) chance -= 0.15;
   return Math.random() < clamp(chance, 0.05, 0.95);
+}
+
+/**
+ * The Red Bull Rookies Cup's own season-end maintenance (section 20) —
+ * deliberately NOT routed through runCategoryMarket, which assumes
+ * every team needs exactly 2 riders. This category is a single team
+ * with 26 riders, every one of them on a single-season contract by
+ * design (section 9), so "contractYears > 0" would otherwise empty the
+ * entire roster at once instead of the gradual turnover every other
+ * category has.
+ *
+ * Anyone who signed elsewhere during the season is already gone by the
+ * time this runs (applyConfirmedNegotiations handles that generically,
+ * same as any other category). Everyone else's single-year contract
+ * has just run out — no retirement check makes sense at 14-18 years
+ * old, so every vacated seat is simply refilled with a brand new
+ * prospect (makeRookiesCupProspect), keeping the grid at exactly 26.
+ */
+export function regenerateRookiesCupGrid(team, log) {
+  const staying = team.riders.filter((r) => (r.contractYears ?? 0) > 0);
+  const seatsToFill = 26 - staying.length;
+  const fresh = [];
+  for (let i = 0; i < seatsToFill; i++) {
+    const prospect = makeRookiesCupProspect();
+    fresh.push(prospect);
+    log.push({ type: "debut", riderId: photoIdFor(prospect), text: `${prospect.name} debuta en la Red Bull Rookies Cup (${prospect.age} años)`, category: "Red Bull Rookies Cup" });
+  }
+  return { ...team, riders: [...staying, ...fresh] };
 }
 
 /* One category's full end-of-season market pass for its AI-controlled

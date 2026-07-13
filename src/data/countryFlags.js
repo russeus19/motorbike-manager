@@ -26,9 +26,12 @@ export const EMOJI_TO_COUNTRY_ID = {
   "🇮🇩": "indonesia",
   "🇮🇹": "italy",
   "🇯🇵": "japan",
+  "🇰🇬": "kyrgyzstan",
+  "🇲🇹": "malta",
   "🇲🇾": "malaysia",
   "🇳🇱": "netherlands",
   "🇳🇿": "new_zealand",
+  "🇵🇭": "philippines",
   "🇵🇹": "portugal",
   "🇵🇱": "poland",
   "🇶🇦": "qatar",
@@ -36,6 +39,8 @@ export const EMOJI_TO_COUNTRY_ID = {
   "🇹🇭": "thailand",
   "🇹🇷": "turkey",
   "🇺🇸": "united_states",
+  "🇻🇪": "venezuela",
+  "🇻🇳": "vietnam",
   "🇿🇦": "south_africa",
 };
 

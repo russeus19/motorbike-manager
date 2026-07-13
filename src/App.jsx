@@ -6,7 +6,7 @@ import { RiderProfileModal } from "./components/RiderProfileModal.jsx";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
 import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
-import { CIRCUITS, CIRCUIT_PROFILES } from "./data/circuits.js";
+import { CIRCUITS, CIRCUIT_PROFILES, ROOKIESCUP_ROUNDS } from "./data/circuits.js";
 import { COLORS } from "./data/colors.js";
 import { CareerNameScreen, CareerOffersScreen, CareerPickerScreen } from "./pages/CareerSetup.jsx";
 import { SubstituteScreen } from "./pages/InjurySubstitute.jsx";
@@ -33,7 +33,7 @@ import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCat
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { assignSeasonExpectations } from "./utils/teamExpectations.js";
-import { fillFromLowerCategory, fillWithRookies, releaseSubstitutesToPool, runCategoryMarket } from "./utils/transferMarket.js";
+import { fillFromLowerCategory, fillWithRookies, regenerateRookiesCupGrid, releaseSubstitutesToPool, runCategoryMarket } from "./utils/transferMarket.js";
 import { queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
 
 export default function MotorbikeManager() {
@@ -325,7 +325,7 @@ export default function MotorbikeManager() {
     const rivalTeams = validateAndRepairTeams(data.rivalTeams || [], CATEGORY_DATA[category]?.scale ?? 1).teams;
     const otherCategories = {};
     Object.entries(data.otherCategories || {}).forEach(([key, catState]) => {
-      const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1);
+      const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1, key === "rookiescup" ? { padRosterTo2: false, maxRoster: 26 } : undefined);
       otherCategories[key] = { ...catState, teams };
     });
 
@@ -980,10 +980,29 @@ export default function MotorbikeManager() {
     notifQueue.unshift({ type: "race", category, text: `Resultado del ${gpShortName}: ${playerResults.map((r) => `${r.name} ${r.crashed ? "DNF" : `P${r.position}`}`).join(" · ")}.` });
 
     // --- Background categories (Moto2/Moto3 or MotoGP, whichever aren't played) ---
+    // Section 16: a Rookies Cup rider currently on loan as someone's
+    // substitute this round never also races their own Rookies Cup
+    // weekend — gathered once here, used only to trim who actually
+    // lines up below; their real Rookies Cup roster spot is untouched.
+    const loanedOutRiderIds = new Set();
+    [playerTeam, ...rivalTeams].forEach((t) => Object.values(t.substitutes || {}).forEach((s) => loanedOutRiderIds.add(s.id)));
+    Object.values(otherCategories).forEach((cs) => cs.teams.forEach((t) => Object.values(t.substitutes || {}).forEach((s) => loanedOutRiderIds.add(s.id))));
+
     const nextOtherCategories = {};
     const otherResultsByCat = {};
     Object.entries(otherCategories).forEach(([key, catState]) => {
-      const { results: catResults } = simulateFullGridRound(catState.teams, circuitProfile, isWet, roundsLeft);
+      // The Rookies Cup only ever races on its own 7 real rounds
+      // (data/circuits.js's ROOKIESCUP_ROUNDS) — on every other weekend
+      // its state simply carries over untouched, exactly like a bye week.
+      if (key === "rookiescup" && !ROOKIESCUP_ROUNDS.includes(round)) {
+        nextOtherCategories[key] = catState;
+        otherResultsByCat[key] = [];
+        return;
+      }
+      const simTeams = key === "rookiescup"
+        ? catState.teams.map((t) => ({ ...t, riders: t.riders.filter((r) => !loanedOutRiderIds.has(r.id)) }))
+        : catState.teams;
+      const { results: catResults } = simulateFullGridRound(simTeams, circuitProfile, isWet, roundsLeft);
       otherResultsByCat[key] = catResults;
       const rS = { ...catState.riderStandings };
       catResults.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
@@ -1305,8 +1324,13 @@ export default function MotorbikeManager() {
     const catTeamStandings = {};
     CATEGORY_ORDER.forEach((ck) => { catTeamStandings[ck] = ck === ctxCategory ? ctxTeamStandings : ctxOtherCategories[ck].teamStandings; });
 
-    const marketLog = { motogp: [], moto2: [], moto3: [] };
+    const marketLog = { motogp: [], moto2: [], moto3: [], rookiescup: [] };
     const excludeIds = { motogp: ctxCategory === "motogp" ? "player" : null, moto2: ctxCategory === "moto2" ? "player" : null, moto3: ctxCategory === "moto3" ? "player" : null };
+    // The standard AI market (retire/renew/release/sign, all assuming
+    // exactly 2 seats per team) applies to every playable category —
+    // the Rookies Cup is a single 26-rider team on uniform 1-year
+    // contracts and gets its own dedicated maintenance below instead.
+    const standardMarketCategories = CATEGORY_ORDER.filter((ck) => CATEGORY_DATA[ck].playable);
 
     CATEGORY_ORDER.forEach((ck) => {
       const released = releaseSubstitutesToPool(catTeams[ck], poolFreeAgents, marketLog[ck], CATEGORY_DATA[ck].label);
@@ -1314,13 +1338,22 @@ export default function MotorbikeManager() {
       poolFreeAgents = released.pool;
     });
 
-    CATEGORY_ORDER.forEach((ck) => {
+    standardMarketCategories.forEach((ck) => {
       catTeams[ck] = runCategoryMarket(catTeams[ck], catRiderStandings[ck], catTeamStandings[ck], poolFreeAgents, marketLog[ck], CATEGORY_DATA[ck].label, excludeIds[ck], ck, retiredIds);
     });
 
     catTeams.motogp = fillFromLowerCategory(catTeams.motogp, catTeams.moto2, marketLog.motogp, "MotoGP", "Moto2");
     catTeams.moto2 = fillFromLowerCategory(catTeams.moto2, catTeams.moto3, marketLog.moto2, "Moto2", "Moto3");
+    // Moto3's own vacancies are filled from the Rookies Cup first — the
+    // exact same promotion cascade every other category already uses,
+    // just one level deeper (section 15/21's priority order) — and only
+    // if that somehow still isn't enough does a brand-new Moto3 rookie
+    // get created from scratch, same as always.
+    catTeams.moto3 = fillFromLowerCategory(catTeams.moto3, catTeams.rookiescup, marketLog.moto3, "Moto3", "Red Bull Rookies Cup");
     catTeams.moto3 = fillWithRookies(catTeams.moto3, marketLog.moto3, "Moto3", CATEGORY_DATA.moto3.scale);
+    // The Rookies Cup's own season-end maintenance: never less than 26
+    // riders, refilled with fresh 14-18yo prospects (section 20).
+    catTeams.rookiescup = [regenerateRookiesCupGrid(catTeams.rookiescup[0], marketLog.rookiescup)];
 
     // Anyone left unsigned in the shared pool ages a season of
     // unemployment (nudging them toward retirement) and keeps evolving —
@@ -1367,7 +1400,7 @@ export default function MotorbikeManager() {
     // valid warehouse. ---
     ({ teams: evolvedRivals } = validateAndRepairTeams(evolvedRivals, scale));
     Object.keys(nextOther).forEach((key) => {
-      const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale);
+      const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale, key === "rookiescup" ? { padRosterTo2: false, maxRoster: 26 } : undefined);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
     });
     const { team: repairedPlayerTeam } = validateAndRepairTeam({ ...rolledPlayerTeam, riders: finalRoster }, scale, { padRosterTo2: false });
@@ -1557,6 +1590,7 @@ export default function MotorbikeManager() {
           playerTeam={playerTeam}
           pendingSubstitution={pendingSubstitution}
           freeAgents={freeAgents}
+          rookiesCupRiders={otherCategories.rookiescup?.teams?.[0]?.riders || []}
           category={category}
           budget={budget}
           scale={scale}
