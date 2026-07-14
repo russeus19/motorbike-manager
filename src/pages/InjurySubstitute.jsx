@@ -6,18 +6,10 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { isFreeAgentEligibleForCategory, overallRating, substituteHireCost } from "../utils/riders.js";
 
-export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, rookiesCupRiders, category, budget, scale, onConfirm, onSkip, openProfile }) {
+export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, category, budget, scale, onConfirm, onSkip, openProfile }) {
   const accent = playerTeam.color;
   const injuredRider = playerTeam.riders.find((r) => r.id === pendingSubstitution.riderId);
-  // Section 16: a Rookies Cup rider can cover an injured seat in any
-  // category while still holding their Rookies Cup contract — the same
-  // eligible-candidates list just also draws from that roster now,
-  // alongside free agents.
-  const candidates = [
-    ...(freeAgents || []).map((r) => ({ ...r, _sourceLabel: "Agente libre" })),
-    ...(rookiesCupRiders || []).map((r) => ({ ...r, _sourceLabel: "Red Bull KTM Rookies Cup" })),
-  ];
-  const eligible = candidates.filter((r) => isFreeAgentEligibleForCategory(r, category));
+  const eligible = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, category));
   const sorted = [...eligible].sort((a, b) => overallRating(b) - overallRating(a));
   const ageRuleApplies = category === "moto2" || category === "moto3";
 
@@ -47,12 +39,12 @@ export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, 
               <div className="flex justify-between items-start mb-1">
                 <span className="font-semibold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>
                   <RiderPhoto rider={r} size={36} className="rounded" />
-                  <RiderNameButton rider={r} onClick={() => openProfile(r, r._sourceLabel, r._sourceLabel === "Agente libre" ? null : "rookiescup")} />
+                  <RiderNameButton rider={r} onClick={() => openProfile(r, "Agente libre", null)} />
                   <OverallBadge value={overallRating(r)} accent={accent} />
                 </span>
                 <span className="text-xs font-mono" style={{ color: COLORS.muted }}>€{cost.toLocaleString()}</span>
               </div>
-              <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · {r._sourceLabel}</div>
+              <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Agente libre</div>
               <AttrGrid rider={r} accent={accent} />
               <button disabled={!canAfford} onClick={() => onConfirm(r)}
                 className="mt-2 text-xs px-2 py-1.5 rounded w-full font-semibold disabled:opacity-40"

@@ -5,6 +5,7 @@ import { RiderPhoto } from "./RiderPhoto.jsx";
 import { TeamLogo } from "./TeamLogo.jsx";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA } from "../data/categories.js";
+import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { bikeAvg, ensureRD } from "../utils/bikeDevelopment.js";
@@ -39,10 +40,13 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
 
         <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
           {team.expectation && (
-            <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
+            <div className="text-xs mb-1.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
               Expectativa temporada: <span className="font-mono font-bold" style={{ color: accent }}>{team.expectation.label}</span>
             </div>
           )}
+          <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
+            Prestigio: <span className="font-mono font-bold" style={{ color: accent }}>{Number.isFinite(team.prestige) ? `${team.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
+          </div>
           <div className="grid grid-cols-4 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
             <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Presupuesto</div>

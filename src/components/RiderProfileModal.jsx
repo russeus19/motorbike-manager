@@ -6,8 +6,10 @@ import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { badgeEmoji, computeMarketValue, computeReleaseAtSeasonEndCost, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
+import { countConfirmedIncomingForTeam } from "../utils/marketNegotiations.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
 import { clamp } from "../utils/random.js";
+import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 
 /** Turns one entry of a negotiation's structured history (see
  * createNegotiation/resolvePendingNegotiations in
@@ -78,11 +80,17 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   const signCost = Math.round(overallRating(rider) * 5000);
 
   // Live transfer market (utils/marketNegotiations.js): is there already
-  // a negotiation in progress or confirmed for this rider with us? A
-  // renewal (fromTeamId === toTeamId === "player") is found the exact
-  // same way — it's just another negotiation.
+  // a negotiation in progress or confirmed for this rider WITH US
+  // specifically? Used for the active-negotiation/counter-offer UI
+  // below, which only ever applies when the player is the buyer.
   const existingNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && n.toTeamId === "player" && n.status !== "failed");
-  const isConfirmedForUs = ["confirmed", "applied"].includes(existingNegotiation?.status);
+  // Single source of truth for "this rider's future is already
+  // decided" — a confirmed signing or an already-applied renewal with
+  // ANY team, not just the player's. Once this exists, the rider is
+  // off the market entirely, regardless of who they signed with.
+  const signedNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && ["confirmed", "applied"].includes(n.status));
+  const isSignedWithPlayer = signedNegotiation?.toTeamId === "player";
+  const isConfirmedForUs = isSignedWithPlayer;
   const isCounterOffer = ["team_countered", "rider_countered"].includes(existingNegotiation?.status);
   const contractYearsLeft = rider.contractYears ?? 0;
   // A team compensation step only ever makes sense when poaching someone
@@ -92,8 +100,16 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // negotiation purposes.
   const offerNeedsTeamDeal = !isOwnRider && contractYearsLeft > 1;
   const offerLabel = isOwnRider ? "Iniciar renovación de contrato" : (offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar");
-  const offerEligible = !existingNegotiation && isFreeAgentEligibleForCategory(rider, category)
+  const offerEligible = !existingNegotiation && !signedNegotiation && isFreeAgentEligibleForCategory(rider, category)
     && (isOwnRider ? !rider.releasedAtSeasonEnd : canStartNewOffer);
+  // Once both of next season's seats are already committed through firm
+  // contracts (staying riders + confirmed incoming signings), undoing a
+  // "designar para quedar libre" would over-commit the roster to 3
+  // riders for 2 spots — the exact scenario this fix closes.
+  const nextSeasonCommittedCount = playerTeam
+    ? playerTeam.riders.filter((r) => !r.releasedAtSeasonEnd).length + countConfirmedIncomingForTeam(marketNegotiations, "player")
+    : 0;
+  const rosterPlanningLocked = nextSeasonCommittedCount >= 2;
 
   // Shared input fields for both a fresh offer and a counter-offer
   // revision — same parameters either way (section 1: "el jugador podrá
@@ -162,8 +178,11 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
             Expectativa temporada: <span style={{ color: COLORS.text }}>{rider.expectation}</span>
           </div>
         )}
-        <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+        <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
           Moral: <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
+        </div>
+        <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+          Prestigio: <span style={{ color: COLORS.text, fontWeight: 600 }}>{Number.isFinite(rider.prestige) ? `${rider.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
         </div>
 
         <AttrGrid rider={rider} accent={accent} />
@@ -193,17 +212,24 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           </div>
         )}
 
-        {isConfirmedForUs && existingNegotiation.status === "confirmed" && (
+        {isConfirmedForUs && signedNegotiation.status === "confirmed" && (
           <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
             Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
           </div>
         )}
-        {isConfirmedForUs && existingNegotiation.status === "applied" && (
+        {isConfirmedForUs && signedNegotiation.status === "applied" && (
           <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
             Renovación firmada — el contrato ya está actualizado.
           </div>
         )}
-        {existingNegotiation && !isConfirmedForUs && !isCounterOffer && (
+        {signedNegotiation && !isSignedWithPlayer && (
+          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+            {signedNegotiation.kind === "renewal"
+              ? `Este piloto ya ha renovado con ${signedNegotiation.toTeamName} para la próxima temporada.`
+              : `Este piloto ya ha firmado con ${signedNegotiation.toTeamName} para la próxima temporada.`}
+          </div>
+        )}
+        {existingNegotiation && !signedNegotiation && !isCounterOffer && (
           <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
             Negociación en curso — os avisaremos tras el próximo Gran Premio.
           </div>
@@ -315,9 +341,19 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           </RiderActionButton>
         )}
         {isOwnRider && onMarkReleaseAtSeasonEnd && rider.releasedAtSeasonEnd && (
-          <div className="mb-3 rounded-md p-2.5 text-xs flex items-center justify-between gap-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
-            <span>Dejará el equipo al finalizar la temporada.</span>
-            <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, false)} className="underline-none font-semibold flex-shrink-0" style={{ color: accent }}>Deshacer</button>
+          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+            <div className="flex items-center justify-between gap-2">
+              <span>Dejará el equipo al finalizar la temporada.</span>
+              <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, false)} disabled={rosterPlanningLocked}
+                className="underline-none font-semibold flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed" style={{ color: rosterPlanningLocked ? COLORS.muted : accent }}>
+                Deshacer
+              </button>
+            </div>
+            {rosterPlanningLocked && (
+              <div className="mt-1.5" style={{ color: COLORS.muted }}>
+                No es posible deshacer esta acción porque la plantilla de la próxima temporada ya está completa.
+              </div>
+            )}
           </div>
         )}
 

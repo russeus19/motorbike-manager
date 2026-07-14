@@ -23,17 +23,6 @@ export const CIRCUITS = [
   "Gran Premio de la Comunitat Valenciana — Valencia",
 ];
 
-/* Grands Prix the Red Bull Rookies Cup actually races — it never has an
-   independent calendar of its own (see data/categories.js), it just
-   piggybacks on whichever of these seven weekends line up with the
-   main calendar above. Matched by keyword instead of hardcoded index so
-   this stays correct even if CIRCUITS gets reordered or extended. */
-const ROOKIESCUP_ROUND_KEYWORDS = ["Jerez", "Le Mans", "Mugello", "Assen", "Sachsenring", "Misano", "Red Bull Ring"];
-export const ROOKIESCUP_ROUNDS = CIRCUITS.reduce((acc, name, i) => {
-  if (ROOKIESCUP_ROUND_KEYWORDS.some((kw) => name.includes(kw))) acc.push(i);
-  return acc;
-}, []);
-
 /* ======================================================================
    CIRCUIT PROFILES — one entry per round, same order as CIRCUITS above.
    Weather odds are grounded in the real climate of each country during

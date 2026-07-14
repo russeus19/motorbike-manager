@@ -14,6 +14,7 @@ import { TeamLogo } from "../components/TeamLogo.jsx";
 import { AttrGrid, CheckerStrip, OverallBadge, Panel, PriorityAlertBanner, RiderNameButton } from "../components/UIPrimitives.jsx";
 import { WarehousePanel } from "../components/WarehousePanel.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
+import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
@@ -318,6 +319,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                 {playerTeam.expectation && (
                   <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Expectativa: <span className="font-mono font-bold" style={{ color: accent }}>{playerTeam.expectation.label}</span></div>
                 )}
+                <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Prestigio: <span className="font-mono font-bold" style={{ color: accent }}>{Number.isFinite(playerTeam.prestige) ? `${playerTeam.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span></div>
               </div>
               <div className="text-right">
                 <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Presupuesto</div>

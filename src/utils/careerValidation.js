@@ -69,7 +69,7 @@ export function validateGlobalRiderIntegrity({ playerTeam, rivalTeams, otherCate
  * those fixes get pulled back into a valid one the moment a new season
  * starts, instead of staying stuck forever.
  */
-export function validateAndRepairTeam(team, scale, { padRosterTo2 = true, maxRoster = 2 } = {}) {
+export function validateAndRepairTeam(team, scale, { padRosterTo2 = true } = {}) {
   const repaired = { ...team };
   const issues = [];
 
@@ -92,9 +92,9 @@ export function validateAndRepairTeam(team, scale, { padRosterTo2 = true, maxRos
     riders.push(makeRookie(scale ?? 1));
     issues.push("plaza vacía cubierta con un piloto de emergencia");
   }
-  if (riders.length > maxRoster) {
-    riders = riders.slice(0, maxRoster);
-    issues.push(`exceso de pilotos recortado a ${maxRoster}`);
+  if (riders.length > 2) {
+    riders = riders.slice(0, 2);
+    issues.push("exceso de pilotos recortado a 2");
   }
   riders = riders.map((r) => (
     (!Number.isFinite(r.contractYears) || r.contractYears < 0) ? { ...r, contractYears: 1 } : r
@@ -134,10 +134,10 @@ export function validateAndRepairTeam(team, scale, { padRosterTo2 = true, maxRos
 /** Runs validateAndRepairTeam across a whole category's teams. Returns the
  * repaired team list plus a flat list of {team, issues} for anything that
  * needed fixing (useful for a debug notification later; safe to ignore). */
-export function validateAndRepairTeams(teams, scale, options) {
+export function validateAndRepairTeams(teams, scale) {
   const allIssues = [];
   const repaired = (teams || []).map((t) => {
-    const { team, issues } = validateAndRepairTeam(t, scale, options);
+    const { team, issues } = validateAndRepairTeam(t, scale);
     if (issues.length) allIssues.push({ team: t.name, issues });
     return team;
   });

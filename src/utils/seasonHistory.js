@@ -1,5 +1,6 @@
 import { EVAL_LABELS } from "../data/evaluationLabels.js";
 import { bikeAvg } from "./bikeDevelopment.js";
+import { evolveRiderPrestigeForSeason } from "./prestige.js";
 import { clamp } from "./random.js";
 import { overallRating } from "./riders.js";
 
@@ -28,8 +29,21 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
   const sorted = Object.entries(standingsForCategory).sort((a, b) => b[1].points - a[1].points);
   const posById = {};
   sorted.forEach(([id], i) => { posById[id] = i + 1; });
+  const totalRiders = sorted.length;
   return teams.map((t) => {
-    const riders = t.riders.map((r) => buildHistoryEntryIfRaced(r, t.name, standingsForCategory, posById, categoryKey, seasonNum));
+    const [r1, r2] = t.riders;
+    const riders = t.riders.map((r) => {
+      const withHistory = buildHistoryEntryIfRaced(r, t.name, standingsForCategory, posById, categoryKey, seasonNum);
+      const pos = posById[r.id];
+      const teammatePoints = r.id === r1?.id ? standingsForCategory[r2?.id]?.points : standingsForCategory[r1?.id]?.points;
+      const lastEntry = withHistory.history?.[withHistory.history.length - 1];
+      const prestige = evolveRiderPrestigeForSeason(withHistory, {
+        position: pos, totalRiders, points: standingsForCategory[r.id]?.points ?? 0,
+        teammatePoints, badge: pos ? lastEntry?.badge : null,
+        crashes: r.crashesThisSeason || 0, categoryKey, racedThisCategory: !!pos,
+      });
+      return { ...withHistory, prestige };
+    });
     const substitutes = {};
     Object.entries(t.substitutes || {}).forEach(([ownerId, sub]) => {
       substitutes[ownerId] = buildHistoryEntryIfRaced(sub, t.name, standingsForCategory, posById, categoryKey, seasonNum);

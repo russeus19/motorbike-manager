@@ -2,8 +2,10 @@ import { CATEGORY_ORDER } from "../data/categories.js";
 import { clamp, pick } from "./random.js";
 import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating } from "./riders.js";
 import { moraleTierInfo } from "./riderMorale.js";
-import { aiRenewalDecision } from "./transferMarket.js";
-import { evaluateRiderSeason, teamExpectationTier } from "./seasonHistory.js";
+import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
+import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears } from "./marketAI.js";
+import { teamExpectationTier } from "./seasonHistory.js";
+import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
 /**
  * Live transfer market — foundation layer (rumors + player negotiation
@@ -220,14 +222,19 @@ export function scoreRiderOfferAcceptance(rider, toTeam, terms, ctx) {
     ? Object.values(toTeam.bike).reduce((s, v) => s + v, 0) / Object.values(toTeam.bike).length
     : 60;
   const bikeDelta = currentTeamBikeAvg != null ? (bikeAvgOffered - currentTeamBikeAvg) / 40 : 0;
-  const prestigeScore = clamp(bikeDelta, -0.5, 0.5);
+  const bikeQualityScore = clamp(bikeDelta, -0.5, 0.5);
+  // A team's own paddock reputation matters to a rider independently of
+  // how good the bike itself is — a prestigious team can win over a
+  // rider even offering slightly less (section "Ejemplo 4"), one factor
+  // among several here, never decisive by itself.
+  const prestigeAppealScore = clamp(teamPrestigeAppeal(toTeam?.prestige, rider.prestige) / 12, -1, 1);
 
   const moraleBonus = (moraleTierInfo(rider.moraleState?.tier).modifier - 1) * 4; // roughly -0.24..+0.24
   const ageFactor = rider.age <= 23 ? 0.15 : rider.age >= 33 ? -0.1 : 0;
   const promotionBonus = isPromotion ? 0.35 : 0;
   const leverage = negotiation ? negotiationLeverage(negotiation, "rider") : 0;
 
-  const total = clamp(salaryScore * 0.35 + durationScore * 0.15 + bonusScore + prestigeScore * 0.25 + moraleBonus * 0.1 + ageFactor + promotionBonus + leverage, -1, 1);
+  const total = clamp(salaryScore * 0.35 + durationScore * 0.15 + bonusScore + bikeQualityScore * 0.25 + prestigeAppealScore * 0.2 + moraleBonus * 0.1 + ageFactor + promotionBonus + leverage, -1, 1);
 
   if (total >= 0.15) return { accept: true, counterTerms: null };
   if (total >= -0.2) {
@@ -261,7 +268,7 @@ function buyerAmbition(team) {
    modest team is realistically drawn to affordable, experienced, or
    still-developing riders instead — "no todos los equipos deberán
    perseguir exactamente los mismos pilotos". */
-function candidateFitForBuyer(rider, ambition) {
+function candidateFitForBuyer(rider, ambition, categoryKey) {
   const ca = overallRating(rider);
   const isYoungPotential = rider.age <= 23 && (rider.pa - ca) >= 10;
   const isProvenWinner = ca >= 82;
@@ -278,6 +285,11 @@ function candidateFitForBuyer(rider, ambition) {
     if (!isProvenWinner) score += 1;
   }
   if (isExpiringSoon) score += 1.5;
+  // A well-known name draws real interest on its own reputation, on top
+  // of whatever their raw rating already contributes above — an
+  // ambitious team chasing a prestige signing weighs this more; a
+  // modest team barely notices it.
+  score += Math.max(0, riderPrestigeInterest(rider.prestige, categoryKey)) * (0.15 + ambition * 0.25);
   return Math.max(0.15, score);
 }
 
@@ -313,14 +325,14 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     let rider = null;
     let fromTeam = null;
     if (useFreeAgent) {
-      rider = weightedPickFromArray(eligibleFreeAgents, (r) => candidateFitForBuyer(r, ambition));
+      rider = weightedPickFromArray(eligibleFreeAgents, (r) => candidateFitForBuyer(r, ambition, categoryKey));
     } else {
       const sellers = teams.filter((t) => t.id !== buyer.id && t.riders.length);
       if (!sellers.length) return;
       const seller = pick(sellers);
       const candidates = seller.riders.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
       if (!candidates.length) return;
-      rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(r, ambition));
+      rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(r, ambition, categoryKey));
       fromTeam = seller;
     }
     if (!rider) return;
@@ -370,6 +382,10 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
 export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStandings, round, totalRounds, seasonNumber, scale, marketNegotiations) {
   if (round / Math.max(1, totalRounds - 1) < 0.5) return [];
 
+  const riderRows = Object.entries(riderStandings || {}).sort((a, b) => b[1].points - a[1].points);
+  const riderPosById = {};
+  riderRows.forEach(([id], i) => { riderPosById[id] = i + 1; });
+
   const created = [];
   teams.forEach((t) => {
     if (t.id === "player") return; // the player renews their own riders manually
@@ -381,13 +397,20 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
       if (alreadyNegotiating) return;
 
       const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
-      const evalLabel = evaluateRiderSeason(r, riderStandings?.[r.id]?.points || 0, teammatePts, tier, r.crashesThisSeason || 0);
-      if (!aiRenewalDecision(r, evalLabel, t)) return;
+      const points = riderStandings?.[r.id]?.points || 0;
+      const riderExpectationVerdict = t.expectation
+        ? evaluateSeasonVsExpectation(riderPosById[r.id], { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 })
+        : null;
+      const continuity = computeContinuityScore(r, t, {
+        points, teammatePoints: teammatePts, tier, riderExpectationVerdict, teamExpectationVerdict: null,
+        crashes: r.crashesThisSeason || 0, injuriesThisSeason: r.injuriesThisSeason || 0,
+      });
+      if (Math.random() > continuityToRenewalProbability(continuity)) return;
 
       const fairSalary = computeSalary(r, scale);
       const riderTerms = {
         salary: Math.round(fairSalary * (1 + Math.random() * 0.15)),
-        years: 1 + Math.round(Math.random() * 2),
+        years: proposedContractYears(r),
         winBonus: 0,
         titleBonus: 0,
       };

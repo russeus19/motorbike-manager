@@ -1,179 +1,192 @@
 import { CATEGORY_DATA } from "../data/categories.js";
 import { clamp } from "./random.js";
-import { makeRookie, makeRookiesCupProspect } from "./riderGeneration.js";
-import { fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
+import { makeRookie } from "./riderGeneration.js";
+import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
+import { computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
-
-/* What a team expects from its season, based on its own level — used to
-   judge whether a rider's season was actually good relative to their
-   situation, not just their raw championship position. */
-
-
-/* `expectationVerdict` (from evaluateSeasonVsExpectation, see
-   teamExpectations.js) is optional and additive: when the caller doesn't
-   have one (or the team has no expectation assigned yet, e.g. an old
-   save), this behaves exactly as before. When present, it's the main
-   new signal this system adds — whether the rider actually met what was
-   realistically expected of them matters more than their raw rating. */
-export function aiRenewalDecision(rider, evalLabel, team, expectationVerdict) {
-  let chance = 0.5;
-  const upside = rider.pa - overallRating(rider);
-  if (rider.age <= 23 && rider.pa >= 75) chance += 0.35;
-  else if (upside >= 15) chance += 0.15;
-  if (rider.age >= 33) chance -= 0.2;
-  if (rider.age >= 37) chance -= 0.2;
-  if (evalLabel === "Excelente") chance += 0.3;
-  else if (evalLabel === "Buena") chance += 0.15;
-  else if (evalLabel === "Mala") chance -= 0.2;
-  else if (evalLabel === "Desastrosa") chance -= 0.4;
-  if (expectationVerdict === "extraordinaria") chance += 0.25;
-  else if (expectationVerdict === "sobresaliente") chance += 0.1;
-  else if (expectationVerdict === "por_debajo") chance -= 0.1;
-  else if (expectationVerdict === "decepcionante") chance -= 0.25;
-  if (team.budget && rider.salary > team.budget * 0.4) chance -= 0.15;
-  return Math.random() < clamp(chance, 0.05, 0.95);
-}
+import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
 /**
- * The Red Bull Rookies Cup's own season-end maintenance (section 20) —
- * deliberately NOT routed through runCategoryMarket, which assumes
- * every team needs exactly 2 riders. This category is a single team
- * with 26 riders, every one of them on a single-season contract by
- * design (section 9), so "contractYears > 0" would otherwise empty the
- * entire roster at once instead of the gradual turnover every other
- * category has.
+ * The full season-end market pass, across every playable category at
+ * once — this is what replaced the old "renew almost everyone, then
+ * fill whatever's left with the best-rated candidate" logic.
  *
- * Anyone who signed elsewhere during the season is already gone by the
- * time this runs (applyConfirmedNegotiations handles that generically,
- * same as any other category). Everyone else's single-year contract
- * has just run out — no retirement check makes sense at 14-18 years
- * old, so every vacated seat is simply refilled with a brand new
- * prospect (makeRookiesCupProspect), keeping the grid at exactly 26.
+ * `categoriesData` shape: { motogp: { teams, riderStandings,
+ * teamStandings, excludeTeamId }, moto2: {...}, moto3: {...} }.
+ * `log` shape: { motogp: [], moto2: [], moto3: [] } (mutated in place).
+ * Returns { teamsByCategory, pool } — `pool` is the shared free-agent
+ * pool after every renewal/release/signing this pass produced.
+ *
+ * Runs in three stages, mirroring the design:
+ *  1) Continuity + renewal, per rider, per team (fase 1-2) — never a
+ *     flat "contract ended → gone", always a two-sided probability
+ *     roll (team wants them / they want to stay).
+ *  2) Every vacancy across all three categories collected into one
+ *     list, ordered by how attractive the buying team is — so the
+ *     biggest teams see the deepest pool first and whatever's left
+ *     cascades down to smaller ones (the "efecto dominó").
+ *  3) Each vacancy walks its own sorted candidate list until someone
+ *     actually says yes (wouldRiderJoin), or falls back to a freshly
+ *     generated prospect if the whole pool says no.
  */
-export function regenerateRookiesCupGrid(team, log) {
-  const staying = team.riders.filter((r) => (r.contractYears ?? 0) > 0);
-  const seatsToFill = 26 - staying.length;
-  const fresh = [];
-  for (let i = 0; i < seatsToFill; i++) {
-    const prospect = makeRookiesCupProspect();
-    fresh.push(prospect);
-    log.push({ type: "debut", riderId: photoIdFor(prospect), text: `${prospect.name} debuta en la Red Bull Rookies Cup (${prospect.age} años)`, category: "Red Bull Rookies Cup" });
-  }
-  return { ...team, riders: [...staying, ...fresh] };
-}
+export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPool, retiredIds, log) {
+  let pool = [...freeAgentPool];
+  const teamsByCategory = {};
 
-/* One category's full end-of-season market pass for its AI-controlled
-   teams: retire, renew or release every out-of-contract rider (riders
-   still under contract just carry on), then fill any resulting vacancies
-   from the shared free-agent pool. Mutates `freeAgentPool` and `log`.
-   `excludeTeamId` lets the player's own team pass through untouched when
-   it's mixed in with its AI rivals. */
+  // --- Fase 1 + 2: retirement, then continuity-driven renewal ---
+  Object.entries(categoriesData).forEach(([ck, catData]) => {
+    const { teams, riderStandings, teamStandings, excludeTeamId } = catData;
+    const teamRows = teams.map((t) => ({ id: t.id, points: teamStandings?.[t.id] || 0 })).sort((a, b) => b.points - a.points);
+    const teamPosById = {};
+    teamRows.forEach((row, i) => { teamPosById[row.id] = i + 1; });
+    const riderRows = Object.entries(riderStandings || {}).sort((a, b) => b[1].points - a[1].points);
+    const riderPosById = {};
+    riderRows.forEach(([id], i) => { riderPosById[id] = i + 1; });
 
+    teamsByCategory[ck] = teams.map((t) => {
+      if (t.id === excludeTeamId) return t;
+      const tier = teamExpectationTier(t);
+      const teamExpectationVerdict = evaluateSeasonVsExpectation(teamPosById[t.id], t.expectation);
+      const [r1, r2] = t.riders;
+      const kept = [];
+      t.riders.forEach((r) => {
+        const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
+        const points = riderStandings?.[r.id]?.points || 0;
+        const crashes = r.crashesThisSeason || 0;
+        const evalLabelForRetire = evaluateRiderSeason(r, points, teammatePts, tier, crashes);
+        const retireCtx = {
+          lostSeat: false,
+          seasonsUnsigned: r.seasonsUnsigned || 0,
+          seasonRating: evalLabelForRetire,
+          isOfficial: t.tier === "Fábrica" || t.tier === "Puntero",
+          recentSevereInjury: !!(r.injury && (r.injury.severity === "grave" || r.injury.severity === "muyGrave")),
+        };
+        if (shouldRetire(r, retireCtx)) {
+          retiredIds?.add(r.id);
+          log[ck].push({ type: "retiro", riderId: photoIdFor(r), text: `${r.name} se retira`, category: CATEGORY_DATA[ck].label });
+          return;
+        }
+        // Contract truth: still under contract, no market decision needed.
+        if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
 
-export function runCategoryMarket(teams, riderStandingsForCategory, teamStandingsForCategory, freeAgentPool, log, categoryLabel, excludeTeamId, categoryKey, retiredIds) {
-  const updated = teams.map((t) => {
-    if (t.id === excludeTeamId) return t;
-    const tier = teamExpectationTier(t);
-    const [r1, r2] = t.riders;
-    const kept = [];
-    let teamBudget = t.budget || 0;
-    t.riders.forEach((r) => {
-      const teammatePts = r.id === r1?.id ? (riderStandingsForCategory[r2?.id]?.points || 0) : (riderStandingsForCategory[r1?.id]?.points || 0);
-      const evalLabel = evaluateRiderSeason(r, riderStandingsForCategory[r.id]?.points || 0, teammatePts, tier, r.crashesThisSeason || 0);
-      const retireCtx = {
-        lostSeat: false,
-        seasonsUnsigned: r.seasonsUnsigned || 0,
-        seasonRating: evalLabel,
-        isOfficial: t.tier === "Fábrica" || t.tier === "Puntero",
-        recentSevereInjury: !!(r.injury && (r.injury.severity === "grave" || r.injury.severity === "muyGrave")),
-      };
-      if (shouldRetire(r, retireCtx)) {
-        retiredIds?.add(r.id);
-        log.push({ type: "retiro", riderId: photoIdFor(r), text: `${r.name} se retira`, category: categoryLabel });
-        return;
-      }
-      // Contract truth: renewals no longer happen here at all — they're
-      // decided mid-season through the exact same negotiation engine as
-      // every other signing (see marketNegotiations.js's
-      // maybeGenerateAIRenewalNegotiations). If a rider is still at 0
-      // contract years by the time this runs, that renewal either didn't
-      // happen or was declined, and they simply become a free agent —
-      // there is no second, separate renewal system here anymore.
-      if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
-      freeAgentPool.push({ ...r, seasonsUnsigned: 0 });
-      // A young rider who was clearly out of his depth (not just an
-      // ordinary release) and still has a lower category to go back to
-      // reads as a relegation rather than a plain exit — same pool, same
-      // free-agent eligibility rules, only the framing changes.
-      const lowerKey = CATEGORY_DATA[categoryKey]?.lower;
-      const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabel);
-      if (isRelegation) {
-        log.push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: categoryLabel });
-      } else {
-        log.push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabel.toLowerCase()}`, category: categoryLabel });
-      }
-    });
-    return { ...t, riders: kept, budget: teamBudget };
-  });
-
-  return updated.map((t) => {
-    if (t.id === excludeTeamId || t.riders.length >= 2) return t;
-    const riders = [...t.riders];
-    let teamBudget = t.budget || 0;
-    while (riders.length < 2) {
-      const eligible = freeAgentPool
-        .filter((r) => isFreeAgentEligibleForCategory(r, categoryKey))
-        .sort((a, b) => overallRating(b) - overallRating(a));
-      const affordable = eligible.find((r) => Math.round(overallRating(r) * 5000) <= teamBudget);
-      if (!affordable) break; // nothing this team can pay for — the free promotion/rookie fallback picks up the vacancy
-      const signingCost = Math.round(overallRating(affordable) * 5000);
-      freeAgentPool.splice(freeAgentPool.findIndex((r) => r.id === affordable.id), 1);
-      teamBudget -= signingCost;
-      riders.push({ ...affordable, contractYears: 2, isNewTeamThisSeason: true, seasonsUnsigned: 0 });
-      log.push({ type: "fichaje", riderId: photoIdFor(affordable), text: `${affordable.name} ficha como agente libre por ${t.name}`, category: categoryLabel });
-    }
-    return { ...t, riders, budget: teamBudget };
-  });
-}
-
-/* Fills any teams still short of two riders by promoting the best
-   available talent from the category below — mutates `lowerTeams`. */
-
-
-export function fillFromLowerCategory(teams, lowerTeams, log, categoryLabel, lowerLabel) {
-  return teams.map((t) => {
-    if (t.riders.length >= 2) return t;
-    const riders = [...t.riders];
-    while (riders.length < 2) {
-      let best = null, bestTeamIdx = -1;
-      lowerTeams.forEach((lt, idx) => {
-        lt.riders.forEach((cand) => {
-          if (!best || overallRating(cand) > overallRating(best)) { best = cand; bestTeamIdx = idx; }
+        // A rider's own finishing position, judged against the same
+        // team-expectation band (scaled ×2 for two riders per team) the
+        // rest of the game already uses.
+        const riderExpectationVerdict = t.expectation
+          ? evaluateSeasonVsExpectation(riderPosById[r.id], { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 })
+          : null;
+        const continuity = computeContinuityScore(r, t, {
+          points, teammatePoints: teammatePts, tier, riderExpectationVerdict, teamExpectationVerdict,
+          crashes, injuriesThisSeason: r.injuriesThisSeason || 0,
         });
+        const teamWantsToRenew = Math.random() < continuityToRenewalProbability(continuity);
+        const riderWillingToStay = teamWantsToRenew ? riderWantsToStay(r, t, ck) : false;
+
+        if (teamWantsToRenew && riderWillingToStay) {
+          const years = proposedContractYears(r);
+          kept.push({ ...r, contractYears: years, salary: Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (0.95 + Math.random() * 0.2)) });
+          log[ck].push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
+          return;
+        }
+
+        pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
+        const lowerKey = CATEGORY_DATA[ck]?.lower;
+        const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
+        if (isRelegation) {
+          log[ck].push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: CATEGORY_DATA[ck].label });
+        } else if (!teamWantsToRenew) {
+          log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabelForRetire.toLowerCase()}`, category: CATEGORY_DATA[ck].label });
+        } else {
+          log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} decide no continuar en ${t.name} pese a la renovación ofrecida`, category: CATEGORY_DATA[ck].label });
+        }
       });
-      if (!best) break;
-      lowerTeams[bestTeamIdx] = { ...lowerTeams[bestTeamIdx], riders: lowerTeams[bestTeamIdx].riders.filter((r) => r.id !== best.id) };
-      riders.push({ ...best, contractYears: 2, isNewTeamThisSeason: true });
-      log.push({ type: "ascenso", riderId: photoIdFor(best), text: `${best.name} asciende de ${lowerLabel} a ${categoryLabel} (${t.name})`, category: categoryLabel });
-    }
-    return { ...t, riders };
+      return { ...t, riders: kept };
+    });
   });
+
+  // --- Fase 3: vacancies, ordered by how attractive the buying team is ---
+  const vacancies = [];
+  Object.entries(teamsByCategory).forEach(([ck, teams]) => {
+    teams.forEach((t) => {
+      if (t.id === categoriesData[ck].excludeTeamId) return;
+      for (let i = t.riders.length; i < 2; i++) vacancies.push({ categoryKey: ck, teamId: t.id });
+    });
+  });
+  vacancies.sort((a, b) => teamPullingPower(findTeam(teamsByCategory, b.categoryKey, b.teamId), b.categoryKey) - teamPullingPower(findTeam(teamsByCategory, a.categoryKey, a.teamId), a.categoryKey));
+
+  vacancies.forEach(({ categoryKey, teamId }) => {
+    const team = findTeam(teamsByCategory, categoryKey, teamId);
+    if (!team || team.riders.length >= 2) return; // already filled by an earlier vacancy in this same pass
+
+    const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+    const bikeAvgOffered = bikeAvgOf(team);
+    const ranked = eligible
+      .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))
+      .sort((a, b) => b.score - a.score);
+
+    let signed = null;
+    for (const { r } of ranked) {
+      const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[categoryKey].scale) * (1 + Math.random() * 0.15));
+      const accepted = wouldRiderJoin(r, team, categoryKey, offeredSalary, {
+        fromCategoryKey: r._fromCategoryKey || categoryKey, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
+      });
+      if (accepted) { signed = { rider: r, salary: offeredSalary }; break; }
+    }
+
+    if (signed) {
+      pool = pool.filter((r) => r.id !== signed.rider.id);
+      const years = proposedContractYears(signed.rider);
+      const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = signed.rider;
+      const newRider = { ...cleanRider, contractYears: years, salary: signed.salary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+      applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
+      const catRank = { motogp: 3, moto2: 2, moto3: 1 };
+      const fromCat = _fromCategoryKey;
+      let logType = "fichaje";
+      let text;
+      if (fromCat && fromCat !== categoryKey && catRank[categoryKey] > catRank[fromCat]) {
+        logType = "ascenso";
+        text = `${newRider.name} asciende de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${team.name})`;
+      } else if (fromCat && fromCat !== categoryKey && catRank[categoryKey] < catRank[fromCat]) {
+        logType = "descenso";
+        text = `${newRider.name} baja de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${team.name})`;
+      } else {
+        text = `${newRider.name} ficha por ${team.name}`;
+      }
+      log[categoryKey].push({ type: logType, riderId: photoIdFor(newRider), text, category: CATEGORY_DATA[categoryKey].label });
+    } else {
+      // Nobody in the whole pool wanted this seat — a fresh prospect
+      // gets their shot instead, exactly like the old rookie fallback.
+      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale);
+      applyRiderToTeam(teamsByCategory, categoryKey, teamId, rookie);
+      log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), text: `${rookie.name} debuta con ${team.name} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
+    }
+  });
+
+  return { teamsByCategory, pool };
 }
 
-/* Moto3 has no category below it — any remaining vacancies there are
-   filled with freshly generated young prospects. */
+function bikeAvgOf(team) {
+  if (!team?.bike) return 60;
+  const vals = Object.values(team.bike);
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
 
+function findTeam(teamsByCategory, categoryKey, teamId) {
+  return (teamsByCategory[categoryKey] || []).find((t) => t.id === teamId) || null;
+}
+
+function applyRiderToTeam(teamsByCategory, categoryKey, teamId, rider) {
+  teamsByCategory[categoryKey] = teamsByCategory[categoryKey].map((t) => (t.id === teamId ? { ...t, riders: [...t.riders, rider] } : t));
+}
 
 /**
  * A substitute's contract is temporary by definition — it exists only to
  * cover an injured rider's seat, and never survives past the season it
  * was created in unless the market separately hands them a real
  * contract. Called once per category at the very start of the
- * season-end market pass (before runCategoryMarket), so any substitute
- * released here is immediately back in the shared pool and eligible to
- * be signed permanently in that same market pass if a team happens to
- * want them — the "excepción" the design calls for falls out naturally
- * from the ordering, with no special-casing needed.
+ * season-end market pass, so any substitute released here is
+ * immediately back in the shared pool and eligible to be signed
+ * permanently in that same market pass if a team happens to want them.
  *
  * Every team ends up with `substitutes: {}`; nothing about `team.riders`
  * (the actual titular/contracted riders) is touched here.
@@ -191,20 +204,6 @@ export function releaseSubstitutesToPool(teams, freeAgentPool, log, categoryLabe
   });
   return { teams: teamsReleased, pool };
 }
-
-export function fillWithRookies(teams, log, categoryLabel, scale) {
-  return teams.map((t) => {
-    if (t.riders.length >= 2) return t;
-    const riders = [...t.riders];
-    while (riders.length < 2) {
-      const rookie = makeRookie(scale);
-      riders.push(rookie);
-      log.push({ type: "debut", riderId: photoIdFor(rookie), text: `${rookie.name} debuta con ${t.name} (${rookie.age} años)`, category: categoryLabel });
-    }
-    return { ...t, riders };
-  });
-}
-
 
 export function getLowerTeamsFor(catKey, otherCatsObj) {
   const lk = CATEGORY_DATA[catKey]?.lower;

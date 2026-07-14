@@ -7,6 +7,7 @@ import { bikeAvg } from "./bikeDevelopment.js";
 import { nextId } from "./idGenerator.js";
 import { clamp, pick, randInt } from "./random.js";
 import { finalizeRiderEconomics, initRiderPotentialFields } from "./riders.js";
+import { initialRiderPrestige, initialTeamPrestige } from "./prestige.js";
 import { initWarehouse } from "./warehouseEngine.js";
 
 export function instantiateTeams(categoryKey) {
@@ -31,10 +32,16 @@ export function instantiateTeams(categoryKey) {
       staff: { level: isBig ? 50 : 35, upgrading: null },
       activeProjects: [],
       warehouse: initWarehouse(),
+      prestige: initialTeamPrestige(t.tier, categoryKey),
       riders: t.riders.map((r) => {
         const base = { ...r, id: nextId(), seasonPoints: 0 };
         const withPotential = { ...base, ...initRiderPotentialFields(base) };
-        return finalizeRiderEconomics(withPotential, scale);
+        const finalized = finalizeRiderEconomics(withPotential, scale);
+        // Manually-assigned prestige (see data/teamsMotoGP.js) always
+        // wins over the formula — "asignación manual inicial... no
+        // recalcular automáticamente el prestigio inicial".
+        const prestige = Number.isFinite(r.prestige) ? r.prestige : initialRiderPrestige(finalized, categoryKey);
+        return { ...finalized, prestige };
       }),
     };
   });
@@ -64,41 +71,16 @@ export function makeRookie(scale) {
     seasonPoints: 0,
   };
   const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
-  return finalizeRiderEconomics(withPotential, scale ?? 0.32);
-}
-
-/**
- * A brand-new Red Bull Rookies Cup prospect — filling a vacant seat
- * during the category's annual grid refresh (section 20). Younger
- * (14-18) and a notch below even makeRookie's Moto3 debutants, but with
- * the same wide potential spread so future stars keep appearing, not
- * just filler. Always a single year of contract, exactly like every
- * other Rookies Cup rider.
- */
-export function makeRookiesCupProspect() {
-  const scale = CATEGORY_DATA.rookiescup.scale;
-  const base = {
-    name: `${pick(ROOKIE_FIRST)} ${pick(ROOKIE_LAST)}`,
-    nat: pick(ROOKIE_NATS),
-    age: randInt(14, 18),
-    potential: rollRookiePotential(),
-    tecnica: randInt(35, 55),
-    ritmo: randInt(35, 53),
-    adelantamientos: randInt(33, 52),
-    mental: randInt(28, 45),
-    adaptabilidad: randInt(26, 44),
-    fisico: randInt(42, 58),
-    seasonPoints: 0,
-  };
-  const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
-  return finalizeRiderEconomics(withPotential, scale, 1);
+  const finalized = finalizeRiderEconomics(withPotential, scale ?? 0.32);
+  return { ...finalized, prestige: initialRiderPrestige(finalized, "moto3") };
 }
 
 
 export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0 };
   const withPotential = { ...withId, ...initRiderPotentialFields(withId) };
-  return finalizeRiderEconomics(withPotential, 1, 0);
+  const finalized = finalizeRiderEconomics(withPotential, 1, 0);
+  return { ...finalized, prestige: initialRiderPrestige(finalized, "motogp") };
 }
 
 
