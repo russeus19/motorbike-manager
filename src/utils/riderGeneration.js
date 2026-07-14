@@ -80,7 +80,15 @@ export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0 };
   const withPotential = { ...withId, ...initRiderPotentialFields(withId) };
   const finalized = finalizeRiderEconomics(withPotential, 1, 0);
-  return { ...finalized, prestige: initialRiderPrestige(finalized, "motogp") };
+  // Every current entry in data/freeAgentLegends.js carries an explicit
+  // prestige value precisely because this pool mixes real MotoGP-level
+  // veterans with much younger Moto3/Moto2-tier prospects — always
+  // scoring against "motogp"'s 120-200 range regardless of who it was
+  // would badly overrate the younger ones. Only a future legend added
+  // without an explicit value falls back to the formula (still using
+  // motogp's range, since that's this pool's typical case).
+  const prestige = Number.isFinite(base.prestige) ? base.prestige : initialRiderPrestige(finalized, "motogp");
+  return { ...finalized, prestige };
 }
 
 

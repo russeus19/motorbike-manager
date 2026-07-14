@@ -6,7 +6,7 @@ import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { badgeEmoji, computeMarketValue, computeReleaseAtSeasonEndCost, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
-import { countConfirmedIncomingForTeam } from "../utils/marketNegotiations.js";
+import { nextSeasonCommittedRiderCount } from "../utils/marketNegotiations.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
 import { clamp } from "../utils/random.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
@@ -106,9 +106,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // contracts (staying riders + confirmed incoming signings), undoing a
   // "designar para quedar libre" would over-commit the roster to 3
   // riders for 2 spots — the exact scenario this fix closes.
-  const nextSeasonCommittedCount = playerTeam
-    ? playerTeam.riders.filter((r) => !r.releasedAtSeasonEnd).length + countConfirmedIncomingForTeam(marketNegotiations, "player")
-    : 0;
+  const nextSeasonCommittedCount = nextSeasonCommittedRiderCount(playerTeam, marketNegotiations, "player");
   const rosterPlanningLocked = nextSeasonCommittedCount >= 2;
 
   // Shared input fields for both a fresh offer and a counter-offer

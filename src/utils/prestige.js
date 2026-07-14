@@ -40,6 +40,23 @@ function clampPrestige(value, categoryKey) {
   return Math.round(clamp(value, 0, ceilingFor(categoryKey)));
 }
 
+// "Evitar saturar la zona alta": within the last 30 points below a
+// category's ceiling, positive prestige gains shrink progressively —
+// down to 15% of their nominal value right at the top. Only dampens
+// gains, never losses, so a rider already near the ceiling can still
+// drop normally after a bad season. This is what makes 190-200 in
+// MotoGP genuinely exclusive — reaching it takes several excellent
+// seasons in a row, never a single big year.
+function dampenGainNearCeiling(delta, current, categoryKey) {
+  if (delta <= 0) return delta;
+  const max = ceilingFor(categoryKey);
+  const zoneWidth = 30;
+  const distanceFromCeiling = max - current;
+  if (distanceFromCeiling >= zoneWidth) return delta;
+  const factor = clamp(0.15 + (distanceFromCeiling / zoneWidth) * 0.85, 0.15, 1);
+  return delta * factor;
+}
+
 /* ------------------------------------------------------------------ */
 /* Initial values — only ever used when a rider/team doesn't have a    */
 /* prestige value yet (new game, new rookie, newly generated free      */
@@ -133,44 +150,49 @@ export function evolveRiderPrestigeForSeason(rider, ctx) {
   if (!racedThisCategory) {
     // Out of view for a whole season (injury, no seat, substituted away
     // the whole year) — a mild fade, never a collapse.
-    return clampPrestige(current - 4, categoryKey);
+    return clampPrestige(current - 2, categoryKey);
   }
 
   let delta = 0;
-  // Resultados deportivos: el factor dominante — un título o un Top 5
-  // deben notarse de inmediato, no diluirse frente a potencial o edad.
-  if (badge === "campeon") delta += 55;
-  else if (badge === "subcampeon") delta += 38;
-  else if (badge === "tercero") delta += 26;
+  // Resultados deportivos: el factor de mayor peso, pero con una
+  // magnitud contenida — el prestigio se construye durante varias
+  // temporadas, nunca de golpe en una sola. Un campeonato es un
+  // incremento pequeño pero perceptible, no un salto de decenas de
+  // puntos; un Top 5 que no sea podio apenas debe notarse.
+  if (badge === "campeon") delta += 8;
+  else if (badge === "subcampeon") delta += 5;
+  else if (badge === "tercero") delta += 3;
   else if (Number.isFinite(position)) {
     // Umbrales absolutos (Top 5 / Top 10), no una fracción de la
-    // parrilla — terminar 6º en una parrilla de 30 pilotos debe seguir
-    // representando un resultado sobresaliente, no un "aprobado justo".
-    if (position <= 5) delta += 20;
-    else if (position <= 10) delta += 9;
-    else if (Number.isFinite(totalRiders) && position >= totalRiders * 0.85) delta -= 6;
-    else if (Number.isFinite(totalRiders) && position >= totalRiders * 0.65) delta -= 2;
+    // parrilla, para que un buen resultado en una parrilla grande no
+    // quede injustamente diluido — pero la magnitud es intencionadamente
+    // muy pequeña frente a un podio real.
+    if (position <= 5) delta += 1.5;
+    else if (position <= 10) delta += 0.5;
+    else if (Number.isFinite(totalRiders) && position >= totalRiders * 0.85) delta -= 4;
+    else if (Number.isFinite(totalRiders) && position >= totalRiders * 0.65) delta -= 1.5;
   }
-  // Historial acumulado — además del propio arrastre del valor de
-  // prestigio (que ya representa temporadas pasadas por construcción),
-  // varios títulos/podios previos dan un pequeño empujón adicional de
-  // consistencia demostrada.
+  // Historial acumulado — la trayectoria de varias temporadas debe pesar
+  // más que una sola, así que varios títulos/podios previos siguen
+  // dando un pequeño empujón adicional, aunque moderado.
   const pastBadgeCount = (rider.history || []).filter((h) => h.badge).length;
-  delta += Math.min(pastBadgeCount, 4) * 2.2;
+  delta += Math.min(pastBadgeCount, 4) * 1;
 
   // Clearly beating (or being beaten by) a teammate on the same
-  // equipment is one of the paddock's favourite yardsticks.
+  // equipment is one of the paddock's favourite yardsticks — un matiz,
+  // no un factor grande por sí solo.
   if (Number.isFinite(teammatePoints)) {
-    if (points > teammatePoints * 1.4) delta += 4;
-    else if (points < teammatePoints * 0.55) delta -= 4;
+    if (points > teammatePoints * 1.4) delta += 1.5;
+    else if (points < teammatePoints * 0.55) delta -= 1.5;
   }
-  if (crashes >= 8) delta -= 3;
-  if (crashes >= 14) delta -= 3;
-  if (injuries >= 2) delta -= 2;
+  if (crashes >= 8) delta -= 1.5;
+  if (crashes >= 14) delta -= 1.5;
+  if (injuries >= 2) delta -= 1;
   // Edad, potencial y moral: factores menores por diseño — nunca deben
   // compensar varias temporadas sin resultados.
-  if ((rider.age ?? 0) >= 34) delta -= 1;
+  if ((rider.age ?? 0) >= 34) delta -= 0.5;
 
+  delta = dampenGainNearCeiling(delta, current, categoryKey);
   return clampPrestige(current + delta, categoryKey);
 }
 
@@ -188,16 +210,17 @@ export function evolveTeamPrestigeForSeason(team, ctx) {
   let delta = 0;
   if (position && totalTeams) {
     const frac = position / totalTeams;
-    if (position === 1) delta += 12;
-    else if (frac <= 0.25) delta += 6;
-    else if (frac >= 0.85) delta -= 6;
-    else if (frac >= 0.6) delta -= 2;
+    if (position === 1) delta += 4;
+    else if (frac <= 0.25) delta += 2;
+    else if (frac >= 0.85) delta -= 2;
+    else if (frac >= 0.6) delta -= 1;
   }
-  if (expectationVerdict === "extraordinaria") delta += 8;
-  else if (expectationVerdict === "sobresaliente") delta += 4;
-  else if (expectationVerdict === "por_debajo") delta -= 4;
-  else if (expectationVerdict === "decepcionante") delta -= 8;
+  if (expectationVerdict === "extraordinaria") delta += 3;
+  else if (expectationVerdict === "sobresaliente") delta += 1.5;
+  else if (expectationVerdict === "por_debajo") delta -= 1.5;
+  else if (expectationVerdict === "decepcionante") delta -= 3;
 
+  delta = dampenGainNearCeiling(delta, current, categoryKey);
   return clampPrestige(current + delta, categoryKey);
 }
 

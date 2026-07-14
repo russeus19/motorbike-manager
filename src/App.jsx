@@ -23,7 +23,7 @@ import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderInteg
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
 import { buildGpHistoryEntry } from "./utils/raceHistory.js";
-import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, countConfirmedIncomingForTeam, createNegotiation, modifyOffer, needsTeamCompensation, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
+import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, createNegotiation, modifyOffer, needsTeamCompensation, nextSeasonCommittedRiderCount, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
 import { clamp } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
@@ -729,9 +729,7 @@ export default function MotorbikeManager() {
      equipo solo podrá tener dos pilotos con contrato para la siguiente
      temporada"). */
   function nextSeasonPlayerRiderCount() {
-    if (!playerTeam) return 0;
-    const staying = playerTeam.riders.filter((r) => !r.releasedAtSeasonEnd).length;
-    return staying + countConfirmedIncomingForTeam(marketNegotiations, "player");
+    return nextSeasonCommittedRiderCount(playerTeam, marketNegotiations, "player");
   }
 
   /* Starts a new negotiation for the player — "Hacer una oferta" (rider
@@ -928,7 +926,27 @@ export default function MotorbikeManager() {
     const cost = computeReleaseAtSeasonEndCost(rider, scale);
     if (released && cost > budget) return;
     setBudget((b) => (released ? b - cost : b + cost));
-    setPlayerTeam((t) => ({ ...t, riders: t.riders.map((r) => (r.id === riderId ? { ...r, releasedAtSeasonEnd: released } : r)) }));
+    setPlayerTeam((t) => {
+      const nextRiders = t.riders.map((r) => (r.id === riderId ? { ...r, releasedAtSeasonEnd: released } : r));
+      return { ...t, riders: nextRiders };
+    });
+    // Designating a rider to leave cancels any renewal attempt still in
+    // progress for them — without this, a renewal negotiation that
+    // resolves on a later Grand Prix would quietly flip
+    // releasedAtSeasonEnd back to false (applyRenewalsToTeam) and
+    // silently undo this decision, on top of over-committing the
+    // roster to more riders than the two available seats.
+    if (released) {
+      setGame((g) => {
+        if (!g) return g;
+        const cancelled = (g.marketNegotiations || []).map((n) => (
+          n.riderId === riderId && n.toTeamId === "player" && !["failed", "withdrawn", "confirmed", "applied"].includes(n.status)
+            ? { ...n, status: "withdrawn" }
+            : n
+        ));
+        return { ...g, marketNegotiations: cancelled };
+      });
+    }
   }
 
   function runRace() {

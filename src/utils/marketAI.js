@@ -188,18 +188,31 @@ export function scoreCandidateForTeam(rider, team, ctx) {
   const { teamBudget } = ctx;
   const ca = overallRating(rider);
   const personality = teamPersonality(team);
-  // Prestigio y resultados recientes son el criterio dominante — un
-  // piloto de gran potencial pero sin resultados nunca debe adelantar a
-  // uno con un historial demostrado (campeón, Top 5...).
-  let score = ca * 0.45;
-  score += (rider.prestige ?? 60) * 0.325;
+  const upside = (rider.pa ?? ca) - ca;
+
+  // Equilibrio explícito entre los tres conceptos que deben valorarse
+  // en conjunto — prestigio (reputación), calidad actual (nivel real
+  // hoy) y potencial (margen de mejora futuro) — ninguno domina por
+  // completo la decisión.
+  let score = ca * 0.4;
+  score += (rider.prestige ?? 60) * 0.28;
+  score += clamp(upside, 0, 30) * 0.35;
 
   const lastEntry = (rider.history || [])[(rider.history || []).length - 1];
   if (Number.isFinite(lastEntry?.position)) {
-    if (lastEntry.position <= 3) score += 22;
-    else if (lastEntry.position <= 5) score += 14;
-    else if (lastEntry.position <= 10) score += 6;
+    if (lastEntry.position <= 3) score += 18;
+    else if (lastEntry.position <= 5) score += 11;
+    else if (lastEntry.position <= 10) score += 5;
   }
+
+  // Piloto veterano sin proyecto reciente: aunque conserve un prestigio
+  // histórico razonable, su atractivo real para el mercado debe ser
+  // claramente inferior — habitualmente ejerce de piloto probador o ya
+  // está fuera de la parrilla, no es un candidato habitual para una
+  // plaza oficial competitiva.
+  const hasRecentResult = Number.isFinite(lastEntry?.position) && lastEntry.position <= 15;
+  if (rider.age >= 33 && !hasRecentResult) score -= 24;
+  else if (rider.age >= 36) score -= 10;
 
   score += ((rider.morale ?? 60) - 50) * 0.08;
   if (Number.isFinite(rider.salary) && teamBudget) {
@@ -217,10 +230,7 @@ export function scoreCandidateForTeam(rider, team, ctx) {
   if (personality === "juventud") score += rider.age <= 23 ? 5 : rider.age >= 30 ? -4 : 0;
   else if (personality === "experiencia") score += rider.age >= 27 ? 4 : rider.age <= 21 ? -3 : 0;
   else if (personality === "rendimiento") score += ca >= 78 ? 4 : ca < 60 ? -4 : 0;
-  else if (personality === "potencial") {
-    const upside = (rider.pa ?? ca) - ca;
-    score += upside >= 15 ? 5 : upside <= 3 ? -2 : 0;
-  }
+  else if (personality === "potencial") score += upside >= 15 ? 5 : upside <= 3 ? -2 : 0;
 
   return score;
 }

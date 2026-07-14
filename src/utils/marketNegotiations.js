@@ -1002,6 +1002,29 @@ export function countConfirmedIncomingForTeam(marketNegotiations, teamId) {
 }
 
 /**
+ * How many distinct riders are already committed to a team for next
+ * season — riders currently on the roster who aren't marked to leave,
+ * plus anyone with a confirmed incoming signing, counted by rider ID so
+ * the same person is never counted twice. That double-count was a real
+ * bug: if a renewal or a stale negotiation ever left both a roster
+ * entry AND a separate "confirmed" negotiation pointing at the exact
+ * same rider, the naive staying+incoming sum could read "2 committed"
+ * from a single actual rider, wrongly locking the roster-planning
+ * screen (undo release / new offers) even though only one seat was
+ * really taken.
+ */
+export function nextSeasonCommittedRiderCount(team, marketNegotiations, teamId = "player") {
+  if (!team) return 0;
+  const committedIds = new Set(
+    (team.riders || []).filter((r) => !r.releasedAtSeasonEnd).map((r) => r.id)
+  );
+  (marketNegotiations || [])
+    .filter((n) => n.toTeamId === teamId && n.status === "confirmed")
+    .forEach((n) => committedIds.add(n.riderId));
+  return committedIds.size;
+}
+
+/**
  * One full market "tick" — called once per Grand Prix. Generates this
  * race's rumors for every category, resolves any negotiation whose time
  * has come, and occasionally has a rival team make an unsolicited offer
