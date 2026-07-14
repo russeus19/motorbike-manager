@@ -130,6 +130,15 @@ export function evolveRider(r, ctx) {
 export function evolveRoster(riders, ctxById) {
   const notable = [];
   const out = riders.map((r) => {
+    if (r.justSignedThisTransition) {
+      // They haven't raced a single race for this team yet — no aging,
+      // no attribute evolution, no contract decrement this time. They'll
+      // evolve normally at the next transition, after actually playing
+      // their first season (isNewTeamThisSeason is left untouched for
+      // that — see the isNewTeamThisSeason branch above).
+      const { justSignedThisTransition, ...rest } = r;
+      return rest;
+    }
     const { rider, events } = evolveRider(r, ctxById[r.id] || {});
     if (events.length) notable.push({ name: r.name, events });
     return rider;

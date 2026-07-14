@@ -4,7 +4,7 @@ import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, over
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears } from "./marketAI.js";
-import { teamExpectationTier } from "./seasonHistory.js";
+import { buildSeasonHistoryEntry, teamExpectationTier } from "./seasonHistory.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
 /**
@@ -337,7 +337,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     }
     if (!rider) return;
 
-    const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === rider.id && !["failed", "withdrawn"].includes(n.status));
+    const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === rider.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
     if (alreadyNegotiating) return;
 
     const marketValue = computeMarketValue(rider, scale);
@@ -437,7 +437,7 @@ export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, rou
   const heat = marketHeat(round, totalRounds);
   if (!rivalTeams.length || Math.random() > heat * 0.5) return null;
   const candidates = playerTeam.riders.filter((r) => (r.contractYears ?? 0) > 0 && !(r.injury && r.injury.sidelined)
-    && !(marketNegotiations || []).some((n) => n.riderId === r.id && !["failed", "withdrawn"].includes(n.status)));
+    && !(marketNegotiations || []).some((n) => n.riderId === r.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status)));
   if (!candidates.length) return null;
   const rider = pick(candidates);
   const suitor = pick(rivalTeams);
@@ -470,7 +470,7 @@ export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, rou
  * becomes a free agent for the normal end-of-season market to pick up —
  * a reasonable outcome, not a broken one.
  */
-export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations }) {
+export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations, standingsByCategory = {} }) {
   const confirmed = (marketNegotiations || []).filter((n) => n.status === "confirmed");
   if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
 
@@ -502,20 +502,20 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   function removeFromEverywhere(riderId, categoryKey) {
     if (categoryKey === category) {
       const ownIdx = nextPlayerRiders.findIndex((r) => r.id === riderId);
-      if (ownIdx >= 0) return nextPlayerRiders.splice(ownIdx, 1)[0];
+      if (ownIdx >= 0) return { rider: nextPlayerRiders.splice(ownIdx, 1)[0], fromTeamName: playerTeam.name };
       for (const t of nextRivals) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
-        if (idx >= 0) return t.riders.splice(idx, 1)[0];
+        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: t.name };
       }
-      return null;
+      return { rider: null, fromTeamName: null };
     }
     const catState = nextOther[categoryKey];
-    if (!catState) return null;
+    if (!catState) return { rider: null, fromTeamName: null };
     for (const t of catState.teams) {
       const idx = t.riders.findIndex((r) => r.id === riderId);
-      if (idx >= 0) return t.riders.splice(idx, 1)[0];
+      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: t.name };
     }
-    return null;
+    return { rider: null, fromTeamName: null };
   }
 
   function findTeamInCategory(teamId, categoryKey) {
@@ -531,7 +531,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       strandedNegotiationIds.push(neg.id);
       return;
     }
-    const rider = removeFromEverywhere(neg.riderId, neg.categoryKey);
+    const { rider, fromTeamName } = removeFromEverywhere(neg.riderId, neg.categoryKey);
     if (!rider) {
       strandedNegotiationIds.push(neg.id);
       return;
@@ -542,6 +542,33 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       contractYears: neg.riderTerms?.years ?? 2,
       salary: neg.riderTerms?.salary ?? rider.salary,
       isNewTeamThisSeason: true,
+      // The season-history entry recorded right after this (see
+      // utils/seasonHistory.js's recordSeasonHistory) must credit the
+      // team this rider actually raced for all season, not the new one
+      // they're only joining now — without this, a rider signed mid-
+      // season away from another team would get their just-finished
+      // season attributed to (or entirely missed by) whichever team
+      // ends up holding their roster slot by the time history gets
+      // recorded, several steps later in this same transition.
+      _racedForTeamName: fromTeamName,
+      // Distinct from isNewTeamThisSeason on purpose: this rider is
+      // being placed on their new team in this exact transition, before
+      // evolveRoster runs later in the same pass — they haven't raced a
+      // single race for this team yet, so evolveRoster must skip them
+      // entirely this time (see utils/riderEvolution.js) instead of
+      // aging them up and burning a year off the contract they just
+      // signed before their first season even starts.
+      justSignedThisTransition: true,
+      // A player signing that crosses categories (promoting/relegating
+      // a rider straight into their own team) needs its history entry
+      // computed right here, against the rider's ACTUAL category's
+      // standings — utils/seasonHistory.js's per-category sweep only
+      // ever checks the DESTINATION team's own category standings, which
+      // would never contain a rider who raced somewhere else entirely,
+      // and would otherwise silently skip their whole season.
+      ...(neg.toTeamId === "player" && neg.categoryKey !== category
+        ? { _pendingHistoryEntry: buildSeasonHistoryEntry(neg.riderId, fromTeamName, standingsByCategory[neg.categoryKey] || {}, neg.categoryKey, neg.createdSeason) }
+        : {}),
     };
     let placed = false;
     if (neg.toTeamId === "player") {
@@ -1015,8 +1042,18 @@ export function countConfirmedIncomingForTeam(marketNegotiations, teamId) {
  */
 export function nextSeasonCommittedRiderCount(team, marketNegotiations, teamId = "player") {
   if (!team) return 0;
+  // A rider who's already confirmed to sign elsewhere next season is
+  // leaving regardless of whether the player also flipped "designar
+  // para quedar libre" — the game already told them their contract is
+  // decided, so the seat should be free to fill without that extra,
+  // redundant step.
+  const leavingIds = new Set(
+    (marketNegotiations || [])
+      .filter((n) => n.fromTeamId === teamId && n.status === "confirmed")
+      .map((n) => n.riderId)
+  );
   const committedIds = new Set(
-    (team.riders || []).filter((r) => !r.releasedAtSeasonEnd).map((r) => r.id)
+    (team.riders || []).filter((r) => !r.releasedAtSeasonEnd && !leavingIds.has(r.id)).map((r) => r.id)
   );
   (marketNegotiations || [])
     .filter((n) => n.toTeamId === teamId && n.status === "confirmed")

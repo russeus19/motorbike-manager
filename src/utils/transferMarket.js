@@ -104,6 +104,71 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     });
   });
 
+  // --- Fase 2.5: cross-category promotion — real teams actively chase
+  // the best of the category below instead of only ever drawing from
+  // whoever happens to already be a free agent. Without this, a Moto2
+  // champion who (correctly) renews with their own team would never
+  // become available to MotoGP, and MotoGP's vacancies would only ever
+  // be filled from the leftover pool of released/free riders — exactly
+  // backwards from how real promotions work. A rider poached this way
+  // leaves their own category's roster even if that team had just
+  // renewed them, the same way a real MotoGP call-up overrides a Moto2
+  // rider's plan to stay. Whatever seat they leave behind is a genuine
+  // new vacancy, picked up naturally by Fase 3 below.
+  const PROMOTION_PAIRS = [{ higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" }];
+  PROMOTION_PAIRS.forEach(({ higher, lower }) => {
+    if (!teamsByCategory[higher] || !teamsByCategory[lower]) return;
+    const lowerStandings = categoriesData[lower]?.riderStandings || {};
+    const rankedLowerIds = Object.entries(lowerStandings).sort((a, b) => b[1].points - a[1].points).map(([id]) => id);
+
+    // Only genuine Top-10 finishers of the category below are ever
+    // actively chased this way — everyone else is already covered
+    // naturally once they hit the shared pool in Fase 3.
+    const candidatePool = [];
+    rankedLowerIds.slice(0, 10).forEach((riderId) => {
+      for (const t of teamsByCategory[lower]) {
+        const idx = t.riders.findIndex((r) => r.id === riderId);
+        if (idx >= 0) {
+          const r = t.riders[idx];
+          if (isFreeAgentEligibleForCategory(r, higher)) candidatePool.push({ rider: r, fromTeamId: t.id });
+          break;
+        }
+      }
+    });
+    if (!candidatePool.length) return;
+
+    const higherTeamsOrder = [...teamsByCategory[higher]]
+      .filter((t) => t.id !== categoriesData[higher].excludeTeamId)
+      .sort((a, b) => teamPullingPower(b, higher) - teamPullingPower(a, higher));
+
+    higherTeamsOrder.forEach(({ id: teamId }) => {
+      let liveTeam = findTeam(teamsByCategory, higher, teamId);
+      while (liveTeam && liveTeam.riders.length < 2 && candidatePool.length) {
+        const scored = candidatePool
+          .map((c, idx) => ({ idx, score: scoreCandidateForTeam(c.rider, liveTeam, { categoryKey: higher, teamBudget: liveTeam.budget }) }))
+          .sort((a, b) => b.score - a.score);
+        let signedIdx = null, signedSalary = null;
+        for (const { idx } of scored) {
+          const c = candidatePool[idx];
+          const offeredSalary = Math.round(computeSalary(c.rider, CATEGORY_DATA[higher].scale) * (1.15 + Math.random() * 0.25));
+          const accepted = wouldRiderJoin(c.rider, liveTeam, higher, offeredSalary, {
+            fromCategoryKey: lower, bikeAvgOffered: bikeAvgOf(liveTeam), currentBikeAvg: bikeAvgOf(findTeam(teamsByCategory, lower, c.fromTeamId)),
+          });
+          if (accepted) { signedIdx = idx; signedSalary = offeredSalary; break; }
+        }
+        if (signedIdx === null) break; // nobody left in the pool wants THIS particular team
+        const { rider, fromTeamId } = candidatePool[signedIdx];
+        teamsByCategory[lower] = teamsByCategory[lower].map((t) => (t.id === fromTeamId ? { ...t, riders: t.riders.filter((r) => r.id !== rider.id) } : t));
+        const years = proposedContractYears(rider);
+        const newRider = { ...rider, contractYears: years, salary: signedSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+        applyRiderToTeam(teamsByCategory, higher, teamId, newRider);
+        log[higher].push({ type: "ascenso", riderId: photoIdFor(newRider), text: `${newRider.name} asciende de ${CATEGORY_DATA[lower].label} a ${CATEGORY_DATA[higher].label} (${findTeam(teamsByCategory, higher, teamId).name})`, category: CATEGORY_DATA[higher].label });
+        candidatePool.splice(signedIdx, 1);
+        liveTeam = findTeam(teamsByCategory, higher, teamId);
+      }
+    });
+  });
+
   // --- Fase 3: vacancies, ordered by how attractive the buying team is ---
   const vacancies = [];
   Object.entries(teamsByCategory).forEach(([ck, teams]) => {

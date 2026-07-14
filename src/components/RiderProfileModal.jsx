@@ -86,8 +86,8 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   const existingNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && n.toTeamId === "player" && n.status !== "failed");
   // Single source of truth for "this rider's future is already
   // decided" — a confirmed signing or an already-applied renewal with
-  // ANY team, not just the player's. Once this exists, the rider is
-  // off the market entirely, regardless of who they signed with.
+  // ANY team, not just the player's. Used for the informational banner
+  // below (kept for renewals too — "ya ha renovado" should still show).
   const signedNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && ["confirmed", "applied"].includes(n.status));
   const isSignedWithPlayer = signedNegotiation?.toTeamId === "player";
   const isConfirmedForUs = isSignedWithPlayer;
@@ -100,7 +100,13 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // negotiation purposes.
   const offerNeedsTeamDeal = !isOwnRider && contractYearsLeft > 1;
   const offerLabel = isOwnRider ? "Iniciar renovación de contrato" : (offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar");
-  const offerEligible = !existingNegotiation && !signedNegotiation && isFreeAgentEligibleForCategory(rider, category)
+  // A renewal with their CURRENT team never blocks a competing offer —
+  // only an actual signing elsewhere (a real, specific commitment to a
+  // different team) takes them fully off the market. The rider still
+  // gets to weigh a genuinely better offer against the renewal they
+  // already signed, same as the real market.
+  const blocksNewOffer = signedNegotiation && (signedNegotiation.kind !== "renewal" || isSignedWithPlayer);
+  const offerEligible = !existingNegotiation && !blocksNewOffer && isFreeAgentEligibleForCategory(rider, category)
     && (isOwnRider ? !rider.releasedAtSeasonEnd : canStartNewOffer);
   // Once both of next season's seats are already committed through firm
   // contracts (staying riders + confirmed incoming signings), undoing a

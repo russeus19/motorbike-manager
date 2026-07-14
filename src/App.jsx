@@ -743,7 +743,12 @@ export default function MotorbikeManager() {
     const fromTeam = findTeamOwningRider(rider.id, categoryKey);
     const isRenewal = fromTeam?.id === "player";
     if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) return;
-    const alreadyNegotiating = marketNegotiations.some((n) => n.riderId === rider.id && !["failed", "withdrawn"].includes(n.status));
+    // A completed (or in-progress) renewal with their CURRENT team never
+    // blocks a competing offer — the game already tells the player it
+    // happened (see RiderProfileModal's "ya ha renovado" banner), but
+    // the rider should still be free to weigh a genuinely better offer
+    // from elsewhere against staying, exactly like in the real paddock.
+    const alreadyNegotiating = marketNegotiations.some((n) => n.riderId === rider.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
     if (alreadyNegotiating) return;
     const needsComp = needsTeamCompensation(rider, fromTeam?.id ?? null, "player");
     const negotiation = createNegotiation({
@@ -1242,8 +1247,10 @@ export default function MotorbikeManager() {
     const playerTeamBeforeMarket = { ...ctxPlayerTeam, riders: resolvedPlayerRiders };
     const { released: releasedAtEnd } = applyReleasedAtSeasonEnd(playerTeamBeforeMarket);
     const playerTeamAfterReleases = { ...playerTeamBeforeMarket, riders: playerTeamBeforeMarket.riders.filter((r) => !r.releasedAtSeasonEnd) };
+    const standingsByCategory = { [ctxCategory]: riderStandings };
+    Object.entries(ctxOtherCategories).forEach(([k, v]) => { standingsByCategory[k] = v.riderStandings; });
     const afterNegotiations = applyConfirmedNegotiations({
-      playerTeam: playerTeamAfterReleases, rivalTeams: ctxRivalTeams, otherCategories: ctxOtherCategories, category: ctxCategory, marketNegotiations,
+      playerTeam: playerTeamAfterReleases, rivalTeams: ctxRivalTeams, otherCategories: ctxOtherCategories, category: ctxCategory, marketNegotiations, standingsByCategory,
     });
     const playerTeamResolved = afterNegotiations.playerTeam;
     const evolvedRivalsSource = afterNegotiations.rivalTeams;

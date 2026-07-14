@@ -4,17 +4,45 @@ import { evolveRiderPrestigeForSeason } from "./prestige.js";
 import { clamp } from "./random.js";
 import { overallRating } from "./riders.js";
 
+/** Standalone version of the ranking buildHistoryEntryIfRaced does
+ * internally, usable for a single rider against any standings object —
+ * needed when a rider's season has to be recorded against a DIFFERENT
+ * category's standings than the one their current team races in (see
+ * utils/marketNegotiations.js's applyConfirmedNegotiations, for a
+ * player signing that promotes/relegates someone directly). Returns
+ * null if the rider has no entry in that standings object (never
+ * raced there this season). */
+export function buildSeasonHistoryEntry(riderId, teamName, standingsForCategory, categoryKey, seasonNum) {
+  if (!standingsForCategory?.[riderId]) return null;
+  const sorted = Object.entries(standingsForCategory).sort((a, b) => b[1].points - a[1].points);
+  const pos = sorted.findIndex(([id]) => id === riderId) + 1;
+  if (!pos) return null;
+  const points = standingsForCategory[riderId]?.points ?? 0;
+  const badge = pos === 1 ? "campeon" : pos === 2 ? "subcampeon" : pos === 3 ? "tercero" : null;
+  return { season: seasonNum, category: categoryKey, position: pos, teamName, points, badge };
+}
+
 /* Builds this season's history entry for a single rider, if they actually
    have a standings entry (i.e. they raced at least once this season under
    this category/team). Shared by both titular riders and substitutes below
    so the exact same rules apply to either — no duplicated logic. */
 function buildHistoryEntryIfRaced(rider, teamName, standingsForCategory, posById, categoryKey, seasonNum) {
-  const pos = posById[rider.id];
-  if (!pos) return rider;
-  const points = standingsForCategory[rider.id]?.points ?? 0;
+  const { _racedForTeamName, _pendingHistoryEntry, ...cleanRider } = rider;
+  // A cross-category signing (e.g. a player promoting a Moto2 rider
+  // straight into their MotoGP team) already had its entry computed
+  // against the rider's ORIGINAL category's standings at the moment the
+  // negotiation was applied — this category's own standings would never
+  // contain them (they never raced a round here), so the normal lookup
+  // below could never find them on its own.
+  if (_pendingHistoryEntry) {
+    return { ...cleanRider, history: [...(cleanRider.history || []), _pendingHistoryEntry] };
+  }
+  const pos = posById[cleanRider.id];
+  if (!pos) return cleanRider;
+  const points = standingsForCategory[cleanRider.id]?.points ?? 0;
   const badge = pos === 1 ? "campeon" : pos === 2 ? "subcampeon" : pos === 3 ? "tercero" : null;
-  const entry = { season: seasonNum, category: categoryKey, position: pos, teamName, points, badge };
-  return { ...rider, history: [...(rider.history || []), entry] };
+  const entry = { season: seasonNum, category: categoryKey, position: pos, teamName: _racedForTeamName || teamName, points, badge };
+  return { ...cleanRider, history: [...(cleanRider.history || []), entry] };
 }
 
 /* Every rider who raced at least one Grand Prix this season under this
@@ -34,13 +62,20 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
     const [r1, r2] = t.riders;
     const riders = t.riders.map((r) => {
       const withHistory = buildHistoryEntryIfRaced(r, t.name, standingsForCategory, posById, categoryKey, seasonNum);
-      const pos = posById[r.id];
-      const teammatePoints = r.id === r1?.id ? standingsForCategory[r2?.id]?.points : standingsForCategory[r1?.id]?.points;
       const lastEntry = withHistory.history?.[withHistory.history.length - 1];
+      // A cross-category signing already has its real season captured in
+      // _pendingHistoryEntry (built against their ORIGINAL category's
+      // standings) — use that season's actual result for the prestige
+      // evolution too, instead of this category's standings, which
+      // would never contain them and would otherwise read as "didn't
+      // race at all this season".
+      const usingPending = !!r._pendingHistoryEntry;
+      const pos = usingPending ? r._pendingHistoryEntry.position : posById[r.id];
+      const teammatePoints = r.id === r1?.id ? standingsForCategory[r2?.id]?.points : standingsForCategory[r1?.id]?.points;
       const prestige = evolveRiderPrestigeForSeason(withHistory, {
-        position: pos, totalRiders, points: standingsForCategory[r.id]?.points ?? 0,
-        teammatePoints, badge: pos ? lastEntry?.badge : null,
-        crashes: r.crashesThisSeason || 0, categoryKey, racedThisCategory: !!pos,
+        position: pos, totalRiders, points: usingPending ? r._pendingHistoryEntry.points : (standingsForCategory[r.id]?.points ?? 0),
+        teammatePoints: usingPending ? null : teammatePoints, badge: pos ? lastEntry?.badge : null,
+        crashes: r.crashesThisSeason || 0, categoryKey, racedThisCategory: usingPending ? true : !!pos,
       });
       return { ...withHistory, prestige };
     });
