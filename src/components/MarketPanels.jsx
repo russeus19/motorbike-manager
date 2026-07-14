@@ -16,7 +16,7 @@ const SWIPE_THRESHOLD_PX = 40;
 function LinkifiedText({ text, entities, onOpenRiderProfileById, onOpenTeamProfileById }) {
   const segments = linkifyNewsText(text, entities);
   return (
-    <p className="text-sm truncate" style={{ color: COLORS.text }}>
+    <p className="text-sm leading-snug" style={{ color: COLORS.text, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
       {segments.map((seg, i) => {
         if (seg.type === "text") return <span key={i}>{seg.value}</span>;
         const isRider = seg.type === "rider";
@@ -92,13 +92,13 @@ export function RumorsPanel({ marketRumors, accent, playerTeam, rivalTeams, othe
         <p className="text-sm" style={{ color: COLORS.muted }}>Todavía no hay rumores de mercado. Volvé a mirar tras disputar algún Gran Premio más.</p>
       ) : (
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          <div className="flex items-center gap-3">
-            <button onClick={() => goTo(index - 1)} className="flex-shrink-0 text-lg leading-none px-1" style={{ color: COLORS.muted }} aria-label="Rumor anterior">‹</button>
+          <div className="flex items-start gap-3">
+            <button onClick={() => goTo(index - 1)} className="flex-shrink-0 text-lg leading-none px-1 mt-1" style={{ color: COLORS.muted }} aria-label="Rumor anterior">‹</button>
             <div className="flex-1 min-w-0">
               <LinkifiedText text={current.text} entities={entities} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
               <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[current.categoryKey]?.label}</p>
             </div>
-            <button onClick={() => goTo(index + 1)} className="flex-shrink-0 text-lg leading-none px-1" style={{ color: COLORS.muted }} aria-label="Rumor siguiente">›</button>
+            <button onClick={() => goTo(index + 1)} className="flex-shrink-0 text-lg leading-none px-1 mt-1" style={{ color: COLORS.muted }} aria-label="Rumor siguiente">›</button>
           </div>
           <div className="flex justify-center gap-1.5 mt-2">
             {marketRumors.slice(0, 12).map((r, i) => (
