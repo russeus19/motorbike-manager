@@ -227,6 +227,63 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     }
   });
 
+  // --- Fase 3.5: "estrella sin equipo" — a standout free agent left in
+  // the pool after every genuine vacancy is filled would, in reality,
+  // still draw real interest: a team trades up, releasing its weakest
+  // incumbent to sign someone clearly better. A high enough margin is
+  // required so this never causes everyday marginal reshuffling — it
+  // only stops a rider like a former champion from sitting unsigned
+  // purely because no seat happened to be empty.
+  const UPGRADE_MARGIN = 15;
+  Object.keys(teamsByCategory).forEach((ck) => {
+    const teamsOrder = [...teamsByCategory[ck]]
+      .filter((t) => t.id !== categoriesData[ck].excludeTeamId)
+      .sort((a, b) => teamPullingPower(b, ck) - teamPullingPower(a, ck));
+
+    teamsOrder.forEach(({ id: teamId }) => {
+      let liveTeam = findTeam(teamsByCategory, ck, teamId);
+      if (!liveTeam || liveTeam.riders.length < 2) return; // a genuine vacancy already got first pick in Fase 3
+      let changed = true;
+      while (changed) {
+        changed = false;
+        const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck));
+        if (!eligible.length) break;
+        const teamBudget = liveTeam.budget;
+        const riderScores = liveTeam.riders.map((r) => scoreCandidateForTeam(r, liveTeam, { categoryKey: ck, teamBudget }));
+        const weakestIdx = riderScores[0] <= riderScores[1] ? 0 : 1;
+        const weakest = liveTeam.riders[weakestIdx];
+        const weakestScore = riderScores[weakestIdx];
+
+        const ranked = eligible
+          .map((r) => ({ r, score: scoreCandidateForTeam(r, liveTeam, { categoryKey: ck, teamBudget }) }))
+          .filter(({ score }) => score > weakestScore + UPGRADE_MARGIN)
+          .sort((a, b) => b.score - a.score);
+
+        for (const { r } of ranked) {
+          const bikeAvgOffered = bikeAvgOf(liveTeam);
+          const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (1.1 + Math.random() * 0.2));
+          const accepted = wouldRiderJoin(r, liveTeam, ck, offeredSalary, {
+            fromCategoryKey: r._fromCategoryKey || ck, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
+          });
+          if (!accepted) continue;
+          pool = pool.filter((x) => x.id !== r.id);
+          pool.push({ ...weakest, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOffered });
+          const years = proposedContractYears(r);
+          const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = r;
+          const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+          teamsByCategory[ck] = teamsByCategory[ck].map((t) => (
+            t.id === teamId ? { ...t, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
+          ));
+          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${liveTeam.name}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label });
+          log[ck].push({ type: "salida", riderId: photoIdFor(weakest), text: `${weakest.name} queda libre tras la mejora de plantilla de ${liveTeam.name}`, category: CATEGORY_DATA[ck].label });
+          changed = true;
+          liveTeam = findTeam(teamsByCategory, ck, teamId);
+          break;
+        }
+      }
+    });
+  });
+
   return { teamsByCategory, pool };
 }
 
@@ -330,35 +387,56 @@ export function pickBestFreeAgentSub(pool, categoryKey, budget, scale) {
 
 export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   if (!team.riders || team.riders.length < 2) return team;
-  if ((ctx.roundIndex ?? 0) < (ctx.totalRounds ?? 22) * 0.45) return team;
-  // A team expecting to fight at the front is a little less patient with
-  // an underperforming rider than one with modest ambitions — but this
-  // stays a rare, exceptional event either way (0.010-0.020 range).
+  // Give a rider (and the team itself) a fair stretch of the season to
+  // settle in before this is even considered.
+  if ((ctx.roundIndex ?? 0) < (ctx.totalRounds ?? 22) * 0.35) return team;
+  // A team expecting to fight at the front stays a little more alert to
+  // the market than one with modest ambitions — but this is still a
+  // rare check per race weekend either way, never every round.
   const ambitionFactor = team.expectation ? clamp(1.4 - team.expectation.min * 0.04, 0.65, 1.35) : 1;
-  if (Math.random() > 0.015 * ambitionFactor) return team;
+  if (Math.random() > 0.035 * ambitionFactor) return team;
 
-  const candidate = team.riders.find((r) =>
-    r.morale < 35 && r.pa < 55 && overallRating(r) < 66 && !(r.injury && r.injury.sidelined)
-  );
-  if (!candidate) return team;
+  const teamBudget = team.budget || 0;
+  // The weakest of the two, judged the exact same way the rest of the
+  // market values a candidate (prestige, current form, age, potential —
+  // never just raw CA) — not only genuine disasters get reconsidered,
+  // any real upgrade opportunity does.
+  const scored = team.riders.map((r) => scoreCandidateForTeam(r, team, { categoryKey, teamBudget }));
+  const weakestIdx = scored[0] <= scored[1] ? 0 : 1;
+  const weakest = team.riders[weakestIdx];
+  if (weakest.injury && weakest.injury.sidelined) return team; // never mid-treatment
 
   const eligiblePool = poolRef.pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
-  const better = eligiblePool.find((r) => overallRating(r) > overallRating(candidate) + 8);
-  if (!better) return team;
+  const ranked = eligiblePool
+    .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget }) }))
+    .filter(({ score }) => score > scored[weakestIdx] + 15)
+    .sort((a, b) => b.score - a.score);
+  if (!ranked.length) return team;
 
-  const fCost = fireRiderCost(candidate);
-  const sCost = Math.round(overallRating(better) * 5000);
-  if (fCost + sCost > (team.budget || 0)) return team;
+  const fCost = fireRiderCost(weakest);
+  const bikeAvgVal = bikeAvgOf(team);
+  for (const { r: better } of ranked) {
+    const sCost = Math.round(overallRating(better) * 5000);
+    if (fCost + sCost > teamBudget) continue;
+    const offeredSalary = Math.round(computeSalary(better, ctx.scale ?? 1) * (1.05 + Math.random() * 0.2));
+    const accepted = wouldRiderJoin(better, team, categoryKey, offeredSalary, {
+      fromCategoryKey: better._fromCategoryKey || categoryKey, bikeAvgOffered: bikeAvgVal, currentBikeAvg: better._fromBikeAvg ?? bikeAvgVal,
+    });
+    if (!accepted) continue;
 
-  poolRef.pool = poolRef.pool.filter((r) => r.id !== better.id);
-  poolRef.pool = [...poolRef.pool, { ...candidate, contractYears: 0, isNewTeamThisSeason: false }];
-  notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(candidate), text: `${team.name} despide a ${candidate.name} en plena temporada y ficha a ${better.name} como sustituto inmediato.` });
+    poolRef.pool = poolRef.pool.filter((r) => r.id !== better.id);
+    poolRef.pool = [...poolRef.pool, { ...weakest, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: categoryKey, _fromBikeAvg: bikeAvgVal }];
+    notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(weakest), text: `${team.name} rescinde el contrato de ${weakest.name} en plena temporada y ficha a ${better.name} para reforzar la plantilla.` });
 
-  const remaining = team.riders.filter((r) => r.id !== candidate.id);
-  return {
-    ...team,
-    budget: (team.budget || 0) - fCost - sCost,
-    riders: [...remaining, { ...better, contractYears: 2, isNewTeamThisSeason: true }],
-  };
+    const years = proposedContractYears(better);
+    const { _fromCategoryKey, _fromBikeAvg, ...cleanBetter } = better;
+    const remaining = team.riders.filter((r) => r.id !== weakest.id);
+    return {
+      ...team,
+      budget: teamBudget - fCost - sCost,
+      riders: [...remaining, { ...cleanBetter, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true }],
+    };
+  }
+  return team;
 }
 

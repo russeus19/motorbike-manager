@@ -311,7 +311,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
 
   CATEGORY_ORDER.forEach((categoryKey) => {
     const teams = (teamsByCategory[categoryKey] || []).filter((t) => t.id !== "player");
-    if (teams.length < 2 || Math.random() > heat * 0.75) return;
+    if (teams.length < 2 || Math.random() > heat * 0.9) return;
 
     const buyer = pick(teams);
     const seatsTaken = marketNegotiations.filter((n) => n.toTeamId === buyer.id && n.categoryKey === categoryKey && n.status !== "failed").length
@@ -435,7 +435,7 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
  */
 export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, marketNegotiations) {
   const heat = marketHeat(round, totalRounds);
-  if (!rivalTeams.length || Math.random() > heat * 0.5) return null;
+  if (!rivalTeams.length || Math.random() > heat * 0.85) return null;
   const candidates = playerTeam.riders.filter((r) => (r.contractYears ?? 0) > 0 && !(r.injury && r.injury.sidelined)
     && !(marketNegotiations || []).some((n) => n.riderId === r.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status)));
   if (!candidates.length) return null;
@@ -470,6 +470,23 @@ export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, rou
  * becomes a free agent for the normal end-of-season market to pick up —
  * a reasonable outcome, not a broken one.
  */
+/**
+ * A stranded rider (their negotiation reached "confirmed" but couldn't
+ * actually be placed — the destination was already full) goes straight
+ * to the free-agent pool without ever appearing on any team's roster,
+ * which means utils/seasonHistory.js's normal per-category sweep would
+ * never see them either. Their just-finished season has to be finalized
+ * right here instead, using whatever context is already on hand:
+ * _pendingHistoryEntry if this was a cross-category attempt, or a fresh
+ * entry built from _racedForTeamName otherwise.
+ */
+function finalizeStrandedHistory(rider, standingsByCategory, categoryKey, seasonNum) {
+  const { _pendingHistoryEntry, _racedForTeamName, ...clean } = rider;
+  const entry = _pendingHistoryEntry || buildSeasonHistoryEntry(clean.id, _racedForTeamName || "—", standingsByCategory[categoryKey] || {}, categoryKey, seasonNum);
+  if (!entry) return clean;
+  return { ...clean, history: [...(clean.history || []), entry] };
+}
+
 export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations, standingsByCategory = {} }) {
   const confirmed = (marketNegotiations || []).filter((n) => n.status === "confirmed");
   if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
@@ -577,7 +594,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       // offers were already lined up (see App.jsx's nextSeasonPlayerRiderCount
       // guard, which prevents this in the normal flow).
       if (nextPlayerRiders.length < 2) { nextPlayerRiders.push(signedRider); placed = true; }
-      else strandedRiders.push(signedRider);
+      else strandedRiders.push(finalizeStrandedHistory(signedRider, standingsByCategory, neg.categoryKey, neg.createdSeason));
     } else {
       // AI-vs-AI deals always happen within a single category (see
       // maybeGenerateAIInitiatedNegotiations), so the destination lives
@@ -585,7 +602,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       // matching background category's own teams otherwise.
       const destTeam = findTeamInCategory(neg.toTeamId, neg.categoryKey);
       if (destTeam && destTeam.riders.length < 2) { destTeam.riders.push(signedRider); placed = true; }
-      else strandedRiders.push(signedRider);
+      else strandedRiders.push(finalizeStrandedHistory(signedRider, standingsByCategory, neg.categoryKey, neg.createdSeason));
     }
     // Only a negotiation that actually placed its rider on the
     // destination team counts as "applied" — this is what the season

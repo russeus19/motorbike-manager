@@ -32,10 +32,24 @@ import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
-import { recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
+import { buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { assignSeasonExpectations } from "./utils/teamExpectations.js";
 import { releaseSubstitutesToPool, resolveSeasonMarketAcrossCategories } from "./utils/transferMarket.js";
 import { queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
+
+/**
+ * A player rider who leaves the roster via "designar para quedar libre"
+ * or a successful promotion attempt is removed from playerTeam.riders
+ * before applyConfirmedNegotiations/recordSeasonHistory ever run on the
+ * played category — so without this, the season they just raced for
+ * the player's team would never get recorded, and their profile would
+ * wrongly show "aún no ha completado ninguna temporada".
+ */
+function finalizePlayerDepartureHistory(rider, teamName, standingsForCategory, categoryKey, seasonNum) {
+  const entry = buildSeasonHistoryEntry(rider.id, teamName, standingsForCategory, categoryKey, seasonNum);
+  if (!entry) return rider;
+  return { ...rider, history: [...(rider.history || []), entry] };
+}
 
 export default function MotorbikeManager() {
   const [phase, setPhase] = useState("home"); // home | loadslots | setup | career-name | career-picker | season | result | seasonend | career-offers | market
@@ -1257,8 +1271,8 @@ export default function MotorbikeManager() {
     const otherCategoriesResolved = afterNegotiations.otherCategories;
     let poolFreeAgents = [
       ...freeAgents,
-      ...releasedAtEnd.map((r) => ({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false })),
-      ...promotedAway.map((r) => ({ ...r, contractYears: 0, isNewTeamThisSeason: false })),
+      ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
+      ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
     ];
 
