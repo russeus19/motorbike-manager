@@ -244,7 +244,7 @@ export function scoreCandidateForTeam(rider, team, ctx) {
  * esto en el paddock real?"
  */
 export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}) {
-  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60 } = ctx;
+  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60, isUnemployed = false, seasonsUnsigned = 0 } = ctx;
   const personality = riderPersonality(rider);
   const riderPrestige = rider.prestige ?? 60;
   const teamPrestige = team.prestige ?? 60;
@@ -252,16 +252,21 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   let score = 0.15;
 
   // Brecha de prestigio: el factor más determinante, pero nunca el único.
+  // Sin equipo, esa brecha pesa mucho menos — la alternativa real no es
+  // "seguir en un proyecto mejor", es "no correr esta temporada".
   const gap = teamPrestige - riderPrestige;
-  score += gap * 0.009;
+  score += gap * (isUnemployed ? 0.003 : 0.009);
 
   // Salario: puede compensar un proyecto menos atractivo.
   const fairSalary = rider.salary || 1;
   const salaryRatio = offeredSalary / fairSalary;
   score += clamp((salaryRatio - 1) * 0.5, -0.3, 0.4);
 
-  // Competitividad de la moto ofrecida frente a la actual.
-  score += clamp((bikeAvgOffered - currentBikeAvg) / 45, -0.25, 0.3);
+  // Competitividad de la moto ofrecida frente a la actual — pero sin
+  // equipo no hay "moto actual" con la que comparar de verdad, así que
+  // esto nunca debe restar, solo sumar si la moto ofrecida es buena.
+  const bikeDelta = (bikeAvgOffered - currentBikeAvg) / 45;
+  score += isUnemployed ? clamp(bikeDelta, 0, 0.3) : clamp(bikeDelta, -0.25, 0.3);
 
   // Salto de categoría: subir siempre resulta atractivo salvo que la
   // diferencia de prestigio sea excesiva; bajar solo tiene sentido si el
@@ -269,7 +274,19 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   const catRank = { motogp: 3, moto2: 2, moto3: 1 };
   const catDelta = (catRank[categoryKey] ?? 2) - (catRank[fromCategoryKey] ?? 2);
   if (catDelta > 0) score += 0.22;
-  else if (catDelta < 0) score -= 0.28;
+  else if (catDelta < 0) {
+    // Bajar de categoría rara vez tiene sentido para alguien ya asentado
+    // arriba — un veterano de MotoGP no vuelve a Moto2 a los 30 años,
+    // esté sin equipo o no. Solo un piloto todavía joven, para quien
+    // reconstruirse en una categoría inferior sigue siendo una decisión
+    // de carrera razonable, se lo plantea con algo de apertura.
+    let dropPenalty;
+    if (rider.age >= 30) dropPenalty = 0.65;
+    else if (rider.age >= 27) dropPenalty = 0.42;
+    else dropPenalty = 0.22;
+    if (!isUnemployed) dropPenalty += 0.15;
+    score -= dropPenalty;
+  }
 
   // Moral y situación actual — una mala racha empuja a aceptar salidas
   // que en un buen momento se rechazarían.
@@ -277,6 +294,12 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   if (moraleTier === "muy_baja") score += 0.18;
   else if (moraleTier === "baja") score += 0.08;
   else if (moraleTier === "muy_alta") score -= 0.05;
+
+  // Sin equipo: cuanto más tiempo lleva sin encontrar sitio, más
+  // dispuesto está a aceptar cualquier oferta razonable — nadie se
+  // queda de brazos cruzados esperando una oferta perfecta que nunca
+  // llega.
+  if (isUnemployed) score += clamp(0.25 + seasonsUnsigned * 0.15, 0.25, 0.7);
 
   // Personalidad del piloto.
   if (personality === "titulos") score += clamp(gap * 0.005, -0.15, 0.15);
@@ -291,8 +314,10 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // Comprobación de realismo final: un campeón de prestigio muy alto no
   // debería fichar por un proyecto muy inferior salvo que algo
   // extraordinario lo justifique (ya recogido arriba en salario/moto/
-  // moral) — aquí solo se pone un límite duro para el caso extremo.
-  if (riderPrestige >= 170 && teamPrestige <= 90 && salaryRatio < 1.6 && catDelta <= 0) {
+  // moral) — aquí solo se pone un límite duro para el caso extremo. No
+  // aplica si el piloto está actualmente sin equipo: ahí la pregunta ya
+  // no es "¿merece la pena el cambio?" sino "¿corro esta temporada o no?".
+  if (!isUnemployed && riderPrestige >= 170 && teamPrestige <= 90 && salaryRatio < 1.6 && catDelta <= 0) {
     score -= 0.4;
   }
 

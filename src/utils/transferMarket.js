@@ -32,8 +32,11 @@ import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPool, retiredIds, log) {
   let pool = [...freeAgentPool];
   const teamsByCategory = {};
+  const teamExpectationVerdictById = {};
+  const riderPosByIdByCategory = {};
 
-  // --- Fase 1 + 2: retirement, then continuity-driven renewal ---
+  // --- Fase 1: retirement only — unaffected by market timing, so this
+  // stays a simple independent per-category pass. ---
   Object.entries(categoriesData).forEach(([ck, catData]) => {
     const { teams, riderStandings, teamStandings, excludeTeamId } = catData;
     const teamRows = teams.map((t) => ({ id: t.id, points: teamStandings?.[t.id] || 0 })).sort((a, b) => b.points - a.points);
@@ -42,13 +45,14 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     const riderRows = Object.entries(riderStandings || {}).sort((a, b) => b[1].points - a[1].points);
     const riderPosById = {};
     riderRows.forEach(([id], i) => { riderPosById[id] = i + 1; });
+    riderPosByIdByCategory[ck] = riderPosById;
 
     teamsByCategory[ck] = teams.map((t) => {
       if (t.id === excludeTeamId) return t;
+      teamExpectationVerdictById[`${ck}:${t.id}`] = evaluateSeasonVsExpectation(teamPosById[t.id], t.expectation);
       const tier = teamExpectationTier(t);
-      const teamExpectationVerdict = evaluateSeasonVsExpectation(teamPosById[t.id], t.expectation);
       const [r1, r2] = t.riders;
-      const kept = [];
+      const riders = [];
       t.riders.forEach((r) => {
         const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
         const points = riderStandings?.[r.id]?.points || 0;
@@ -66,42 +70,108 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           log[ck].push({ type: "retiro", riderId: photoIdFor(r), text: `${r.name} se retira`, category: CATEGORY_DATA[ck].label });
           return;
         }
-        // Contract truth: still under contract, no market decision needed.
-        if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
+        riders.push(r);
+      });
+      return { ...t, riders };
+    });
+  });
 
-        // A rider's own finishing position, judged against the same
-        // team-expectation band (scaled ×2 for two riders per team) the
-        // rest of the game already uses.
-        const riderExpectationVerdict = t.expectation
-          ? evaluateSeasonVsExpectation(riderPosById[r.id], { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 })
-          : null;
-        const continuity = computeContinuityScore(r, t, {
-          points, teammatePoints: teammatePts, tier, riderExpectationVerdict, teamExpectationVerdict,
-          crashes, injuriesThisSeason: r.injuriesThisSeason || 0,
+  // --- Fase 2: continuity-vs-market, ordered by how attractive the team
+  // is, across every category at once. A real team's management checks
+  // the market BEFORE ever committing to a renewal — not the other way
+  // around — so this now does the same: for every rider up for renewal,
+  // the team first compares them against the single best candidate
+  // already loose on the market (including anyone released mid-pass by
+  // an earlier, more attractive team, or manually released by the
+  // player from the very start), and only falls back to the normal
+  // continuity-based renewal roll if nothing out there is clearly
+  // better. Processing the biggest, most ambitious teams first means a
+  // genuine star has every chance to be picked up as they cascade down
+  // through the grid, instead of only ever being visible to whichever
+  // team happens to have an empty seat once every renewal is already
+  // decided.
+  const MARKET_SWAP_MARGIN = 12;
+  const teamOrder = [];
+  Object.entries(teamsByCategory).forEach(([ck, teams]) => {
+    teams.forEach((t) => { if (t.id !== categoriesData[ck].excludeTeamId) teamOrder.push({ ck, teamId: t.id }); });
+  });
+  teamOrder.sort((a, b) => teamPullingPower(findTeam(teamsByCategory, b.ck, b.teamId), b.ck) - teamPullingPower(findTeam(teamsByCategory, a.ck, a.teamId), a.ck));
+
+  teamOrder.forEach(({ ck, teamId }) => {
+    const t = findTeam(teamsByCategory, ck, teamId);
+    if (!t) return;
+    const tier = teamExpectationTier(t);
+    const teamExpectationVerdict = teamExpectationVerdictById[`${ck}:${teamId}`];
+    const riderPosById = riderPosByIdByCategory[ck];
+    const riderStandings = categoriesData[ck].riderStandings;
+    const [r1, r2] = t.riders;
+    const kept = [];
+    t.riders.forEach((r) => {
+      // Contract truth: still under contract, no market decision needed.
+      if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
+
+      const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
+      const points = riderStandings?.[r.id]?.points || 0;
+      const crashes = r.crashesThisSeason || 0;
+
+      // The market gets first look, always — before any renewal roll.
+      const eligiblePool = pool.filter((p) => isFreeAgentEligibleForCategory(p, ck));
+      const ownScore = scoreCandidateForTeam(r, t, { categoryKey: ck, teamBudget: t.budget });
+      const bestOutside = eligiblePool
+        .map((p) => ({ p, score: scoreCandidateForTeam(p, t, { categoryKey: ck, teamBudget: t.budget }) }))
+        .sort((a, b) => b.score - a.score)[0];
+
+      if (bestOutside && bestOutside.score > ownScore + MARKET_SWAP_MARGIN) {
+        const bikeAvgOffered = bikeAvgOf(t);
+        const offeredSalary = Math.round(computeSalary(bestOutside.p, CATEGORY_DATA[ck].scale) * (1.1 + Math.random() * 0.2));
+        const accepted = wouldRiderJoin(bestOutside.p, t, ck, offeredSalary, {
+          fromCategoryKey: bestOutside.p._fromCategoryKey || ck, bikeAvgOffered, currentBikeAvg: bestOutside.p._fromBikeAvg ?? bikeAvgOffered,
+          isUnemployed: true, seasonsUnsigned: bestOutside.p.seasonsUnsigned || 0,
         });
-        const teamWantsToRenew = Math.random() < continuityToRenewalProbability(continuity);
-        const riderWillingToStay = teamWantsToRenew ? riderWantsToStay(r, t, ck) : false;
-
-        if (teamWantsToRenew && riderWillingToStay) {
-          const years = proposedContractYears(r);
-          kept.push({ ...r, contractYears: years, salary: Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (0.95 + Math.random() * 0.2)) });
-          log[ck].push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
+        if (accepted) {
+          pool = pool.filter((x) => x.id !== bestOutside.p.id);
+          pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOffered });
+          const years = proposedContractYears(bestOutside.p);
+          const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = bestOutside.p;
+          const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+          kept.push(newRider);
+          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${t.name}, que prescinde de ${r.name} tras encontrar una opción mejor en el mercado`, category: CATEGORY_DATA[ck].label });
           return;
         }
+      }
 
-        pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
-        const lowerKey = CATEGORY_DATA[ck]?.lower;
-        const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
-        if (isRelegation) {
-          log[ck].push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: CATEGORY_DATA[ck].label });
-        } else if (!teamWantsToRenew) {
-          log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabelForRetire.toLowerCase()}`, category: CATEGORY_DATA[ck].label });
-        } else {
-          log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} decide no continuar en ${t.name} pese a la renovación ofrecida`, category: CATEGORY_DATA[ck].label });
-        }
+      // Nothing outside was clearly better (or they said no) — the
+      // normal continuity-based renewal roll decides from here.
+      const riderExpectationVerdict = t.expectation
+        ? evaluateSeasonVsExpectation(riderPosById[r.id], { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 })
+        : null;
+      const continuity = computeContinuityScore(r, t, {
+        points, teammatePoints: teammatePts, tier, riderExpectationVerdict, teamExpectationVerdict,
+        crashes, injuriesThisSeason: r.injuriesThisSeason || 0,
       });
-      return { ...t, riders: kept };
+      const teamWantsToRenew = Math.random() < continuityToRenewalProbability(continuity);
+      const riderWillingToStay = teamWantsToRenew ? riderWantsToStay(r, t, ck) : false;
+
+      if (teamWantsToRenew && riderWillingToStay) {
+        const years = proposedContractYears(r);
+        kept.push({ ...r, contractYears: years, salary: Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (0.95 + Math.random() * 0.2)) });
+        log[ck].push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
+        return;
+      }
+
+      pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
+      const evalLabelForRetire = evaluateRiderSeason(r, points, teammatePts, tier, crashes);
+      const lowerKey = CATEGORY_DATA[ck]?.lower;
+      const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
+      if (isRelegation) {
+        log[ck].push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: CATEGORY_DATA[ck].label });
+      } else if (!teamWantsToRenew) {
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabelForRetire.toLowerCase()}`, category: CATEGORY_DATA[ck].label });
+      } else {
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} decide no continuar en ${t.name} pese a la renovación ofrecida`, category: CATEGORY_DATA[ck].label });
+      }
     });
+    teamsByCategory[ck] = teamsByCategory[ck].map((team) => (team.id === teamId ? { ...team, riders: kept } : team));
   });
 
   // --- Fase 2.5: cross-category promotion — real teams actively chase
@@ -194,6 +264,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[categoryKey].scale) * (1 + Math.random() * 0.15));
       const accepted = wouldRiderJoin(r, team, categoryKey, offeredSalary, {
         fromCategoryKey: r._fromCategoryKey || categoryKey, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
+        isUnemployed: true, seasonsUnsigned: r.seasonsUnsigned || 0,
       });
       if (accepted) { signed = { rider: r, salary: offeredSalary }; break; }
     }
@@ -264,6 +335,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (1.1 + Math.random() * 0.2));
           const accepted = wouldRiderJoin(r, liveTeam, ck, offeredSalary, {
             fromCategoryKey: r._fromCategoryKey || ck, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
+            isUnemployed: true, seasonsUnsigned: r.seasonsUnsigned || 0,
           });
           if (!accepted) continue;
           pool = pool.filter((x) => x.id !== r.id);
@@ -421,6 +493,7 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
     const offeredSalary = Math.round(computeSalary(better, ctx.scale ?? 1) * (1.05 + Math.random() * 0.2));
     const accepted = wouldRiderJoin(better, team, categoryKey, offeredSalary, {
       fromCategoryKey: better._fromCategoryKey || categoryKey, bikeAvgOffered: bikeAvgVal, currentBikeAvg: better._fromBikeAvg ?? bikeAvgVal,
+      isUnemployed: true, seasonsUnsigned: better.seasonsUnsigned || 0,
     });
     if (!accepted) continue;
 
