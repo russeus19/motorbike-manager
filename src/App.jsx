@@ -18,7 +18,8 @@ import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { RosterCompletionScreen } from "./pages/RosterCompletion.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
-import { advanceFacilityUpgrades, advanceTeamProjects, bikeAvg, canStartFacilityUpgrade, canStartProject, rolloverBike, startFacilityUpgrade, startProjectOnTeam } from "./utils/bikeDevelopment.js";
+import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, bikeAvg, canStartFacilityUpgrade, canStartProject, discardPendingPackage, processApprovedPackages, rolloverBike, startFacilityUpgrade, startProjectOnTeam } from "./utils/bikeDevelopment.js";
+import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { findInTeamRoster, simulateFullGridRound, simulateRound } from "./utils/raceSimulation.js";
@@ -79,6 +80,7 @@ export default function MotorbikeManager() {
   const [saveError, setSaveError] = useState(null);
   const [saveOk, setSaveOk] = useState(false);
   const [profileTarget, setProfileTarget] = useState(null);
+  const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
 
   const storageOk = typeof window !== "undefined" && window.storage;
@@ -336,7 +338,16 @@ export default function MotorbikeManager() {
     const category = data.category || "moto3";
     const backfillPrestige = (t, catKey) => {
       if (!t) return t;
-      const withTeam = ensureTeamPrestige(t, catKey);
+      // A save from before "suspensión" was renamed to "freno" still has
+      // bike.suspension instead of bike.freno — migrate it here so every
+      // team's bike shape is current the moment it loads.
+      let migratedBike = t.bike;
+      if (migratedBike && migratedBike.freno == null && migratedBike.suspension != null) {
+        const { suspension, ...rest } = migratedBike;
+        migratedBike = { ...rest, freno: suspension };
+      }
+      const withBike = migratedBike === t.bike ? t : { ...t, bike: migratedBike };
+      const withTeam = ensureTeamPrestige(withBike, catKey);
       return { ...withTeam, riders: withTeam.riders.map((r) => ensureRiderPrestige(r, catKey)) };
     };
     const playerTeam = data.playerTeam
@@ -665,6 +676,16 @@ export default function MotorbikeManager() {
     setPlayerTeam((t) => startProjectOnTeam(t, area, kind, spec));
   }
 
+  function acceptPackage(packageId) {
+    setPlayerTeam((t) => acceptPendingPackage(t, packageId, queueWarehouseProduction));
+    setOpenPackageId(null);
+  }
+
+  function discardPackage(packageId) {
+    setPlayerTeam((t) => discardPendingPackage(t, packageId));
+    setOpenPackageId(null);
+  }
+
   function startFactoryUpgrade() {
     const spec = canStartFacilityUpgrade(playerTeam, "factory", budget, scale);
     if (!spec) return;
@@ -978,7 +999,8 @@ export default function MotorbikeManager() {
     // --- Played category: player + rivals ---
     const { results, poleRiderId } = simulateRound(playerTeam, rivalTeams, circuitProfile, isWet, roundsLeft);
     const { team: playerAfterProjects, arrivals } = advanceTeamProjects(playerTeam);
-    const { team: playerAfterFacilities, arrivals: facilityArrivals } = advanceFacilityUpgrades(playerAfterProjects);
+    const playerAfterPackages = processApprovedPackages(playerAfterProjects);
+    const { team: playerAfterFacilities, arrivals: facilityArrivals } = advanceFacilityUpgrades(playerAfterPackages);
 
     let newPendingSub = pendingSubstitution;
     const playerCtx = { isPlayer: true, scale, setPendingSub: (info) => { newPendingSub = info; } };
@@ -1581,7 +1603,7 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById }}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId }}
           notifCount={countUnread(notifications.motogp) + countUnread(notifications.moto2) + countUnread(notifications.moto3)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
@@ -1594,7 +1616,7 @@ export default function MotorbikeManager() {
         />
       )}
       {phase === "result" && lastResult && playerTeam && (
-        <ResultScreen lastResult={lastResult} accent={playerTeam.color} continueAfterResult={continueAfterResult} isLastRound={round >= CIRCUITS.length - 1} category={category} />
+        <ResultScreen lastResult={lastResult} accent={playerTeam.color} continueAfterResult={continueAfterResult} isLastRound={round >= CIRCUITS.length - 1} category={category} playerTeam={playerTeam} onOpenPackageReview={setOpenPackageId} />
       )}
       {phase === "seasonend" && playerTeam && (
         <SeasonEndScreen
@@ -1651,6 +1673,16 @@ export default function MotorbikeManager() {
         onClose={() => setTeamProfileTarget(null)}
         onOpenRiderProfile={openProfile}
       />
+      {openPackageId && playerTeam && (
+        <BikePackageModal
+          pkg={playerTeam.pendingPackages?.find((p) => p.id === openPackageId)}
+          playerTeam={playerTeam}
+          accent={playerTeam.color}
+          onClose={() => setOpenPackageId(null)}
+          onAccept={() => acceptPackage(openPackageId)}
+          onDiscard={() => discardPackage(openPackageId)}
+        />
+      )}
 
       {showNotifications && (
         <NotificationCenterModal notifications={notifications} category={category} onClose={() => setShowNotifications(false)} />

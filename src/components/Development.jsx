@@ -78,9 +78,10 @@ export function ProjectRow({ area, kind, team, budget, scale, accent, onStart, l
    Capacidad Técnica pool shown once at the top. This single component is
    used identically from both the Inicio screen and the Escudería screen —
    no separate implementation to keep in sync. */
-export function DevelopmentPanel({ playerTeam, budget, startProject, accent, scale }) {
+export function DevelopmentPanel({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview }) {
   const [expanded, setExpanded] = useState(false);
   const avg = bikeAvg(playerTeam.bike);
+  const pendingPackages = playerTeam.pendingPackages || [];
 
   return (
     <Panel
@@ -97,6 +98,19 @@ export function DevelopmentPanel({ playerTeam, budget, startProject, accent, sca
     >
       {expanded && (
         <>
+          {pendingPackages.length > 0 && onOpenPackageReview && (
+            <div className="mb-3 space-y-1.5">
+              {pendingPackages.map((pkg) => (
+                <button key={pkg.id} onClick={() => onOpenPackageReview(pkg.id)}
+                  className="w-full text-left rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2"
+                  style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}`, color: COLORS.text }}>
+                  <span>📦 Paquete de <strong>{BIKE_LABELS[pkg.area]}</strong> pendiente de revisar{pkg.approved ? " · fabricando piezas..." : ""}</span>
+                  <span style={{ color: COLORS.gold }}>Revisar</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="mb-3">
             {BIKE_AREA_KEYS.map((k) => (
               <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />

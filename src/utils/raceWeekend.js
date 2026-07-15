@@ -1,5 +1,4 @@
-import { WAREHOUSE_LABELS } from "../data/warehouseParts.js";
-import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject } from "./bikeDevelopment.js";
+import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
 import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
@@ -11,11 +10,8 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   let warehouse = resolveWarehouseProduction(team.warehouse || initWarehouse());
   teamResults.forEach((r) => {
     if (!r.crashed || !r.dnfCause) return;
-    const { warehouse: wh2, consumed } = consumeWarehouseForResult(warehouse, r.dnfCause, r.injuryResult?.severity);
+    const { warehouse: wh2 } = consumeWarehouseForResult(warehouse, r.dnfCause, r.injuryResult?.severity);
     warehouse = wh2;
-    if (consumed.length) {
-      notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(r), text: `${team.name} pierde ${consumed.map((p) => WAREHOUSE_LABELS[p]).join(", ")} tras el incidente de ${r.name}.` });
-    }
   });
 
   // Race income/running costs never push a team into debt on their own:
@@ -54,6 +50,9 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
       next = bumpCareerStats(next, categoryKey, ownResult.position, ownResult.crashed, ownResult.points);
       if (ownResult.crashed && ownResult.dnfCause === "mechanical") {
         notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${team.name}) se retira por avería mecánica.` });
+      }
+      if (ownResult.crashed && ownResult.dnfCause === "electrical") {
+        notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${team.name}) se retira por avería electrónica.` });
       }
       if (ownResult.injuryResult) {
         const inj = ownResult.injuryResult;
@@ -114,7 +113,8 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   // since they're long-term infrastructure bets rather than weekly needs.
   if (ctx.isPlayer) return midTeam;
   const afterProjects = advanceTeamProjects(midTeam).team;
-  const afterFacilities = advanceFacilityUpgrades(afterProjects).team;
+  const afterPackages = aiDecidePendingPackages(afterProjects, notifQueue, categoryKey, ctx.scale);
+  const afterFacilities = advanceFacilityUpgrades(afterPackages).team;
   const afterRD = aiConsiderProject(afterFacilities, ctx);
   const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterRD, ctx.scale);
   return { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) };

@@ -1,8 +1,27 @@
-import { AREA_BASE, BIKE_AREA_KEYS } from "../data/bikeAreas.js";
-import { clamp, randInt } from "./random.js";
+import { AREA_BASE, AREA_PRIMARY_PAIR, AREA_SECONDARY_PAIR, BIKE_AREA_KEYS } from "../data/bikeAreas.js";
+import { WAREHOUSE_BASE_COST } from "../data/warehouseParts.js";
+import { clamp, pick, randInt } from "./random.js";
+import { urgentWarehouseProduction, warehouseCost } from "./warehouseEngine.js";
+
+// One warehouse part per development area — reused everywhere a package
+// needs to know which physical stock it draws from.
+export const AREA_TO_WAREHOUSE_PART = { motor: "motor", chasis: "chasis", aero: "carenado", electronica: "electronica", freno: "freno" };
+
+/** A save created before "suspensión" was renamed to "freno" still has
+ * `bike.suspension` instead of `bike.freno` — this silently migrates it
+ * wherever a bike object is read, so an old save never produces NaN
+ * instead of a real average/capacity. */
+function migrateBike(bike) {
+  if (!bike) return bike;
+  if (bike.freno != null) return bike;
+  if (bike.suspension == null) return bike;
+  const { suspension, ...rest } = bike;
+  return { ...rest, freno: suspension };
+}
 
 export function bikeAvg(bike) {
-  return BIKE_AREA_KEYS.reduce((s, k) => s + bike[k], 0) / BIKE_AREA_KEYS.length;
+  const b = migrateBike(bike);
+  return BIKE_AREA_KEYS.reduce((s, k) => s + (b[k] ?? 60), 0) / BIKE_AREA_KEYS.length;
 }
 
 /* ======================================================================
@@ -109,8 +128,51 @@ export function canStartProject(team, area, kind, budgetAvailable, scale) {
 }
 
 export function startProjectOnTeam(team, area, kind, spec) {
-  const project = { area, kind, remaining: spec.gp, totalGp: spec.gp, capacity: spec.capacity, gain: spec.gain, failChance: spec.failChance };
+  const project = { area, kind, remaining: spec.gp, totalGp: spec.gp, capacity: spec.capacity, gain: spec.gain, failChance: spec.failChance, money: spec.money };
   return { ...team, activeProjects: [...(team.activeProjects || []), project] };
+}
+
+/**
+ * Whether a completed DEVELOPMENT package also hurts a related area, and
+ * by how much — never guaranteed (a clean package with no downside at
+ * all is a real possible outcome), rolled independently every time.
+ * Both the chance of a downside happening AND how big it is shrink the
+ * more thoroughly the project was run — better factory, better staff,
+ * more money, more time — but nothing ever makes it literally
+ * impossible; a rushed, cut-price project into an already-mature area
+ * is the riskiest combination of all.
+ *
+ * Which area gets hit: 90% of the time it's the area's real engineering
+ * pairing (data/bikeAreas.js's AREA_PRIMARY_PAIR — more power upsets
+ * chassis balance, a new aero package changes braking stability...),
+ * 10% of the time it's genuinely any other area at random, because nothing
+ * on a bike is ever completely isolated from the rest.
+ */
+export function rollPackageDownside(area, gain, project, team) {
+  const { factory, staff } = ensureRD(team);
+  const infra = (factory.level + staff.level) / 2;
+  const moneyFactor = clamp((project.money || 0) / (AREA_BASE[area].money * 3), 0, 1);
+  const timeFactor = clamp((project.totalGp || 1) / 9, 0, 1);
+  const investFactor = (moneyFactor + timeFactor) / 2;
+
+  const downsideChance = clamp(0.55 - infra * 0.0035 - investFactor * 0.28, 0.05, 0.55);
+  if (Math.random() > downsideChance) return null;
+
+  const primary = AREA_PRIMARY_PAIR[area];
+  const secondary = AREA_SECONDARY_PAIR[area];
+  let downsideArea;
+  if (Math.random() < 0.9) {
+    downsideArea = primary;
+  } else if (secondary && Math.random() < 0.5) {
+    downsideArea = secondary;
+  } else {
+    const others = BIKE_AREA_KEYS.filter((a) => a !== area && a !== primary && a !== secondary);
+    downsideArea = pick(others.length ? others : BIKE_AREA_KEYS.filter((a) => a !== area));
+  }
+
+  const magnitudeFraction = clamp(0.35 - infra * 0.0026 - investFactor * 0.2, 0.04, 0.35);
+  const amount = Math.max(1, Math.round(gain * magnitudeFraction));
+  return { area: downsideArea, amount };
 }
 
 /* Ticks every active project on `team` down by one race. Finished
@@ -126,22 +188,131 @@ export function advanceTeamProjects(team) {
   const { techBase: baseTechBase } = ensureRD(team);
   const arrivals = [];
   const remaining = [];
-  const bike = { ...team.bike };
   const techBase = { ...baseTechBase };
+  const pendingPackages = [...(team.pendingPackages || [])];
   (team.activeProjects || []).forEach((p) => {
     const rem = p.remaining - 1;
     if (rem > 0) { remaining.push({ ...p, remaining: rem }); return; }
     const { gain: actualGain, tier } = resolveProjectOutcome(p.gain, p.failChance);
     if (p.kind === "dev") {
-      bike[p.area] = clamp(bike[p.area] + actualGain, 1, 99);
+      // Permanent knowledge is always banked, whether this specific
+      // package ends up installed or discarded later — developing is
+      // never wasted effort.
       const permanentGain = Math.round(actualGain * (0.20 + Math.random() * 0.05));
       techBase[p.area] = clamp(techBase[p.area] + permanentGain, 0, 99);
+      const downside = rollPackageDownside(p.area, actualGain, p, team);
+      pendingPackages.push({
+        id: `pkg-${p.area}-${Date.now()}-${Math.round(Math.random() * 100000)}`,
+        area: p.area, gain: actualGain, tier,
+        downsideArea: downside?.area ?? null, downsideAmount: downside?.amount ?? 0,
+      });
+      arrivals.push({ area: p.area, kind: "dev", success: tier === "completo", tier, gain: actualGain, pending: true });
     } else {
       techBase[p.area] = clamp(techBase[p.area] + actualGain, 0, 99);
+      arrivals.push({ area: p.area, kind: "research", success: tier === "completo", tier, gain: actualGain });
     }
-    arrivals.push({ area: p.area, kind: p.kind, success: tier === "completo", tier, gain: actualGain });
   });
-  return { team: { ...team, bike, techBase, activeProjects: remaining }, arrivals };
+  return { team: { ...team, techBase, activeProjects: remaining, pendingPackages }, arrivals };
+}
+
+/**
+ * Installs an accepted pending package — applies its gain (and downside,
+ * if any) to the current bike, retires whatever was in that slot before
+ * with a partial refund, and consumes the two manufactured parts (one
+ * per bike) it needed. Returns the team unchanged if there still aren't
+ * enough parts in stock — the caller is expected to queue production
+ * first (see App.jsx's installPackage / aiDecidePendingPackages below).
+ */
+export function installPendingPackage(team, packageId) {
+  const pkg = (team.pendingPackages || []).find((p) => p.id === packageId);
+  if (!pkg) return team;
+  const part = AREA_TO_WAREHOUSE_PART[pkg.area];
+  const wh = team.warehouse;
+  if (!wh || (wh[part]?.stock ?? 0) < 2) return team;
+
+  const refund = Math.round((WAREHOUSE_BASE_COST[part] || 0) * 0.32 * 2);
+  const newWarehouse = { ...wh, [part]: { ...wh[part], stock: wh[part].stock - 2 } };
+  const bike = { ...team.bike };
+  bike[pkg.area] = clamp(bike[pkg.area] + pkg.gain, 1, 99);
+  if (pkg.downsideArea) bike[pkg.downsideArea] = clamp(bike[pkg.downsideArea] - pkg.downsideAmount, 1, 99);
+  const pendingPackages = (team.pendingPackages || []).filter((p) => p.id !== packageId);
+  return { ...team, bike, warehouse: newWarehouse, budget: (team.budget || 0) + refund, pendingPackages };
+}
+
+/** Discards a pending package with no changes to the bike at all — the
+ * money and time already spent on the R&D project itself are a sunk
+ * cost either way (the permanent knowledge gain already happened in
+ * advanceTeamProjects above), but nothing forces a team to actually
+ * field a package that would hurt more than it helps. */
+export function discardPendingPackage(team, packageId) {
+  return { ...team, pendingPackages: (team.pendingPackages || []).filter((p) => p.id !== packageId) };
+}
+
+/**
+ * The player approves a pending package. If both parts are already in
+ * stock it installs immediately; otherwise it queues the production
+ * needed (reusing the normal, non-urgent warehouse queue) and marks the
+ * package as approved-and-waiting — see processApprovedPackages, which
+ * finishes the job automatically the moment enough stock is ready.
+ */
+export function acceptPendingPackage(team, packageId, queueWarehouseProductionFn) {
+  const pkg = (team.pendingPackages || []).find((p) => p.id === packageId);
+  if (!pkg) return team;
+  const part = AREA_TO_WAREHOUSE_PART[pkg.area];
+  const stock = team.warehouse?.[part]?.stock ?? 0;
+  if (stock >= 2) return installPendingPackage(team, packageId);
+
+  const needed = 2 - stock;
+  let warehouse = team.warehouse;
+  for (let i = 0; i < needed; i++) warehouse = queueWarehouseProductionFn(warehouse, part);
+  const pendingPackages = team.pendingPackages.map((p) => (p.id === packageId ? { ...p, approved: true } : p));
+  return { ...team, warehouse, pendingPackages };
+}
+
+/** Checked once per race for the player: any package already approved
+ * and waiting on production installs itself the instant both parts are
+ * ready in the warehouse — no need to come back and click anything a
+ * second time. */
+export function processApprovedPackages(team) {
+  let current = team;
+  (current.pendingPackages || []).filter((p) => p.approved).forEach((pkg) => {
+    const part = AREA_TO_WAREHOUSE_PART[pkg.area];
+    if ((current.warehouse?.[part]?.stock ?? 0) >= 2) current = installPendingPackage(current, pkg.id);
+  });
+  return current;
+}
+
+/**
+ * AI teams don't get a review screen — they decide immediately: accept
+ * a package whose net effect (gain minus a slightly risk-averse view of
+ * the downside) is positive, queuing urgent production if the parts
+ * aren't in stock yet rather than leaving it to linger forever; discard
+ * anything that would do more harm than good.
+ */
+export function aiDecidePendingPackages(team, notifQueue, categoryKey, scale) {
+  let current = team;
+  (current.pendingPackages || []).slice().forEach((pkg) => {
+    const netValue = pkg.gain - (pkg.downsideAmount || 0) * 1.15;
+    if (netValue <= 0) {
+      current = discardPendingPackage(current, pkg.id);
+      return;
+    }
+    const part = AREA_TO_WAREHOUSE_PART[pkg.area];
+    const stock = current.warehouse?.[part]?.stock ?? 0;
+    if (stock < 2) {
+      const needed = 2 - stock;
+      let wh = current.warehouse;
+      let budget = current.budget || 0;
+      for (let i = 0; i < needed; i++) {
+        const cost = warehouseCost(part, scale, true, current.factory?.level ?? 0);
+        if (budget >= cost) { wh = urgentWarehouseProduction(wh, part); budget -= cost; }
+      }
+      current = { ...current, warehouse: wh, budget };
+      return;
+    }
+    current = installPendingPackage(current, pkg.id);
+  });
+  return current;
 }
 
 /* AI R&D strategy: title contenders push development early, then pivot hard

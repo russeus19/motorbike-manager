@@ -64,8 +64,11 @@ export function consumeWarehouseForResult(warehouse, dnfCause, injurySeverity) {
     if (Math.random() < 0.20 + severityBoost) take("chasis");
     if (Math.random() < 0.25 + severityBoost) take("freno");
     if (Math.random() < 0.10 + severityBoost) take("motor");
+    if (Math.random() < 0.12 + severityBoost) take("electronica");
   } else if (dnfCause === "mechanical") {
-    if (Math.random() < 0.6) take("motor"); else take("freno");
+    if (Math.random() < 0.55) take("motor"); else take("freno");
+  } else if (dnfCause === "electrical") {
+    take("electronica");
   }
   return { warehouse: wh, consumed };
 }

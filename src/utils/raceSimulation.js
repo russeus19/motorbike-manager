@@ -98,7 +98,7 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
 
     let circuitMod = 0;
     if (circuit) {
-      const bikeFit = circuitBikeFit(r.bike || { motor: r.bikeAvgVal, chasis: r.bikeAvgVal, aero: r.bikeAvgVal, suspension: r.bikeAvgVal, electronica: r.bikeAvgVal }, circuit.tech);
+      const bikeFit = circuitBikeFit(r.bike || { motor: r.bikeAvgVal, chasis: r.bikeAvgVal, aero: r.bikeAvgVal, freno: r.bikeAvgVal, electronica: r.bikeAvgVal }, circuit.tech);
       const riderFit = circuitRiderFit(r, circuit.riderWeight);
       circuitMod = clamp(bikeFit * 0.55, -8, 8) + clamp(riderFit * 0.55, -8, 8);
       if (circuit.tags?.includes("Alto desgaste de neumáticos")) {
@@ -113,7 +113,10 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
     let dnfCause = null;
     let injuryResult = null;
     if (crashed) {
-      const reliability = (r.bike?.motor ?? r.bikeAvgVal) * 0.5 + (r.bike?.electronica ?? r.bikeAvgVal) * 0.5;
+      const motorRel = r.bike?.motor ?? r.bikeAvgVal;
+      const frenoRel = r.bike?.freno ?? r.bikeAvgVal;
+      const electRel = r.bike?.electronica ?? r.bikeAvgVal;
+      const reliability = (motorRel + frenoRel + electRel) / 3;
       const mechChance = clamp(0.40 - (reliability - 70) * 0.004, 0.12, 0.55);
       let crashBias = 0;
       if (isWet) crashBias += 0.12;
@@ -124,8 +127,18 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
       crashBias -= (r.mental - 60) * 0.0006;
       crashBias -= (r.adaptabilidad - 60) * (isWet ? 0.001 : 0.0005);
       const crashShare = clamp((1 - mechChance) + crashBias, 0.35, 0.85);
-      dnfCause = Math.random() < crashShare ? "crash" : "mechanical";
-      if (dnfCause === "crash") injuryResult = rollInjury(r, circuit, isWet, roundsLeftInSeason ?? 22);
+      if (Math.random() < crashShare) {
+        dnfCause = "crash";
+        injuryResult = rollInjury(r, circuit, isWet, roundsLeftInSeason ?? 22);
+      } else {
+        // Split the non-crash failure between the engine/brakes
+        // (mechanical) and the electronics unit (electrical) — a bike
+        // whose electronics are relatively weaker than its motor/freno
+        // fails electrically more often, and vice versa.
+        const mechRel = (motorRel + frenoRel) / 2;
+        const electricalShare = clamp(0.35 + (mechRel - electRel) * 0.01, 0.15, 0.6);
+        dnfCause = Math.random() < electricalShare ? "electrical" : "mechanical";
+      }
     }
 
     const perf = preRoll + Math.random() * 15 - (crashed ? 999 : 0);
