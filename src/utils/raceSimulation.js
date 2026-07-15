@@ -6,6 +6,17 @@ import { clamp, pick, randInt, weightedPick } from "./random.js";
 import { moraleSkillMultiplier } from "./riderMorale.js";
 import { riderSkill, wetRiderSkill } from "./riders.js";
 
+/* How much a grid position alone is worth in perf-units, added to a
+   rider's race preRoll. Calibrated by Monte Carlo against an idealized
+   equal-skill grid so that, all else being equal, P1 wins ~40% of the
+   time, P2 ~20%, P3 ~13%, P4 ~8%, P5 ~5%, P6 ~3%, decaying naturally
+   from there — never so large that skill/machinery stop mattering, but
+   real enough that qualifying well is genuinely worth something. */
+export function computeGridBonus(gridPosition) {
+  if (!Number.isFinite(gridPosition) || gridPosition < 1) return 0;
+  return 7 * Math.pow(0.72, gridPosition - 1);
+}
+
 export function findInTeamRoster(team, id) {
   const own = team.riders.find((r) => r.id === id);
   if (own) return own;
@@ -22,7 +33,9 @@ export function raceLineup(team) {
     .map((r) => {
       if (r.injury && r.injury.sidelined && r.injury.gpRemaining > 0) {
         const sub = team.substitutes?.[r.id];
-        return sub ? { ...sub, seatOwnerId: r.id, seatOwnerName: r.name } : null;
+        if (!sub) return null;
+        if (sub.injury && sub.injury.sidelined && sub.injury.gpRemaining > 0) return null;
+        return { ...sub, seatOwnerId: r.id, seatOwnerName: r.name };
       }
       return r;
     })
@@ -75,6 +88,114 @@ export function rollInjury(r, circuit, isWet, roundsLeftInSeason) {
   };
 }
 
+/**
+ * A believable lap time for THIS circuit and THIS category — the single
+ * source of truth for lap time everywhere it's needed (qualifying,
+ * race classification), so MotoGP/Moto2/Moto3 never end up sharing an
+ * identical pole time again. Built from the circuit's own real
+ * characteristics (length, main straight, how twisty it is) rather than
+ * length alone, then scaled by a realistic category speed factor:
+ * Moto2 laps run ~3-4% slower than MotoGP on a typical circuit, Moto3
+ * ~8-9% slower — matching the gaps actually seen on a real MotoGP
+ * weekend, not a flat, arbitrary number.
+ */
+const CATEGORY_SPEED_FACTOR = { motogp: 1, moto2: 0.965, moto3: 0.915 };
+
+export function estimateAvgSpeedKmh(circuit, categoryKey) {
+  if (!circuit) return 155;
+  const totalCorners = (circuit.cornersLeft || 0) + (circuit.cornersRight || 0);
+  const cornerDensity = circuit.lengthKm ? totalCorners / circuit.lengthKm : 3;
+  // A track with many corners packed into a short lap runs a much lower
+  // average speed than a flowing, wide-open one — this is what actually
+  // separates a stop-and-go circuit from a power track, not raw length.
+  let baseSpeed = 175 - cornerDensity * 4.2;
+  baseSpeed += clamp(((circuit.mainStraightM ?? 700) - 700) * 0.012, -6, 8);
+  baseSpeed = clamp(baseSpeed, 148, 192);
+  return baseSpeed * (CATEGORY_SPEED_FACTOR[categoryKey] ?? 1);
+}
+
+export function estimateLapSeconds(circuit, categoryKey, isQualifying = false) {
+  const speed = estimateAvgSpeedKmh(circuit, categoryKey);
+  const lapSeconds = ((circuit?.lengthKm ?? 4.5) / speed) * 3600;
+  // A qualifying flying lap (light fuel, fresh tyre, one all-out attempt)
+  // runs a little quicker than typical race pace across a full distance.
+  return isQualifying ? lapSeconds * 0.955 : lapSeconds;
+}
+
+/**
+ * A single qualifying session: one flying lap each, correlated with (but
+ * not identical to) race pace — same skill/bike/circuit-fit foundation,
+ * fresh random roll. Crash risk is real but lower than a full race (one
+ * lap of pushing, not 20+), and any resulting injury forces sidelining
+ * for THIS race regardless of its rolled severity — even a mild knock in
+ * Q means missing Sunday, since there's no time to arrange a substitute
+ * before the race. Returns grid order (crashed riders sent to the back,
+ * in random order among themselves, since they set no valid time),
+ * pole/qualifying times for display, and each crash's injury result so
+ * the caller can attach it to the roster before the race is built.
+ */
+export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, categoryKey) {
+  const rolled = entries.map((r) => {
+    const wetPenaltyMult = isWet ? 1.4 + (60 - r.adaptabilidad) / 100 : 1;
+    const dnfChance = clamp(
+      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * 0.35,
+      0.005, 0.16
+    );
+    const crashed = Math.random() < dnfChance;
+    const skill = (isWet ? wetRiderSkill(r) : riderSkill(r)) * moraleSkillMultiplier(r);
+
+    let circuitMod = 0;
+    if (circuit) {
+      const bikeFit = circuitBikeFit(r.bike || { motor: r.bikeAvgVal, chasis: r.bikeAvgVal, aero: r.bikeAvgVal, freno: r.bikeAvgVal, electronica: r.bikeAvgVal }, circuit.tech);
+      const riderFit = circuitRiderFit(r, circuit.riderWeight);
+      circuitMod = clamp(bikeFit * 0.55, -8, 8) + clamp(riderFit * 0.55, -8, 8);
+    }
+    const pace = skill * 0.5 + r.bikeAvgVal * 0.35 + circuitMod + Math.random() * 12;
+
+    let injuryResult = null;
+    if (crashed) {
+      injuryResult = rollInjury(r, circuit, isWet, roundsLeftInSeason ?? 22);
+      // Any crash injury in qualifying costs the rider Sunday's race no
+      // matter how mild it looked on paper — sidelined is forced true
+      // here (raceLineup already excludes anyone sidelined with
+      // gpRemaining > 0), while the underlying severity/gpTotal stay
+      // exactly as rolled for however many further races it costs
+      // beyond this one.
+      if (injuryResult) injuryResult = { ...injuryResult, sidelined: true };
+    }
+    return { ...r, pace, crashed, injuryResult };
+  });
+
+  const clean = rolled.filter((r) => !r.crashed).sort((a, b) => b.pace - a.pace);
+  const crashedRiders = rolled.filter((r) => r.crashed).sort(() => Math.random() - 0.5);
+  const ordered = [...clean, ...crashedRiders];
+
+  const gridPositionById = {};
+  ordered.forEach((r, i) => { gridPositionById[r.id] = i + 1; });
+
+  // A qualifying lap runs lighter and on a fresh tyre, so it's quicker
+  // than the race-pace baseline used for the race classification — and
+  // now genuinely varies by category, not just by circuit length.
+  const lapSeconds = estimateLapSeconds(circuit, categoryKey, true);
+  const bestPace = clean.length ? clean[0].pace : 0;
+  const withTimes = ordered.map((r, i) => {
+    if (r.crashed) return { ...r, gridPosition: i + 1, qualyTimeDisplay: "Sin tiempo" };
+    const gapSeconds = i === 0 ? 0 : clamp((bestPace - r.pace) * 0.05, 0.01, 3.5);
+    return {
+      ...r,
+      gridPosition: i + 1,
+      qualyTimeSeconds: lapSeconds + gapSeconds,
+      qualyTimeDisplay: i === 0 ? formatRaceTime(lapSeconds) : `+${gapSeconds.toFixed(3)}`,
+    };
+  });
+
+  return {
+    results: withTimes,
+    poleRiderId: clean.length ? clean[0].id : null,
+    gridPositionById,
+  };
+}
+
 /* Circuit influence is intentionally modest: the bike-fit and rider-fit
    deltas are bounded to roughly ±8 points each on a ~0-100 performance
    scale, i.e. it can swing a result by something in the 10-20% range —
@@ -82,7 +203,7 @@ export function rollInjury(r, circuit, isWet, roundsLeftInSeason) {
    the dominant factor (skill and machinery still weigh far more). */
 
 
-export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
+export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gridPositionById = null) {
   let bestPreRoll = -Infinity;
   let poleRiderId = null;
 
@@ -107,7 +228,8 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
       }
     }
 
-    const preRoll = skill * 0.5 + r.bikeAvgVal * 0.35 + circuitMod - leveInjuryPenalty;
+    const gridBonus = gridPositionById ? computeGridBonus(gridPositionById[r.id]) : 0;
+    const preRoll = skill * 0.5 + r.bikeAvgVal * 0.35 + circuitMod - leveInjuryPenalty + gridBonus;
     if (preRoll > bestPreRoll) { bestPreRoll = preRoll; poleRiderId = r.id; }
 
     let dnfCause = null;
@@ -142,7 +264,14 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
     }
 
     const perf = preRoll + Math.random() * 15 - (crashed ? 999 : 0);
-    return { ...r, perf, crashed, dnfCause, injuryResult };
+    // A rider's single best lap of the race — biased by the same
+    // skill/bike/circuit fit as their overall pace, but rolled
+    // independently, since the fastest lap and the race result are
+    // related but not identical (someone can post the fastest lap
+    // chasing a win they don't get, or on a late charge after a bad
+    // start). Never rolled for anyone who didn't finish.
+    const bestLapRoll = crashed ? -Infinity : skill * 0.5 + r.bikeAvgVal * 0.35 + circuitMod + Math.random() * 20;
+    return { ...r, perf, crashed, dnfCause, injuryResult, bestLapRoll };
   });
   results.sort((a, b) => b.perf - a.perf);
   let pointsIdx = 0;
@@ -151,17 +280,20 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason) {
     if (!r.crashed && pointsIdx < POINTS.length) { points = POINTS[pointsIdx]; pointsIdx++; }
     return { ...r, position: i + 1, points };
   });
-  return { results: withPoints, poleRiderId };
+  const fastestLapEntry = withPoints.reduce((best, r) => (
+    !r.crashed && r.bestLapRoll > (best?.bestLapRoll ?? -Infinity) ? r : best
+  ), null);
+  return { results: withPoints, poleRiderId, fastestLapRiderId: fastestLapEntry?.id ?? null };
 }
 
 
-export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason) {
-  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason);
+export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason, gridPositionById) {
+  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason, gridPositionById);
 }
 
 
-export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason) {
-  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason);
+export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason, gridPositionById) {
+  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason, gridPositionById);
 }
 
 /* Increment career wins/podiums for a given category based on a race result */
@@ -201,15 +333,16 @@ export function formatGap(gapSeconds) {
 }
 
 
-export function buildClassificationDisplay(results, circuit) {
+export function buildClassificationDisplay(results, circuit, fastestLapRiderId = null, categoryKey = null) {
   const laps = estimateLaps(circuit);
-  const lapSeconds = circuit.lengthKm * 24;
+  const lapSeconds = estimateLapSeconds(circuit, categoryKey, false);
   const winnerTotal = laps * lapSeconds;
   const finishers = results.filter((r) => !r.crashed);
   const bestPerf = finishers.length ? finishers[0].perf : 0;
   return results.map((r) => {
+    const isFastestLap = fastestLapRiderId != null && r.id === fastestLapRiderId;
     if (r.crashed) {
-      return { ...r, laps: Math.max(1, laps - randInt(1, 6)), timeDisplay: "DNF", gapDisplay: "DNF" };
+      return { ...r, laps: Math.max(1, laps - randInt(1, 6)), timeDisplay: "DNF", gapDisplay: "DNF", isFastestLap };
     }
     const gapSeconds = r.position === 1 ? 0 : clamp((bestPerf - r.perf) * 0.18, 0.1, 95);
     return {
@@ -217,6 +350,7 @@ export function buildClassificationDisplay(results, circuit) {
       laps,
       timeDisplay: r.position === 1 ? formatRaceTime(winnerTotal) : formatGap(gapSeconds),
       gapDisplay: r.position === 1 ? "Líder" : formatGap(gapSeconds),
+      isFastestLap,
     };
   });
 }

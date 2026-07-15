@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronRight, Flag, PackageCheck } from "lucide-react";
+import { AlertTriangle, ChevronRight, Flag, PackageCheck, Zap } from "lucide-react";
 import { BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { buildClassificationDisplay } from "../utils/raceSimulation.js";
 
 export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, playerTeam, onOpenPackageReview }) {
-  const { circuitName, isWet, results, arrivals } = lastResult;
+  const { circuitName, isWet, results, arrivals, circuitProfile, fastestLapByCategory } = lastResult;
   const [tab, setTab] = useState(category);
+  const tabClassification = circuitProfile ? buildClassificationDisplay(results[tab] || [], circuitProfile, fastestLapByCategory?.[tab], tab) : (results[tab] || []);
+  const lapsForTab = tabClassification[0]?.laps;
 
   // This screen used to inherit whatever scroll position the previous
   // screen was left at, so it could open showing the bottom of the
@@ -28,8 +31,9 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
       <h2 className="text-2xl font-bold mb-1 flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>
         <Flag size={22} style={{ color: accent }} /> {circuitName}
       </h2>
-      <div className="text-xs mb-4" style={{ color: isWet ? COLORS.ice : COLORS.muted }}>
-        {isWet ? "🌧️ Carrera en mojado" : "☀️ Carrera en seco"}
+      <div className="text-xs mb-4 flex items-center gap-3" style={{ color: isWet ? COLORS.ice : COLORS.muted }}>
+        <span>{isWet ? "🌧️ Carrera en mojado" : "☀️ Carrera en seco"}</span>
+        {lapsForTab && <span style={{ color: COLORS.muted }}>· {lapsForTab} vueltas</span>}
       </div>
 
       {arrivals && arrivals.length > 0 && (
@@ -86,17 +90,21 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
       </div>
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: COLORS.rule }}>
-        {(results[tab] || []).map((r, i) => (
+        {tabClassification.map((r, i) => (
           <div key={r.id} className="flex items-center justify-between px-4 py-2 text-sm"
             style={{ background: i % 2 === 0 ? COLORS.panel : COLORS.panel2, borderBottom: `1px solid ${COLORS.rule}` }}>
-            <div className="flex items-center gap-3">
-              <span className="w-6 text-right font-mono" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{r.crashed ? "—" : r.position}</span>
-              <span className="w-2 h-2 rounded-full" style={{ background: r.teamColor }} />
-              <span style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
-              <span className="text-xs" style={{ color: COLORS.muted }}>{r.teamName}</span>
-              {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} />}
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="w-6 text-right font-mono flex-shrink-0" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{r.crashed ? "—" : r.position}</span>
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.teamColor }} />
+              <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
+              <span className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</span>
+              {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} className="flex-shrink-0" />}
+              {r.isFastestLap && <Zap size={13} style={{ color: COLORS.gold }} className="flex-shrink-0" />}
             </div>
-            <span className="font-mono" style={{ color: r.points > 0 ? accent : COLORS.muted }}>{r.crashed ? "DNF" : `+${r.points}`}</span>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <span className="font-mono text-xs" style={{ color: COLORS.muted }}>{r.timeDisplay}</span>
+              <span className="font-mono" style={{ color: r.points > 0 ? accent : COLORS.muted }}>{r.crashed ? "DNF" : `+${r.points}`}</span>
+            </div>
           </div>
         ))}
       </div>

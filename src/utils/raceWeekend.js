@@ -80,6 +80,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     }
 
     if (next.injury && next.injury.gpRemaining > 0) {
+      const wasFromQualifying = !!next.injury.fromQualifying;
       const gpRemaining = next.injury.gpRemaining - 1;
       if (gpRemaining <= 0) {
         notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} recibe el alta médica y vuelve a competir con ${team.name}.` });
@@ -89,7 +90,28 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
         }
         next = { ...next, injury: null };
       } else {
-        next = { ...next, injury: { ...next.injury, gpRemaining } };
+        next = { ...next, injury: { ...next.injury, gpRemaining, fromQualifying: false } };
+        // A qualifying-day injury that still keeps the rider out beyond
+        // the race that just happened genuinely needs a stand-in for
+        // the races ahead — decided here, right after the race, never
+        // during qualifying itself, since there was never time to
+        // arrange anything before Sunday.
+        if (wasFromQualifying && !substitutes[next.id]) {
+          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} seguirá de baja ${next.injury.gpTotal} Gran${next.injury.gpTotal === 1 ? "" : "es"} Premio${next.injury.gpTotal === 1 ? "" : "s"} tras la caída en clasificación.` });
+          if (ctx.isPlayer) {
+            ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
+          } else {
+            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale);
+            if (sub) {
+              poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
+              substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
+              budgetAfterSubs = Math.max(0, budgetAfterSubs - substituteHireCost(sub, ctx.scale));
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${team.name} hasta su recuperación.` });
+            } else {
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${team.name} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
+            }
+          }
+        }
       }
     }
 
