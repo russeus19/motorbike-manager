@@ -1624,7 +1624,7 @@ export default function MotorbikeManager() {
 
   return (
     <div className="min-h-screen w-full relative" style={{ background: COLORS.bg, color: COLORS.text, fontFamily: "Inter, sans-serif" }}>
-      {inGame && phase !== "season" && phase !== "result" && (
+      {inGame && phase !== "season" && phase !== "result" && phase !== "qualifying" && (
         <div className="fixed top-4 right-4 z-40 flex items-center gap-2">
           {saveOk && <span className="text-xs" style={{ color: COLORS.gold }}>Guardado ✓</span>}
           <button onClick={() => openSaveModal(false)}

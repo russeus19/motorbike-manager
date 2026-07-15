@@ -91,19 +91,23 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: COLORS.rule }}>
         {tabClassification.map((r, i) => (
-          <div key={r.id} className="flex items-center justify-between px-4 py-2 text-sm"
+          <div key={r.id} className="flex items-start justify-between px-4 py-2.5 text-sm"
             style={{ background: i % 2 === 0 ? COLORS.panel : COLORS.panel2, borderBottom: `1px solid ${COLORS.rule}` }}>
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="w-6 text-right font-mono flex-shrink-0" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{r.crashed ? "—" : r.position}</span>
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.teamColor }} />
-              <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
-              <span className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</span>
-              {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} className="flex-shrink-0" />}
-              {r.isFastestLap && <Zap size={13} style={{ color: COLORS.gold }} className="flex-shrink-0" />}
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="w-6 text-right font-mono flex-shrink-0 pt-0.5" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{r.crashed ? "—" : r.position}</span>
+              <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: r.teamColor }} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
+                  {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} className="flex-shrink-0" />}
+                  {r.isFastestLap && <Zap size={13} style={{ color: COLORS.gold }} className="flex-shrink-0" />}
+                </div>
+                <div className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</div>
+              </div>
             </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <span className="font-mono text-xs" style={{ color: COLORS.muted }}>{r.timeDisplay}</span>
-              <span className="font-mono" style={{ color: r.points > 0 ? accent : COLORS.muted }}>{r.crashed ? "DNF" : `+${r.points}`}</span>
+            <div className="text-right flex-shrink-0">
+              <div className="font-mono" style={{ color: r.points > 0 ? accent : COLORS.muted }}>{r.crashed ? "DNF" : `+${r.points}`}</div>
+              <div className="font-mono text-xs" style={{ color: COLORS.muted }}>{r.timeDisplay}</div>
             </div>
           </div>
         ))}

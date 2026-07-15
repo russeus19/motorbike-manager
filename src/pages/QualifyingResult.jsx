@@ -65,16 +65,20 @@ export function QualifyingScreen({ pendingQualifying, accent, category, runRace 
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: COLORS.rule }}>
         {rows.map((r, i) => (
-          <div key={r.id} className="flex items-center justify-between px-4 py-2 text-sm"
+          <div key={r.id} className="flex items-start justify-between px-4 py-2.5 text-sm"
             style={{ background: i % 2 === 0 ? COLORS.panel : COLORS.panel2, borderBottom: `1px solid ${COLORS.rule}` }}>
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="w-6 text-right font-mono flex-shrink-0" style={{ color: i < 3 && !r.crashed ? COLORS.gold : COLORS.muted }}>{r.gridPosition}</span>
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.teamColor }} />
-              <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
-              <span className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</span>
-              {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} className="flex-shrink-0" />}
+            <div className="flex items-start gap-3 min-w-0">
+              <span className="w-6 text-right font-mono flex-shrink-0 pt-0.5" style={{ color: i < 3 && !r.crashed ? COLORS.gold : COLORS.muted }}>{r.gridPosition}</span>
+              <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: r.teamColor }} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>
+                  {r.crashed && <AlertTriangle size={13} style={{ color: COLORS.danger }} className="flex-shrink-0" />}
+                </div>
+                <div className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</div>
+              </div>
             </div>
-            <span className="font-mono text-xs flex-shrink-0" style={{ color: r.crashed ? COLORS.danger : (i === 0 ? accent : COLORS.muted) }}>
+            <span className="font-mono text-xs flex-shrink-0 pt-0.5" style={{ color: r.crashed ? COLORS.danger : (i === 0 ? accent : COLORS.muted) }}>
               {r.qualyTimeDisplay}
             </span>
           </div>
