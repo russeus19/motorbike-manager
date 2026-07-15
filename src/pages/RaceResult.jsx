@@ -3,12 +3,11 @@ import { AlertTriangle, ChevronRight, Flag, PackageCheck, Zap } from "lucide-rea
 import { BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
-import { buildClassificationDisplay } from "../utils/raceSimulation.js";
 
-export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, playerTeam, onOpenPackageReview }) {
-  const { circuitName, isWet, results, arrivals, circuitProfile, fastestLapByCategory } = lastResult;
+export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category }) {
+  const { circuitName, isWet, results, arrivals, classificationByCategory } = lastResult;
   const [tab, setTab] = useState(category);
-  const tabClassification = circuitProfile ? buildClassificationDisplay(results[tab] || [], circuitProfile, fastestLapByCategory?.[tab], tab) : (results[tab] || []);
+  const tabClassification = classificationByCategory?.[tab] || results[tab] || [];
   const lapsForTab = tabClassification[0]?.laps;
 
   // This screen used to inherit whatever scroll position the previous
@@ -39,19 +38,9 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
       {arrivals && arrivals.length > 0 && (
         <div className="mb-4 space-y-2">
           {arrivals.map((a, i) => {
+            if (a.pending) return null;
             const kindLabel = a.kind === "research" ? "Investigación" : "Desarrollo";
             const ok = a.success;
-            if (a.pending) {
-              const pkg = (playerTeam?.pendingPackages || []).find((p) => p.area === a.area);
-              return (
-                <button key={i} onClick={() => pkg && onOpenPackageReview?.(pkg.id)}
-                  className="w-full text-left rounded-md px-3 py-2 text-sm flex items-center gap-2"
-                  style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}` }}>
-                  <PackageCheck size={16} style={{ color: COLORS.gold }} />
-                  <span>Nuevo paquete de <strong>{BIKE_LABELS[a.area]}</strong> listo — toca para revisarlo</span>
-                </button>
-              );
-            }
             return (
               <div key={i} className="rounded-md px-3 py-2 text-sm flex items-center gap-2"
                 style={{ background: ok ? "rgba(227,164,39,0.12)" : "rgba(214,69,69,0.12)", border: `1px solid ${ok ? COLORS.gold : COLORS.danger}` }}>

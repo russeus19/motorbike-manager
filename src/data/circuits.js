@@ -39,6 +39,8 @@ export const CIRCUITS = [
    from the fixed classification list and can be used later for AI,
    commentary and strategy.
    ====================================================================== */
+import { CIRCUIT_LAP_RECORDS } from "./circuitLapRecords.js";
+
 export const CIRCUIT_PROFILES = [
   { // Chang International Circuit — Thailand
     country: "Tailandia", flag: "🇹🇭", built: 2014, lengthKm: 4.554, cornersLeft: 7, cornersRight: 5,
@@ -261,3 +263,8 @@ export const CIRCUIT_PROFILES = [
     tags: ["Muy técnico", "Difícil adelantar", "Muchas frenadas fuertes"],
   },
 ];
+
+// Attach each circuit's real-world reference data (laps, pole, worst
+// qualifier, winner time, worst-classified gap) by round order — see
+// circuitLapRecords.js for what each field means and where it came from.
+CIRCUIT_PROFILES.forEach((c, i) => { c.records = CIRCUIT_LAP_RECORDS[i]; });

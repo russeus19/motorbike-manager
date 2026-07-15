@@ -1,11 +1,11 @@
-import { AlertTriangle, Mail } from "lucide-react";
+import { AlertTriangle, Mail, PackageCheck } from "lucide-react";
 import { ATTRS } from "../data/attributes.js";
 import { COLORS } from "../data/colors.js";
 
 // Maps buildPriorityAlerts' string iconKey to an actual icon component —
 // keeps utils/priorityAlerts.js icon-agnostic, consistent with every
 // other utils/*.js file in this project.
-const PRIORITY_ALERT_ICONS = { warning: AlertTriangle, mail: Mail };
+const PRIORITY_ALERT_ICONS = { warning: AlertTriangle, mail: Mail, package: PackageCheck };
 
 /**
  * The single shared visual for every priority alert on the "Inicio"

@@ -40,6 +40,10 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   });
 
   function handleAlertClick(alert) {
+    if (alert.target === "package") {
+      onOpenPackageReview?.(alert.packageId);
+      return;
+    }
     const targetTab = alert.target === "warehouse" ? "escuderia" : "pilotos";
     setSeasonTab(targetTab);
     const scrollId = alert.target === "roster" ? "pilotos-mis-pilotos" : alert.target === "offers" ? "pilotos-ofertas" : null;

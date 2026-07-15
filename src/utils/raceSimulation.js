@@ -115,6 +115,17 @@ export function estimateAvgSpeedKmh(circuit, categoryKey) {
 }
 
 export function estimateLapSeconds(circuit, categoryKey, isQualifying = false) {
+  const real = circuit?.records?.[categoryKey];
+  if (real) {
+    // The real figure is a reference point, not a fixed constant — every
+    // simulated qualifying/race jitters around it (roughly ±1.8%) so a
+    // given circuit's pole or race pace lands in the same realistic
+    // neighborhood without ever being an exact repeat of the same
+    // millisecond time after time.
+    const jitter = 1 + (Math.random() * 2 - 1) * 0.018;
+    if (isQualifying && real.poleSeconds) return real.poleSeconds * jitter;
+    if (!isQualifying && real.winnerSeconds && real.laps) return (real.winnerSeconds / real.laps) * jitter;
+  }
   const speed = estimateAvgSpeedKmh(circuit, categoryKey);
   const lapSeconds = ((circuit?.lengthKm ?? 4.5) / speed) * 3600;
   // A qualifying flying lap (light fuel, fresh tyre, one all-out attempt)
@@ -178,9 +189,13 @@ export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, 
   // now genuinely varies by category, not just by circuit length.
   const lapSeconds = estimateLapSeconds(circuit, categoryKey, true);
   const bestPace = clean.length ? clean[0].pace : 0;
+  const realRecord = circuit?.records?.[categoryKey];
+  const qualiGapCeiling = (realRecord?.worstQualiSeconds && realRecord?.poleSeconds)
+    ? realRecord.worstQualiSeconds - realRecord.poleSeconds
+    : 3.5;
   const withTimes = ordered.map((r, i) => {
     if (r.crashed) return { ...r, gridPosition: i + 1, qualyTimeDisplay: "Sin tiempo" };
-    const gapSeconds = i === 0 ? 0 : clamp((bestPace - r.pace) * 0.05, 0.01, 3.5);
+    const gapSeconds = i === 0 ? 0 : clamp((bestPace - r.pace) * 0.05, 0.01, qualiGapCeiling);
     return {
       ...r,
       gridPosition: i + 1,
@@ -313,7 +328,9 @@ export function bumpCareerStats(rider, categoryKey, position, crashed, points) {
    finished. Must be called before those standings are reset. */
 
 
-export function estimateLaps(circuit) {
+export function estimateLaps(circuit, categoryKey) {
+  const real = circuit?.records?.[categoryKey]?.laps;
+  if (real) return real;
   return Math.max(10, Math.round(112 / circuit.lengthKm));
 }
 
@@ -334,17 +351,18 @@ export function formatGap(gapSeconds) {
 
 
 export function buildClassificationDisplay(results, circuit, fastestLapRiderId = null, categoryKey = null) {
-  const laps = estimateLaps(circuit);
+  const laps = estimateLaps(circuit, categoryKey);
   const lapSeconds = estimateLapSeconds(circuit, categoryKey, false);
   const winnerTotal = laps * lapSeconds;
   const finishers = results.filter((r) => !r.crashed);
   const bestPerf = finishers.length ? finishers[0].perf : 0;
+  const gapCeiling = circuit?.records?.[categoryKey]?.worstGapSeconds ?? 95;
   return results.map((r) => {
     const isFastestLap = fastestLapRiderId != null && r.id === fastestLapRiderId;
     if (r.crashed) {
       return { ...r, laps: Math.max(1, laps - randInt(1, 6)), timeDisplay: "DNF", gapDisplay: "DNF", isFastestLap };
     }
-    const gapSeconds = r.position === 1 ? 0 : clamp((bestPerf - r.perf) * 0.18, 0.1, 95);
+    const gapSeconds = r.position === 1 ? 0 : clamp((bestPerf - r.perf) * 0.18, 0.1, gapCeiling);
     return {
       ...r,
       laps,

@@ -15,6 +15,8 @@
  * scattered logic across components.
  */
 
+import { BIKE_LABELS } from "../data/bikeAreas.js";
+
 // Any negotiation in one of these states is still genuinely "in play" —
 // used both to suppress the contract-expiring alert (a renewal or an
 // outgoing signing already being negotiated counts as "handled") and to
@@ -24,6 +26,20 @@ const ACTIVE_NEGOTIATION_STATUSES = ["pending_team", "team_countered", "pending_
 export function buildPriorityAlerts({ playerTeam, marketNegotiations, lowStockLabel }) {
   const alerts = [];
   const negotiations = marketNegotiations || [];
+
+  // Aviso: paquete de desarrollo listo para revisar — se muestra aquí en
+  // vez de en la propia pantalla de Resultado, y desaparece solo en
+  // cuanto el paquete se acepta o se descarta.
+  (playerTeam?.pendingPackages || []).forEach((pkg) => {
+    alerts.push({
+      id: `dev-package-${pkg.id}`,
+      priority: 1,
+      iconKey: "package",
+      text: `📦 Nuevo paquete de ${BIKE_LABELS[pkg.area]} listo — toca para revisarlo.`,
+      target: "package",
+      packageId: pkg.id,
+    });
+  });
 
   // Aviso: stock bajo de piezas del almacén (ya existente, ahora parte
   // del mismo registro centralizado en vez de vivir aparte en SeasonHub).

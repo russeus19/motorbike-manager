@@ -23,7 +23,7 @@ import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, bik
 import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
 import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
-import { buildEntries, findInTeamRoster, simulateFullGridRound, simulateQualifying, simulateRound } from "./utils/raceSimulation.js";
+import { buildClassificationDisplay, buildEntries, findInTeamRoster, simulateFullGridRound, simulateQualifying, simulateRound } from "./utils/raceSimulation.js";
 import { buildGpHistoryEntry } from "./utils/raceHistory.js";
 import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, createNegotiation, modifyOffer, needsTeamCompensation, nextSeasonCommittedRiderCount, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
@@ -1149,6 +1149,12 @@ export default function MotorbikeManager() {
     const gpResultsByCategory = { ...otherResultsByCat, [category]: results };
     const gpHistoryEntry = buildGpHistoryEntry({ round, seasonNumber, circuitName: CIRCUITS[round], isWet, resultsByCategory: gpResultsByCategory });
 
+    const fastestLapByCategory = { ...otherFastestLapByCat, [category]: fastestLapRiderId };
+    const classificationByCategory = {};
+    Object.entries(gpResultsByCategory).forEach(([key, catResults]) => {
+      classificationByCategory[key] = buildClassificationDisplay(catResults, circuitProfile, fastestLapByCategory[key], key);
+    });
+
     const marketTick = tickMarket(
       { marketRumors, marketNegotiations },
       {
@@ -1182,7 +1188,7 @@ export default function MotorbikeManager() {
 
     setGame((g) => (g ? {
       ...g,
-      lastResult: { circuitName: CIRCUITS[round], circuitProfile, isWet, category, results: gpResultsByCategory, arrivals, fastestLapByCategory: { ...otherFastestLapByCat, [category]: fastestLapRiderId } },
+      lastResult: { circuitName: CIRCUITS[round], circuitProfile, isWet, category, results: gpResultsByCategory, classificationByCategory, arrivals, fastestLapByCategory },
       riderStandings: riderStandingsNext,
       riderWins: riderWinsNext,
       riderPodiums: riderPodiumsNext,
@@ -1686,7 +1692,7 @@ export default function MotorbikeManager() {
         <QualifyingScreen pendingQualifying={pendingQualifying} accent={playerTeam.color} category={category} runRace={runRace} />
       )}
       {phase === "result" && lastResult && playerTeam && (
-        <ResultScreen lastResult={lastResult} accent={playerTeam.color} continueAfterResult={continueAfterResult} isLastRound={round >= CIRCUITS.length - 1} category={category} playerTeam={playerTeam} onOpenPackageReview={setOpenPackageId} />
+        <ResultScreen lastResult={lastResult} accent={playerTeam.color} continueAfterResult={continueAfterResult} isLastRound={round >= CIRCUITS.length - 1} category={category} />
       )}
       {phase === "seasonend" && playerTeam && (
         <SeasonEndScreen
