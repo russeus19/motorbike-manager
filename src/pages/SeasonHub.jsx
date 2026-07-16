@@ -322,7 +322,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
               <TeamLogo team={playerTeam} size={64} className="rounded-lg" />
               <div className="flex-1">
                 <div className="text-lg font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{playerTeam.name}</div>
-                <div className="text-xs" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · {playerTeam.tier}</div>
+                <div className="text-xs" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · {playerTeam.tier}{playerTeam.manufacturer ? ` · ${playerTeam.manufacturer}` : ""}</div>
                 {playerTeam.expectation && (
                   <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Expectativa: <span className="font-mono font-bold" style={{ color: accent }}>{playerTeam.expectation.label}</span></div>
                 )}

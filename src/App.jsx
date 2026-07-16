@@ -356,7 +356,10 @@ export default function MotorbikeManager() {
         migratedBike = { ...rest, freno: suspension };
       }
       const withBike = migratedBike === t.bike ? t : { ...t, bike: migratedBike };
-      const withTeam = ensureTeamPrestige(withBike, catKey);
+      const withManufacturer = withBike.manufacturer
+        ? withBike
+        : { ...withBike, manufacturer: CATEGORY_DATA[catKey]?.teams?.find((td) => td.name === withBike.name)?.manufacturer };
+      const withTeam = ensureTeamPrestige(withManufacturer, catKey);
       return { ...withTeam, riders: withTeam.riders.map((r) => ensureRiderPrestige(r, catKey)) };
     };
     const playerTeam = data.playerTeam

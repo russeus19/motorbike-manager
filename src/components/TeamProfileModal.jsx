@@ -33,7 +33,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
             <TeamLogo team={team} size={72} className="rounded-xl" />
             <div className="min-w-0">
               <h3 className="text-2xl font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>{team.name}</h3>
-              <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}</div>
+              <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}{team.manufacturer ? ` · ${team.manufacturer}` : ""}</div>
             </div>
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
@@ -67,31 +67,6 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
             </div>
           </div>
 
-          <div className="mb-4">
-            <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Desarrollo de la moto</div>
-            {BIKE_AREA_KEYS.map((k) => (
-              <StatBar key={k} label={BIKE_LABELS[k]} value={team.bike[k]} accent={accent} />
-            ))}
-          </div>
-
-          {team.warehouse && (
-            <div className="mb-4">
-              <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Almacén</div>
-              <div className="grid grid-cols-4 gap-2">
-                {WAREHOUSE_PARTS.map((part) => {
-                  const stock = team.warehouse[part]?.stock ?? 0;
-                  const stockColor = stock <= 1 ? COLORS.danger : stock <= 2 ? COLORS.gold : "#3F9142";
-                  return (
-                    <div key={part} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                      <div className="text-[10px] uppercase" style={{ color: COLORS.muted }}>{WAREHOUSE_LABELS[part]}</div>
-                      <div className="font-mono text-sm" style={{ color: stockColor }}>{stock}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div>
             <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Pilotos</div>
             <div className="space-y-2">
@@ -120,6 +95,31 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
               ))}
             </div>
           </div>
+
+          <div className="mb-4 mt-4">
+            <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Desarrollo de la moto</div>
+            {BIKE_AREA_KEYS.map((k) => (
+              <StatBar key={k} label={BIKE_LABELS[k]} value={team.bike[k]} accent={accent} />
+            ))}
+          </div>
+
+          {team.warehouse && (
+            <div className="mb-4">
+              <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Almacén</div>
+              <div className="grid grid-cols-5 gap-2">
+                {WAREHOUSE_PARTS.map((part) => {
+                  const stock = team.warehouse[part]?.stock ?? 0;
+                  const stockColor = stock <= 1 ? COLORS.danger : stock <= 2 ? COLORS.gold : "#3F9142";
+                  return (
+                    <div key={part} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                      <div className="text-[10px] uppercase" style={{ color: COLORS.muted }}>{WAREHOUSE_LABELS[part]}</div>
+                      <div className="font-mono text-sm" style={{ color: stockColor }}>{stock}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronRight, Flag, PackageCheck, Zap } from "lucide-rea
 import { BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
-import { RiderNumber } from "../components/RiderNumber.jsx";
+import { TeamNumberBadge } from "../components/TeamNumberBadge.jsx";
 
 export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, sprintMode = false }) {
   const { circuitName, isWet, results, arrivals, classificationByCategory } = lastResult;
@@ -85,8 +85,7 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
             style={{ background: i % 2 === 0 ? COLORS.panel : COLORS.panel2, borderBottom: `1px solid ${COLORS.rule}` }}>
             <div className="flex items-start gap-3 min-w-0">
               <span className="w-6 text-right font-mono flex-shrink-0 pt-0.5" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{r.crashed ? "—" : r.position}</span>
-              <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: r.teamColor }} />
-              <RiderNumber rider={r} size={22} className="flex-shrink-0 mt-0.5" />
+              <TeamNumberBadge color={r.teamColor} number={r.number} riderId={r.photoId ?? r.id} />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate" style={{ fontWeight: r.teamId === "player" ? 700 : 400 }}>{r.name}</span>

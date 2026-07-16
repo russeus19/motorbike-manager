@@ -22,6 +22,7 @@ export function instantiateTeams(categoryKey) {
       logoId: t.logoId || null,
       name: t.name,
       tier: t.tier,
+      manufacturer: t.manufacturer || null,
       color: t.color,
       bike: { ...t.bike },
       budget: t.budget,

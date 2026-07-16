@@ -99,6 +99,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
 
 export function DetailedStandingsPanel({ category, riderStandings, teamStandings, riderWins, riderPodiums, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
   const [tab, setTab] = useState(category);
+  const [teamView, setTeamView] = useState("equipos");
   const isCurrent = tab === category;
   const rs = isCurrent ? riderStandings : (otherCategories[tab]?.riderStandings || {});
   const rw = isCurrent ? riderWins : (otherCategories[tab]?.riderWins || {});
@@ -120,6 +121,18 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
     };
   }).sort((a, b) => b.points - a.points);
 
+  const constructorMap = {};
+  teamsList.forEach((t) => {
+    const mfr = t.manufacturer || "—";
+    const ids = [...t.riders.map((r) => r.id), ...Object.values(t.substitutes || {}).map((r) => r.id)];
+    const entry = constructorMap[mfr] || { id: mfr, name: mfr, points: 0, wins: 0, podiums: 0 };
+    entry.points += ts[t.id] || 0;
+    entry.wins += ids.reduce((s, id) => s + (rw[id] || 0), 0);
+    entry.podiums += ids.reduce((s, id) => s + (rp[id] || 0), 0);
+    constructorMap[mfr] = entry;
+  });
+  const constructorRows = Object.values(constructorMap).sort((a, b) => b.points - a.points);
+
   function handleRiderClick(id) {
     const found = findRiderInCategory(tab, id);
     if (found) openProfile(found.rider, found.teamName, tab);
@@ -129,6 +142,8 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
     const team = teamsList.find((t) => t.id === id);
     if (team && onOpenTeamProfile) onOpenTeamProfile(team, tab);
   }
+
+  const teamOrConstructorRows = teamView === "equipos" ? teamRows : constructorRows;
 
   return (
     <Panel title="Clasificaciones" icon={Trophy} accent={accent}>
@@ -165,23 +180,41 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
         ))}
       </div>
 
-      <div className="text-xs uppercase tracking-wider mb-1.5 mt-4" style={{ color: COLORS.muted }}>Escuderías</div>
+      <div className="flex items-center justify-between mb-1.5 mt-4">
+        <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>{teamView === "equipos" ? "Escuderías" : "Constructores"}</div>
+        <div className="flex gap-1.5">
+          <button onClick={() => setTeamView("equipos")}
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{ background: teamView === "equipos" ? accent : COLORS.panel2, color: teamView === "equipos" ? "#12151A" : COLORS.muted, border: `1px solid ${teamView === "equipos" ? accent : COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
+            Equipos
+          </button>
+          <button onClick={() => setTeamView("constructores")}
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{ background: teamView === "constructores" ? accent : COLORS.panel2, color: teamView === "constructores" ? "#12151A" : COLORS.muted, border: `1px solid ${teamView === "constructores" ? accent : COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
+            Constructores
+          </button>
+        </div>
+      </div>
       <div style={{ maxHeight: 240, overflowY: "auto" }}>
         <div className="flex items-center px-1 py-1 text-xs uppercase" style={{ color: COLORS.muted }}>
           <span className="w-6 text-right">#</span>
-          <span className="flex-1 ml-2">Equipo</span>
+          <span className="flex-1 ml-2">{teamView === "equipos" ? "Equipo" : "Marca"}</span>
           <span className="w-8 text-right">V</span>
           <span className="w-8 text-right">P</span>
           <span className="w-12 text-right">Pts</span>
         </div>
-        {teamRows.map((t, i) => (
+        {teamOrConstructorRows.map((t, i) => (
           <div key={t.id} className="flex items-center px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
             <span className="w-6 text-right font-mono" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}</span>
-            <button onClick={() => handleTeamClick(t.id)}
-              className="flex-1 ml-2 min-w-0 truncate text-left hover:opacity-80 cursor-pointer"
-              style={{ color: isCurrent && t.id === "player" ? accent : COLORS.text, fontWeight: isCurrent && t.id === "player" ? 700 : 400 }}>
-              {t.name}
-            </button>
+            {teamView === "equipos" ? (
+              <button onClick={() => handleTeamClick(t.id)}
+                className="flex-1 ml-2 min-w-0 truncate text-left hover:opacity-80 cursor-pointer"
+                style={{ color: isCurrent && t.id === "player" ? accent : COLORS.text, fontWeight: isCurrent && t.id === "player" ? 700 : 400 }}>
+                {t.name}
+              </button>
+            ) : (
+              <span className="flex-1 ml-2 min-w-0 truncate">{t.name}</span>
+            )}
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.wins}</span>
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.podiums}</span>
             <span className="w-12 text-right font-mono" style={{ color: accent }}>{t.points}</span>

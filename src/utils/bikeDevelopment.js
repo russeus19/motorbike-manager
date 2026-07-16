@@ -129,7 +129,8 @@ export function canStartProject(team, area, kind, budgetAvailable, scale) {
 
 export function startProjectOnTeam(team, area, kind, spec) {
   const project = { area, kind, remaining: spec.gp, totalGp: spec.gp, capacity: spec.capacity, gain: spec.gain, failChance: spec.failChance, money: spec.money };
-  return { ...team, activeProjects: [...(team.activeProjects || []), project] };
+  const researchSpendThisSeason = kind === "research" ? (team.researchSpendThisSeason || 0) + spec.money : (team.researchSpendThisSeason || 0);
+  return { ...team, activeProjects: [...(team.activeProjects || []), project], researchSpendThisSeason };
 }
 
 /**
@@ -441,6 +442,7 @@ export function aiConsiderFacilityUpgrade(team, scale) {
    research). */
 export function rolloverBike(team) {
   const { techBase, factory, staff } = ensureRD(team);
+  const researchInvested = team.researchSpendThisSeason || 0;
   const newBike = {};
   BIKE_AREA_KEYS.forEach((k) => {
     const factoryBonus = Math.round(factory.level * 0.12);
@@ -450,7 +452,18 @@ export function rolloverBike(team) {
     const rawDelta = target - team.bike[k];
     const maxGain = rawDelta > 4 ? Math.min(rawDelta, 9) : 4;
     const delta = clamp(rawDelta, -3, maxGain);
-    newBike[k] = clamp(team.bike[k] + delta, 1, 99);
+
+    // The rest of the grid keeps developing whether you invest or not.
+    // A season with little or no research spend means genuinely falling
+    // behind; a season with real investment should show for itself, not
+    // just "less bad than doing nothing" — full investment (relative to
+    // what a thorough research campaign in this area would cost) is
+    // worth a real improvement on top of the normal drift, while zero
+    // investment costs a real decline on top of it.
+    const investmentRatio = clamp(researchInvested / (AREA_BASE[k].money * 3), 0, 1);
+    const investmentEffect = Math.round(investmentRatio * 9) - 5;
+
+    newBike[k] = clamp(team.bike[k] + delta + investmentEffect, 1, 99);
   });
   return {
     ...team,
@@ -459,5 +472,6 @@ export function rolloverBike(team) {
     factory,
     staff,
     activeProjects: [],
+    researchSpendThisSeason: 0,
   };
 }
