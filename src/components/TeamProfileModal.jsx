@@ -2,6 +2,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { StatBar } from "./UIPrimitives.jsx";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
+import { RiderNumber } from "./RiderNumber.jsx";
 import { TeamLogo } from "./TeamLogo.jsx";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA } from "../data/categories.js";
@@ -102,7 +103,10 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
                   style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <RiderPhoto rider={r} size={44} className="rounded-lg" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{r.name}</div>
+                    <div className="text-sm font-semibold truncate flex items-center gap-1.5">
+                      <RiderNumber rider={r} size={22} />
+                      {r.name}
+                    </div>
                     <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.muted }}>
                       <CountryFlag nat={r.nat} width={16} /> {r.age} años · CA {overallRating(r)} · PA {r.pa} · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}
                     </div>

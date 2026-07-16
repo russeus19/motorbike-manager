@@ -10,6 +10,7 @@ import { StaffPanel } from "../components/StaffPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
+import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { AttrGrid, CheckerStrip, OverallBadge, Panel, PriorityAlertBanner, RiderNameButton } from "../components/UIPrimitives.jsx";
 import { WarehousePanel } from "../components/WarehousePanel.jsx";
@@ -154,6 +155,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                   <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
+                      <RiderNumber rider={r} size={22} />
                       <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
                       <OverallBadge value={overallRating(r)} accent={accent} />
                     </span>
@@ -246,6 +248,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                 <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-semibold flex items-center gap-1.5">
+                    <RiderNumber rider={r} size={22} />
                     <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
                     <OverallBadge value={overallRating(r)} accent={accent} />
                   </span>

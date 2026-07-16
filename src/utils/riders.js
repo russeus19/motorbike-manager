@@ -237,6 +237,41 @@ export function photoIdFor(rider) {
   return rider?.photoId ?? rider?.id ?? null;
 }
 
+/* Picks a fresh race number (2-99, since 1 is reserved in the real sport
+   for the reigning champion and this game doesn't track that) that
+   isn't already in `existingNumbers` — used both for a newly generated
+   rider (rookie, legend without a preset number) and for resolving a
+   collision when a rider's existing number turns out to already belong
+   to someone else in their new category. Falls back to whatever's free
+   if the whole 2-99 range is somehow taken (never happens with a real
+   grid size, but avoids an infinite loop either way). */
+export function assignUniqueNumber(existingNumbers) {
+  const taken = new Set(existingNumbers || []);
+  const candidates = [];
+  for (let n = 2; n <= 99; n++) if (!taken.has(n)) candidates.push(n);
+  if (!candidates.length) return randInt(2, 99);
+  return pick(candidates);
+}
+
+/* Ensures every rider in this list has a number, and that no two share
+   one — a rider keeps their existing number as long as nobody earlier
+   in the list already has it; only a genuine collision (or a missing
+   number) gets a fresh one assigned. Used whenever a full category
+   roster is assembled or re-validated, so numbers stay unique without
+   needing every individual creation site to know the whole roster. */
+export function dedupeRiderNumbers(riders) {
+  const seen = new Set();
+  return riders.map((r) => {
+    if (Number.isFinite(r.number) && !seen.has(r.number)) {
+      seen.add(r.number);
+      return r;
+    }
+    const number = assignUniqueNumber(seen);
+    seen.add(number);
+    return { ...r, number };
+  });
+}
+
 /* AI pick of who substitutes for an injured rider: favors experience and
    overall level, tempered a little by wage so a small team doesn't
    reflexively grab the most expensive legend on the list. Only considers

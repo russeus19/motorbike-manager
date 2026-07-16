@@ -2,7 +2,7 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
-import { computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
+import { assignUniqueNumber, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
@@ -370,7 +370,11 @@ function findTeam(teamsByCategory, categoryKey, teamId) {
 }
 
 function applyRiderToTeam(teamsByCategory, categoryKey, teamId, rider) {
-  teamsByCategory[categoryKey] = teamsByCategory[categoryKey].map((t) => (t.id === teamId ? { ...t, riders: [...t.riders, rider] } : t));
+  const existingNumbers = teamsByCategory[categoryKey].flatMap((t) => t.riders.map((r) => r.number)).filter(Number.isFinite);
+  const finalRider = (Number.isFinite(rider.number) && !existingNumbers.includes(rider.number))
+    ? rider
+    : { ...rider, number: assignUniqueNumber(existingNumbers) };
+  teamsByCategory[categoryKey] = teamsByCategory[categoryKey].map((t) => (t.id === teamId ? { ...t, riders: [...t.riders, finalRider] } : t));
 }
 
 /**

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Medal, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
+import { RiderNumber } from "./RiderNumber.jsx";
 import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
@@ -152,9 +153,17 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
-          <div className="flex items-center gap-3 min-w-0">
-            <RiderPhoto rider={rider} size={88} className="rounded-xl" />
+        <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0 relative overflow-hidden" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
+          {rider.number != null && (
+            <div className="absolute inset-0 flex items-center justify-end pr-14 pointer-events-none" style={{ opacity: 0.1 }}>
+              <RiderNumber rider={rider} size={220} />
+            </div>
+          )}
+          <div className="flex items-center gap-3 min-w-0 relative">
+            <div className="flex flex-col items-center gap-0 flex-shrink-0">
+              <RiderPhoto rider={rider} size={88} className="rounded-xl" />
+              <RiderNumber rider={rider} size={56} className="-mt-1" />
+            </div>
             <div className="min-w-0">
               <h3 className="text-2xl font-bold flex items-center gap-2 truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>
                 {rider.nat && <CountryFlag nat={rider.nat} width={24} />} {rider.name}
@@ -162,7 +171,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{teamName || "Sin equipo"} {categoryKey ? `· ${CATEGORY_DATA[categoryKey]?.label}` : ""} · {rider.age} años {rider.personality ? `· ${rider.personality}` : ""}</div>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 relative" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
 
         <div className="p-5 pt-4" style={{ overflowY: "auto" }}>

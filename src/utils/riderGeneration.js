@@ -6,14 +6,14 @@ import { ROOKIE_NATS } from "../data/rookieNats.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { nextId } from "./idGenerator.js";
 import { clamp, pick, randInt } from "./random.js";
-import { finalizeRiderEconomics, initRiderPotentialFields } from "./riders.js";
+import { finalizeRiderEconomics, initRiderPotentialFields, assignUniqueNumber, dedupeRiderNumbers } from "./riders.js";
 import { initialRiderPrestige, initialTeamPrestige } from "./prestige.js";
 import { initWarehouse } from "./warehouseEngine.js";
 
 export function instantiateTeams(categoryKey) {
   const data = CATEGORY_DATA[categoryKey].teams;
   const scale = CATEGORY_DATA[categoryKey].scale;
-  return data.map((t, i) => {
+  const teams = data.map((t, i) => {
     const isBig = t.tier === "Fábrica" || t.tier === "Puntero";
     const techBase = {};
     BIKE_AREA_KEYS.forEach((k) => { techBase[k] = clamp(Math.round(t.bike[k] * 0.85), 1, 99); });
@@ -45,6 +45,18 @@ export function instantiateTeams(categoryKey) {
       }),
     };
   });
+
+  // Dedupe across the WHOLE category (not just within one team) — the
+  // static data is curated to already be unique, but this keeps things
+  // safe if that ever drifts, and gives every rider a number at all.
+  const flatRiderCount = teams.map((t) => t.riders.length);
+  const dedupedFlat = dedupeRiderNumbers(teams.flatMap((t) => t.riders));
+  let cursor = 0;
+  return teams.map((t, i) => {
+    const riders = dedupedFlat.slice(cursor, cursor + flatRiderCount[i]);
+    cursor += flatRiderCount[i];
+    return { ...t, riders };
+  });
 }
 
 
@@ -69,6 +81,7 @@ export function makeRookie(scale) {
     adaptabilidad: randInt(35, 55),
     fisico: randInt(45, 65),
     seasonPoints: 0,
+    number: assignUniqueNumber([]),
   };
   const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
   const finalized = finalizeRiderEconomics(withPotential, scale ?? 0.32);
@@ -77,7 +90,7 @@ export function makeRookie(scale) {
 
 
 export function makeLegend(base) {
-  const withId = { ...base, id: nextId(), seasonPoints: 0 };
+  const withId = { ...base, id: nextId(), seasonPoints: 0, number: Number.isFinite(base.number) ? base.number : assignUniqueNumber([]) };
   const withPotential = { ...withId, ...initRiderPotentialFields(withId) };
   const finalized = finalizeRiderEconomics(withPotential, 1, 0);
   // Every current entry in data/freeAgentLegends.js carries an explicit
