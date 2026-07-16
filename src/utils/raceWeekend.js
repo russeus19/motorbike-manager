@@ -80,7 +80,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     }
 
     if (next.injury && next.injury.gpRemaining > 0) {
-      const wasFromQualifying = !!next.injury.fromQualifying;
+      const wasDeferred = !!next.injury.deferSubstituteDecision;
       const gpRemaining = next.injury.gpRemaining - 1;
       if (gpRemaining <= 0) {
         notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} recibe el alta médica y vuelve a competir con ${team.name}.` });
@@ -90,14 +90,14 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
         }
         next = { ...next, injury: null };
       } else {
-        next = { ...next, injury: { ...next.injury, gpRemaining, fromQualifying: false } };
-        // A qualifying-day injury that still keeps the rider out beyond
-        // the race that just happened genuinely needs a stand-in for
-        // the races ahead — decided here, right after the race, never
-        // during qualifying itself, since there was never time to
-        // arrange anything before Sunday.
-        if (wasFromQualifying && !substitutes[next.id]) {
-          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} seguirá de baja ${next.injury.gpTotal} Gran${next.injury.gpTotal === 1 ? "" : "es"} Premio${next.injury.gpTotal === 1 ? "" : "s"} tras la caída en clasificación.` });
+        next = { ...next, injury: { ...next.injury, gpRemaining, deferSubstituteDecision: false } };
+        // A same-weekend injury (qualifying or sprint) that still keeps
+        // the rider out beyond the race that just happened genuinely
+        // needs a stand-in for the races ahead — decided here, right
+        // after the race, never before it, since there was never time
+        // to arrange anything before Sunday.
+        if (wasDeferred && !substitutes[next.id]) {
+          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} seguirá de baja ${next.injury.gpTotal} Gran${next.injury.gpTotal === 1 ? "" : "es"} Premio${next.injury.gpTotal === 1 ? "" : "s"} tras la caída de este fin de semana.` });
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {

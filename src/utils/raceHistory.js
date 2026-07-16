@@ -19,7 +19,7 @@
  * already produced into a compact, permanent record). `resultsByCategory`
  * is `{ motogp: [...], moto2: [...], moto3: [...] }`, exactly the shape
  * already assembled in App.jsx's runRace for `lastResult`. */
-export function buildGpHistoryEntry({ round, seasonNumber, circuitName, isWet, resultsByCategory }) {
+export function buildGpHistoryEntry({ round, seasonNumber, circuitName, isWet, resultsByCategory, sprintResults }) {
   const results = {};
   Object.entries(resultsByCategory || {}).forEach(([catKey, catResults]) => {
     results[catKey] = [...(catResults || [])]
@@ -33,7 +33,20 @@ export function buildGpHistoryEntry({ round, seasonNumber, circuitName, isWet, r
         crashed: !!r.crashed,
       }));
   });
-  return { round, seasonNumber, circuitName, isWet: !!isWet, results };
+  const entry = { round, seasonNumber, circuitName, isWet: !!isWet, results };
+  if (sprintResults && sprintResults.length) {
+    entry.sprint = [...sprintResults]
+      .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+      .map((r) => ({
+        riderId: r.id,
+        name: r.name,
+        teamName: r.teamName,
+        position: r.position,
+        points: r.points,
+        crashed: !!r.crashed,
+      }));
+  }
+  return entry;
 }
 
 /** Finds the recorded entry for a specific season+round, or null if that

@@ -370,6 +370,13 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           ))}
         </div>
 
+        {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
+          <div className="rounded-md p-2 text-center mb-4" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+            <div className="text-xs uppercase" style={{ color: COLORS.muted }}>Sprint MotoGP</div>
+            <div className="font-mono text-sm">{rider.careerSprintWins?.motogp || 0}V · {rider.careerSprintPodiums?.motogp || 0}P</div>
+          </div>
+        )}
+
         <div>
           <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
             <Medal size={13} /> Historial de temporadas

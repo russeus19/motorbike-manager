@@ -3,9 +3,10 @@ import { AlertTriangle, ChevronRight, Timer } from "lucide-react";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 
-export function QualifyingScreen({ pendingQualifying, accent, category, runRace }) {
+export function QualifyingScreen({ pendingQualifying, accent, category, onContinue }) {
   const { circuitName, isWet, resultByCategory } = pendingQualifying;
   const [tab, setTab] = useState(category);
+  const continueLabel = category === "motogp" ? "Continuar al Sprint" : "Continuar a la carrera";
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -56,10 +57,10 @@ export function QualifyingScreen({ pendingQualifying, accent, category, runRace 
             </button>
           ))}
         </div>
-        <button onClick={runRace}
+        <button onClick={onContinue}
           className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 flex-shrink-0"
           style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-          Continuar a la carrera <ChevronRight size={18} />
+          {continueLabel} <ChevronRight size={18} />
         </button>
       </div>
 

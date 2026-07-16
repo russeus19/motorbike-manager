@@ -218,7 +218,7 @@ export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, 
    the dominant factor (skill and machinery still weigh far more). */
 
 
-export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gridPositionById = null) {
+export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gridPositionById = null, pointsTable = POINTS, dnfScale = 1) {
   let bestPreRoll = -Infinity;
   let poleRiderId = null;
 
@@ -226,8 +226,8 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
     const wetPenaltyMult = isWet ? 1.5 + (60 - r.adaptabilidad) / 100 : 1;
     const leveInjuryPenalty = (r.injury && !r.injury.sidelined && r.injury.gpRemaining > 0) ? 6 : 0;
     const dnfChance = clamp(
-      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult,
-      0.02, 0.45
+      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * dnfScale,
+      0.02 * dnfScale, 0.45
     );
     const crashed = Math.random() < dnfChance;
     const skill = (isWet ? wetRiderSkill(r) : riderSkill(r)) * moraleSkillMultiplier(r);
@@ -292,7 +292,7 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
   let pointsIdx = 0;
   const withPoints = results.map((r, i) => {
     let points = 0;
-    if (!r.crashed && pointsIdx < POINTS.length) { points = POINTS[pointsIdx]; pointsIdx++; }
+    if (!r.crashed && pointsIdx < pointsTable.length) { points = pointsTable[pointsIdx]; pointsIdx++; }
     return { ...r, position: i + 1, points };
   });
   const fastestLapEntry = withPoints.reduce((best, r) => (
@@ -302,19 +302,25 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
 }
 
 
-export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason, gridPositionById) {
-  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason, gridPositionById);
+export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale) {
+  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale);
 }
 
 
-export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason, gridPositionById) {
-  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason, gridPositionById);
+export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale) {
+  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale);
 }
 
 /* Increment career wins/podiums for a given category based on a race result */
 
 
-export function bumpCareerStats(rider, categoryKey, position, crashed, points) {
+export function bumpCareerStats(rider, categoryKey, position, crashed, points, isSprint = false) {
+  if (isSprint) {
+    if (crashed || position > 3) return rider;
+    const careerSprintPodiums = { ...rider.careerSprintPodiums, [categoryKey]: (rider.careerSprintPodiums?.[categoryKey] || 0) + 1 };
+    const careerSprintWins = position === 1 ? { ...rider.careerSprintWins, [categoryKey]: (rider.careerSprintWins?.[categoryKey] || 0) + 1 } : rider.careerSprintWins;
+    return { ...rider, careerSprintPodiums, careerSprintWins };
+  }
   const recentResults = [...(rider.recentResults || []), { position, points: points ?? 0, crashed: !!crashed }].slice(-3);
   if (crashed) return { ...rider, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
   if (position > 3) return { ...rider, recentResults };
@@ -350,13 +356,14 @@ export function formatGap(gapSeconds) {
 }
 
 
-export function buildClassificationDisplay(results, circuit, fastestLapRiderId = null, categoryKey = null) {
-  const laps = estimateLaps(circuit, categoryKey);
+export function buildClassificationDisplay(results, circuit, fastestLapRiderId = null, categoryKey = null, isSprint = false) {
+  const fullLaps = estimateLaps(circuit, categoryKey);
+  const laps = isSprint ? Math.max(3, Math.round(fullLaps / 2)) : fullLaps;
   const lapSeconds = estimateLapSeconds(circuit, categoryKey, false);
   const winnerTotal = laps * lapSeconds;
   const finishers = results.filter((r) => !r.crashed);
   const bestPerf = finishers.length ? finishers[0].perf : 0;
-  const gapCeiling = circuit?.records?.[categoryKey]?.worstGapSeconds ?? 95;
+  const gapCeiling = (circuit?.records?.[categoryKey]?.worstGapSeconds ?? 95) * (isSprint ? 0.5 : 1);
   return results.map((r) => {
     const isFastestLap = fastestLapRiderId != null && r.id === fastestLapRiderId;
     if (r.crashed) {

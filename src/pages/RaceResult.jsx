@@ -4,7 +4,7 @@ import { BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 
-export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category }) {
+export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, sprintMode = false }) {
   const { circuitName, isWet, results, arrivals, classificationByCategory } = lastResult;
   const [tab, setTab] = useState(category);
   const tabClassification = classificationByCategory?.[tab] || results[tab] || [];
@@ -26,12 +26,12 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
-      <div className="text-xs uppercase tracking-[0.2em] mb-1" style={{ color: COLORS.muted }}>Resultado</div>
+      <div className="text-xs uppercase tracking-[0.2em] mb-1" style={{ color: COLORS.muted }}>{sprintMode ? "Sprint" : "Resultado"}</div>
       <h2 className="text-2xl font-bold mb-1 flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>
         <Flag size={22} style={{ color: accent }} /> {circuitName}
       </h2>
       <div className="text-xs mb-4 flex items-center gap-3" style={{ color: isWet ? COLORS.ice : COLORS.muted }}>
-        <span>{isWet ? "🌧️ Carrera en mojado" : "☀️ Carrera en seco"}</span>
+        <span>{isWet ? "🌧️" : "☀️"} {sprintMode ? "Sprint" : "Carrera"} en {isWet ? "mojado" : "seco"}</span>
         {lapsForTab && <span style={{ color: COLORS.muted }}>· {lapsForTab} vueltas</span>}
       </div>
 
@@ -58,7 +58,7 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
 
       <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
         <div className="flex gap-2">
-          {CATEGORY_ORDER.map((ck) => (
+          {!sprintMode && CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => setTab(ck)}
               className="text-xs px-3 py-1.5 rounded font-semibold"
               style={{
@@ -74,7 +74,7 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
         <button onClick={continueAfterResult}
           className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
           style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-          {isLastRound ? "Ver resultado final de temporada" : "Continuar"} <ChevronRight size={18} />
+          {sprintMode ? "Continuar a la carrera" : (isLastRound ? "Ver resultado final de temporada" : "Continuar")} <ChevronRight size={18} />
         </button>
       </div>
 
