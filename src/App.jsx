@@ -1832,6 +1832,7 @@ export default function MotorbikeManager() {
       {phase === "seasonend" && playerTeam && (
         <SeasonEndScreen
           {...{ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, seasonNumber, openProfile, findRiderInCategory }}
+          onOpenTeamProfile={openTeamProfile}
           goToMarket={proceedFromSeasonEnd}
           isCareer={gameMode === "career"}
         />

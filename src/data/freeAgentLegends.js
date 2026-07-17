@@ -6,7 +6,7 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Stefan Bradl", photoId: 81, nat: "🇩🇪", age: 36, potential: 30, tecnica: 80, ritmo: 70, adelantamientos: 62, mental: 78, adaptabilidad: 76, fisico: 60 , prestige: 77 , number: 6 },
   { name: "Pol Espargaró", photoId: 82, nat: "🇪🇸", age: 34, potential: 40, tecnica: 80, ritmo: 74, adelantamientos: 73, mental: 73, adaptabilidad: 71, fisico: 67 , prestige: 89 , number: 44 },
   { name: "Lorenzo Savadori", photoId: 83, nat: "🇮🇹", age: 33, potential: 38, tecnica: 76, ritmo: 70, adelantamientos: 66, mental: 70, adaptabilidad: 68, fisico: 70 , prestige: 65 , number: 32 },
-  { name: "Augusto Fernández", photoId: 84, nat: "🇪🇸", age: 28, potential: 55, tecnica: 78, ritmo: 76, adelantamientos: 75, mental: 71, adaptabilidad: 73, fisico: 71 , prestige: 99 , number: 12 },
+  { name: "Augusto Fernández", photoId: 84, nat: "🇪🇸", age: 28, potential: 55, tecnica: 78, ritmo: 76, adelantamientos: 75, mental: 71, adaptabilidad: 73, fisico: 71 , prestige: 99 , number: 47 },
   { name: "Jonás Folger", photoId: 85, nat: "🇩🇪", age: 32, potential: 35, tecnica: 76, ritmo: 68, adelantamientos: 66, mental: 72, adaptabilidad: 70, fisico: 64 , prestige: 75 , number: 25 },
   { name: "Takaaki Nakagami", photoId: 86, nat: "🇯🇵", age: 34, potential: 30, tecnica: 77, ritmo: 73, adelantamientos: 68, mental: 75, adaptabilidad: 73, fisico: 66 , prestige: 84 , number: 30 },
   { name: "Dennis Foggia", photoId: 87, nat: "🇮🇹", age: 25, potential: 68, tecnica: 70, ritmo: 72, adelantamientos: 74, mental: 64, adaptabilidad: 66, fisico: 68 , prestige: 49 , number: 7 },

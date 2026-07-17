@@ -267,4 +267,7 @@ export const CIRCUIT_PROFILES = [
 // Attach each circuit's real-world reference data (laps, pole, worst
 // qualifier, winner time, worst-classified gap) by round order — see
 // circuitLapRecords.js for what each field means and where it came from.
-CIRCUIT_PROFILES.forEach((c, i) => { c.records = CIRCUIT_LAP_RECORDS[i]; });
+// Also attach the round index itself, so a rider's favorite-circuit tag
+// (utils/riders.js) can check "is this round X" without needing the
+// round number threaded through every function call.
+CIRCUIT_PROFILES.forEach((c, i) => { c.records = CIRCUIT_LAP_RECORDS[i]; c.round = i; });

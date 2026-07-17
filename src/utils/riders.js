@@ -172,8 +172,25 @@ export function initRiderPotentialFields(r) {
    ====================================================================== */
 
 
-export function riderSkill(r) {
-  return (
+/* Applies a rider's special-skill tags (see components/RiderProfileModal
+   for how these display) as a flat additive bonus to their final skill
+   number — each active tag adds its own 4%, so a rider with two tags
+   active at once (rare: would need their favorite circuit AND rain at
+   the same time) gets +8%, not a compounded multiplier. `circuit` and
+   `isWet` are optional — a caller without circuit context simply can't
+   trigger the favoriteCircuit bonus, and one without isWet can't trigger
+   wetSpecialist, but neither breaks. */
+function tagBonusMultiplier(rider, circuit, isWet) {
+  let mult = 1;
+  (rider.tags || []).forEach((tag) => {
+    if (tag.type === "favoriteCircuit" && circuit && circuit.round === tag.round) mult += 0.04;
+    if (tag.type === "wetSpecialist" && isWet) mult += 0.04;
+  });
+  return mult;
+}
+
+export function riderSkill(r, circuit = null) {
+  const base = (
     r.tecnica * 0.20 +
     r.ritmo * 0.30 +
     r.adelantamientos * 0.15 +
@@ -181,14 +198,15 @@ export function riderSkill(r) {
     r.adaptabilidad * 0.12 +
     r.fisico * 0.08
   );
+  return base * tagBonusMultiplier(r, circuit, false);
 }
 
 /* In the rain, adaptability and mental composure matter far more than raw
    pace or overtaking bravado. */
 
 
-export function wetRiderSkill(r) {
-  return (
+export function wetRiderSkill(r, circuit = null) {
+  const base = (
     r.tecnica * 0.15 +
     r.ritmo * 0.18 +
     r.adelantamientos * 0.08 +
@@ -196,6 +214,7 @@ export function wetRiderSkill(r) {
     r.adaptabilidad * 0.30 +
     r.fisico * 0.09
   );
+  return base * tagBonusMultiplier(r, circuit, true);
 }
 
 /* How well a bike's 5 categories match what this circuit rewards, versus

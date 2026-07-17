@@ -3,7 +3,12 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Ducati Lenovo Team", logoId: "ducati_lenovo", tier: "Fábrica", slots: 2, manufacturer: "Ducati", color: "#CC0000",
     bike: { aero: 90, chasis: 91, motor: 90, freno: 89, electronica: 90 }, budget: 5000000,
     riders: [
-      { name: "Marc Márquez", photoId: 1, nat: "🇪🇸", age: 33, potential: 45, tecnica: 99, ritmo: 98, adelantamientos: 99, mental: 95, adaptabilidad: 96, fisico: 83, prestige: 195 , number: 93 },
+      { name: "Marc Márquez", photoId: 1, nat: "🇪🇸", age: 33, potential: 45, tecnica: 99, ritmo: 98, adelantamientos: 99, mental: 95, adaptabilidad: 96, fisico: 83, prestige: 195 , number: 93,
+        tags: [
+          { type: "favoriteCircuit", round: 11, circuitLabel: "Sachsenring", label: "Maestro de Sachsenring" },
+          { type: "favoriteCircuit", round: 14, circuitLabel: "Misano", label: "Maestro de Misano" },
+          { type: "favoriteCircuit", round: 13, circuitLabel: "MotorLand Aragón", label: "Maestro de MotorLand Aragón" },
+        ] },
       { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 90, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63 },
     ],
   },
@@ -52,7 +57,8 @@ export const MOTOGP_TEAMS_DATA = [
     bike: { aero: 57, chasis: 57, motor: 58, freno: 58, electronica: 59 }, budget: 3000000,
     riders: [
       { name: "Toprak Razgatlıoğlu", photoId: 13, nat: "🇹🇷", age: 29, potential: 72, tecnica: 82, ritmo: 70, adelantamientos: 80, mental: 66, adaptabilidad: 61, fisico: 79, prestige: 152 , number: 7 },
-      { name: "Jack Miller", photoId: 14, nat: "🇦🇺", age: 31, potential: 40, tecnica: 72, ritmo: 70, adelantamientos: 77, mental: 69, adaptabilidad: 73, fisico: 71, prestige: 134 , number: 43 },
+      { name: "Jack Miller", photoId: 14, nat: "🇦🇺", age: 31, potential: 40, tecnica: 72, ritmo: 70, adelantamientos: 77, mental: 69, adaptabilidad: 73, fisico: 71, prestige: 134 , number: 43,
+        tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }] },
     ],
   },
   {
@@ -83,7 +89,8 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Pro Honda LCR", logoId: "honda_lcr", tier: "Satélite", slots: 1, manufacturer: "Honda", color: "#808080",
     bike: { aero: 65, chasis: 65, motor: 66, freno: 64, electronica: 67 }, budget: 3000000,
     riders: [
-      { name: "Johann Zarco", photoId: 21, nat: "🇫🇷", age: 36, potential: 32, tecnica: 81, ritmo: 77, adelantamientos: 76, mental: 78, adaptabilidad: 84, fisico: 66, prestige: 145 , number: 5 },
+      { name: "Johann Zarco", photoId: 21, nat: "🇫🇷", age: 36, potential: 32, tecnica: 81, ritmo: 77, adelantamientos: 76, mental: 78, adaptabilidad: 84, fisico: 66, prestige: 145 , number: 5,
+        tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }] },
       { name: "Diogo Moreira", photoId: 22, nat: "🇧🇷", age: 23, potential: 84, tecnica: 80, ritmo: 78, adelantamientos: 76, mental: 66, adaptabilidad: 70, fisico: 80, prestige: 136 , number: 11 },
     ],
   },

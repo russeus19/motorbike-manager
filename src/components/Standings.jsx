@@ -7,6 +7,7 @@ import { COLORS } from "../data/colors.js";
 export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
   const [tab, setTab] = useState(category);
   const [showAll, setShowAll] = useState(false);
+  const [teamView, setTeamView] = useState("equipos");
 
   const isCurrent = tab === category;
   const rs = isCurrent ? riderStandings : (otherCategories[tab]?.riderStandings || {});
@@ -27,6 +28,17 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
   const teamRows = Object.entries(ts)
     .map(([id, pts]) => ({ id, name: teamById[id]?.name || id, points: pts }))
     .sort((a, b) => b.points - a.points);
+
+  const constructorMap = {};
+  Object.entries(ts).forEach(([id, pts]) => {
+    const mfr = teamById[id]?.manufacturer || "—";
+    constructorMap[mfr] = (constructorMap[mfr] || 0) + pts;
+  });
+  const constructorRows = Object.entries(constructorMap)
+    .map(([name, points]) => ({ id: name, name, points }))
+    .sort((a, b) => b.points - a.points);
+
+  const teamOrConstructorRows = teamView === "equipos" ? teamRows : constructorRows;
 
   function handleRiderClick(id) {
     const found = findRiderInCategory(tab, id);
@@ -74,15 +86,37 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
         </ol>
       </Panel>
 
-      <Panel title="Clasificación de escuderías" icon={TrendingUp} accent={accent}>
+      <Panel
+        title={teamView === "equipos" ? "Clasificación de escuderías" : "Clasificación de constructores"}
+        icon={TrendingUp}
+        accent={accent}
+        headerRight={
+          <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setTeamView("equipos")}
+              className="text-xs px-2 py-0.5 rounded font-semibold"
+              style={{ background: teamView === "equipos" ? accent : COLORS.panel2, color: teamView === "equipos" ? "#12151A" : COLORS.muted, border: `1px solid ${teamView === "equipos" ? accent : COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
+              Equipos
+            </button>
+            <button onClick={() => setTeamView("constructores")}
+              className="text-xs px-2 py-0.5 rounded font-semibold"
+              style={{ background: teamView === "constructores" ? accent : COLORS.panel2, color: teamView === "constructores" ? "#12151A" : COLORS.muted, border: `1px solid ${teamView === "constructores" ? accent : COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
+              Constructores
+            </button>
+          </div>
+        }
+      >
         <ol className="text-sm space-y-1">
-          {teamRows.map((t, i) => (
+          {teamOrConstructorRows.map((t, i) => (
             <li key={t.id} className="flex justify-between">
-              <button onClick={() => handleTeamClick(t.id)}
-                className="text-left hover:opacity-80 cursor-pointer"
-                style={{ color: isCurrent && t.id === playerTeam.id ? accent : COLORS.text, fontWeight: isCurrent && t.id === playerTeam.id ? 700 : 400 }}>
-                {i + 1}. {t.name}
-              </button>
+              {teamView === "equipos" ? (
+                <button onClick={() => handleTeamClick(t.id)}
+                  className="text-left hover:opacity-80 cursor-pointer"
+                  style={{ color: isCurrent && t.id === playerTeam.id ? accent : COLORS.text, fontWeight: isCurrent && t.id === playerTeam.id ? 700 : 400 }}>
+                  {i + 1}. {t.name}
+                </button>
+              ) : (
+                <span>{i + 1}. {t.name}</span>
+              )}
               <span className="font-mono" style={{ color: COLORS.muted }}>{t.points}</span>
             </li>
           ))}

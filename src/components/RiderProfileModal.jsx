@@ -34,6 +34,15 @@ function historyStepLabel(h) {
   return `${who} responde.`;
 }
 
+/** Turns one special-skill tag into a short readable label. Built to
+ * extend cleanly: an unrecognized future tag type still shows something
+ * reasonable via its own `label` field rather than breaking. */
+function tagLabel(tag) {
+  if (tag.type === "favoriteCircuit") return `Especialista en ${tag.circuitLabel || tag.circuit}`;
+  if (tag.type === "wetSpecialist") return "Especialista en lluvia";
+  return tag.label || "Habilidad especial";
+}
+
 export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, scale }) {
   const [confirmFire, setConfirmFire] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
@@ -42,6 +51,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   const [offerYears, setOfferYears] = useState(2);
   const [offerWinBonus, setOfferWinBonus] = useState(0);
   const [offerTitleBonus, setOfferTitleBonus] = useState(0);
+  const [profileTab, setProfileTab] = useState("personal");
 
   // Resets the offer form to sensible suggested values every time a
   // different rider's profile is opened — unless there's already an
@@ -66,6 +76,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
     }
     setShowOfferForm(false);
     setConfirmFire(false);
+    setProfileTab("personal");
   }, [target?.rider?.id, scale]);
 
   if (!target) return null;
@@ -174,232 +185,274 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 relative" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
 
-        <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
-        <div className="flex gap-6 mb-4">
-          <div>
-            <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Media (CA)</div>
-            <div className="text-3xl font-mono" style={{ color: accent }}>{overall}</div>
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Potencial (PA)</div>
-            <div className="text-3xl font-mono" style={{ color: COLORS.text }}>{rider.pa}</div>
-          </div>
-        </div>
-
-        {rider.expectation && (
-          <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
-            Expectativa temporada: <span style={{ color: COLORS.text }}>{rider.expectation}</span>
-          </div>
-        )}
-        <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
-          Moral: <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
-        </div>
-        <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
-          Prestigio: <span style={{ color: COLORS.text, fontWeight: 600 }}>{Number.isFinite(rider.prestige) ? `${rider.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
-        </div>
-
-        <AttrGrid rider={rider} accent={accent} />
-
-        <div className="grid grid-cols-3 gap-2 my-3 text-xs" style={{ color: COLORS.muted }}>
-          <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-            <div className="uppercase">Contrato</div>
-            <div className="font-mono text-sm" style={{ color: (rider.contractYears ?? 0) > 0 ? COLORS.text : COLORS.muted }}>
-              {(rider.contractYears ?? 0) > 0 ? `${rider.contractYears} año${rider.contractYears === 1 ? "" : "s"}` : "Sin contrato"}
-            </div>
-          </div>
-          <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-            <div className="uppercase">Salario/año</div>
-            <div className="font-mono text-sm" style={{ color: COLORS.text }}>€{(rider.salary || 0).toLocaleString()}</div>
-          </div>
-          <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-            <div className="uppercase">Valor de mercado</div>
-            <div className="font-mono text-sm" style={{ color: COLORS.text }}>€{(rider.marketValue || 0).toLocaleString()}</div>
-          </div>
-        </div>
-
-        {rider.injury && rider.injury.gpRemaining > 0 && (
-          <div className="mb-3 rounded-md p-2.5 text-xs flex items-center gap-2" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger }}>
-            <AlertTriangle size={14} />
-            Lesión {rider.injury.severityLabel} ({rider.injury.name}) · {rider.injury.gpRemaining} GP restante{rider.injury.gpRemaining === 1 ? "" : "s"}
-            {rider.injury.sidelined ? "" : " · sigue compitiendo con el rendimiento mermado"}
-          </div>
-        )}
-
-        {isConfirmedForUs && signedNegotiation.status === "confirmed" && (
-          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
-            Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
-          </div>
-        )}
-        {isConfirmedForUs && signedNegotiation.status === "applied" && (
-          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
-            Renovación firmada — el contrato ya está actualizado.
-          </div>
-        )}
-        {signedNegotiation && !isSignedWithPlayer && (
-          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
-            {signedNegotiation.kind === "renewal"
-              ? `Este piloto ya ha renovado con ${signedNegotiation.toTeamName} para la próxima temporada.`
-              : `Este piloto ya ha firmado con ${signedNegotiation.toTeamName} para la próxima temporada.`}
-          </div>
-        )}
-        {existingNegotiation && !signedNegotiation && !isCounterOffer && (
-          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
-            Negociación en curso — os avisaremos tras el próximo Gran Premio.
-          </div>
-        )}
-
-        {isCounterOffer && (onAcceptCounterOffer || onModifyOffer || onWithdrawOffer) && (
-          <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #E08E45" }}>
-            <div className="font-semibold" style={{ color: "#E08E45" }}>Contraoferta recibida</div>
-            {existingNegotiation.status === "team_countered" && (
-              <p style={{ color: COLORS.text }}>{existingNegotiation.fromTeamName} pide €{Math.round(existingNegotiation.teamOfferAmount).toLocaleString()} de compensación.</p>
-            )}
-            {existingNegotiation.status === "rider_countered" && (
-              <p style={{ color: COLORS.text }}>{rider.name} pide €{Math.round(existingNegotiation.riderTerms.salary).toLocaleString()}/año.</p>
-            )}
-
-            <div className="text-xs" style={{ color: COLORS.muted }}>
-              {(existingNegotiation.history || []).map((h, i) => (
-                <div key={i}>{historyStepLabel(h)}</div>
-              ))}
-            </div>
-
-            {renderOfferFields(existingNegotiation.status === "team_countered")}
-
-            <div className="flex gap-2 pt-1">
-              {onAcceptCounterOffer && (
-                <button onClick={() => onAcceptCounterOffer(existingNegotiation.id)}
-                  className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
-                  Aceptar
-                </button>
-              )}
-              {onModifyOffer && (
-                <button
-                  onClick={() => onModifyOffer(existingNegotiation.id, teamOfferAmount, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus })}
-                  className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#E08E45", color: "#12151A" }}>
-                  Modificar
-                </button>
-              )}
-              {onWithdrawOffer && (
-                <button onClick={() => onWithdrawOffer(existingNegotiation.id)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.danger }}>
-                  Retirar
-                </button>
-              )}
-            </div>
-            <p style={{ color: COLORS.muted }}>Si modificás la oferta, la respuesta llegará tras el próximo Gran Premio.</p>
-          </div>
-        )}
-
-        {offerEligible && !existingNegotiation && onCreateOffer && !showOfferForm && (
-          <RiderActionButton tone="green" onClick={() => setShowOfferForm(true)}>
-            {offerLabel}
-          </RiderActionButton>
-        )}
-
-        {offerEligible && !existingNegotiation && onCreateOffer && showOfferForm && (
-          <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #3F9142" }}>
-            {renderOfferFields(offerNeedsTeamDeal)}
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => {
-                  onCreateOffer(rider, categoryKey, offerNeedsTeamDeal ? teamOfferAmount : null, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus });
-                  setShowOfferForm(false);
-                }}
-                className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
-                Enviar oferta
-              </button>
-              <button onClick={() => setShowOfferForm(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.muted }}>
-                Cancelar
-              </button>
-            </div>
-            <p style={{ color: COLORS.muted }}>La respuesta llegará tras disputarse el próximo Gran Premio.</p>
-          </div>
-        )}
-
-        {signEligible && onSignFreeAgent && (
-          <button onClick={() => onSignFreeAgent(rider)} disabled={signCost > budget}
-            className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40 font-semibold"
-            style={{ background: accent, color: "#12151A" }}>
-            Fichar por {playerTeam.name} — €{signCost.toLocaleString()}
-          </button>
-        )}
-
-        {isOwnRider && onFireRider && !confirmFire && (
-          <RiderActionButton tone="red" onClick={() => setConfirmFire(true)} disabled={fireCost > budget}>
-            Despedir — €{fireCost.toLocaleString()}
-          </RiderActionButton>
-        )}
-
-        {isOwnRider && onFireRider && confirmFire && (
-          <div className="mb-3 rounded-md p-3 text-xs" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}` }}>
-            <p className="mb-2" style={{ color: COLORS.text }}>
-              ¿Rescindir el contrato de {rider.name}? Abandonará la escudería de inmediato y pasará al mercado de pilotos libres. El coste de la rescisión (€{fireCost.toLocaleString()}) se descontará del presupuesto ahora mismo.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => onFireRider(rider.id)} disabled={fireCost > budget}
-                className="flex-1 py-1.5 rounded font-semibold disabled:opacity-40"
-                style={{ background: COLORS.danger, color: "#fff" }}>
-                Confirmar despido
-              </button>
-              <button onClick={() => setConfirmFire(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel2, color: COLORS.muted }}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isOwnRider && onMarkReleaseAtSeasonEnd && !rider.releasedAtSeasonEnd && (
-          <RiderActionButton tone="blue" onClick={() => onMarkReleaseAtSeasonEnd(rider.id, true)} disabled={releaseCost > budget}>
-            Designar para quedar libre al final de temporada{releaseCost > 0 ? ` — €${releaseCost.toLocaleString()}` : ""}
-          </RiderActionButton>
-        )}
-        {isOwnRider && onMarkReleaseAtSeasonEnd && rider.releasedAtSeasonEnd && (
-          <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
-            <div className="flex items-center justify-between gap-2">
-              <span>Dejará el equipo al finalizar la temporada.</span>
-              <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, false)} disabled={rosterPlanningLocked}
-                className="underline-none font-semibold flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed" style={{ color: rosterPlanningLocked ? COLORS.muted : accent }}>
-                Deshacer
-              </button>
-            </div>
-            {rosterPlanningLocked && (
-              <div className="mt-1.5" style={{ color: COLORS.muted }}>
-                No es posible deshacer esta acción porque la plantilla de la próxima temporada ya está completa.
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="grid grid-cols-3 gap-2 my-4">
-          {CATEGORY_ORDER.map((ck) => (
-            <div key={ck} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="text-xs uppercase" style={{ color: COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
-              <div className="font-mono text-sm">{rider.careerWins?.[ck] || 0}V · {rider.careerPodiums?.[ck] || 0}P</div>
-            </div>
+        <div className="flex gap-1.5 px-5 pt-3 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
+          {[["personal", "Datos personales"], ["contrato", "Contrato"], ["trayectoria", "Trayectoria"]].map(([key, label]) => (
+            <button key={key} onClick={() => setProfileTab(key)}
+              className="text-xs px-3 py-2 rounded-t-md font-semibold"
+              style={{
+                background: profileTab === key ? COLORS.panel2 : "transparent",
+                color: profileTab === key ? accent : COLORS.muted,
+                borderBottom: profileTab === key ? `2px solid ${accent}` : "2px solid transparent",
+                fontFamily: "Rajdhani, sans-serif",
+              }}>
+              {label}
+            </button>
           ))}
         </div>
 
-        {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
-          <div className="rounded-md p-2 text-center mb-4" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-            <div className="text-xs uppercase" style={{ color: COLORS.muted }}>Sprint MotoGP</div>
-            <div className="font-mono text-sm">{rider.careerSprintWins?.motogp || 0}V · {rider.careerSprintPodiums?.motogp || 0}P</div>
-          </div>
+        <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
+
+        {profileTab === "personal" && (
+          <>
+            <div className="flex gap-6 mb-4">
+              <div>
+                <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Media (CA)</div>
+                <div className="text-3xl font-mono" style={{ color: accent }}>{overall}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Potencial (PA)</div>
+                <div className="text-3xl font-mono" style={{ color: COLORS.text }}>{rider.pa}</div>
+              </div>
+            </div>
+
+            {rider.expectation && (
+              <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
+                Expectativa temporada: <span style={{ color: COLORS.text }}>{rider.expectation}</span>
+              </div>
+            )}
+            <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
+              Moral: <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
+            </div>
+            <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
+              Prestigio: <span style={{ color: COLORS.text, fontWeight: 600 }}>{Number.isFinite(rider.prestige) ? `${rider.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
+            </div>
+
+            {rider.injury && rider.injury.gpRemaining > 0 && (
+              <div className="mb-4 rounded-md p-2.5 text-xs flex items-center gap-2" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger }}>
+                <AlertTriangle size={14} />
+                Lesión {rider.injury.severityLabel} ({rider.injury.name}) · {rider.injury.gpRemaining} GP restante{rider.injury.gpRemaining === 1 ? "" : "s"}
+                {rider.injury.sidelined ? "" : " · sigue compitiendo con el rendimiento mermado"}
+              </div>
+            )}
+
+            <AttrGrid rider={rider} accent={accent} />
+
+            {rider.tags && rider.tags.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Habilidades especiales</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {rider.tags.map((tag, i) => (
+                    <span key={i} className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "rgba(227,164,39,0.14)", border: `1px solid ${accent}`, color: accent }}>
+                      {tagLabel(tag)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
-        <div>
-          <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-            <Medal size={13} /> Historial de temporadas
-          </div>
-          {history.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Aún no ha completado ninguna temporada en la partida.</p>}
-          <ul className="text-sm space-y-1">
-            {history.map((h, i) => (
-              <li key={i} className="flex justify-between">
-                <span>T{h.season} · {CATEGORY_DATA[h.category]?.label} · {h.teamName}</span>
-                <span>{h.position}º · {h.points ?? 0} pts {badgeEmoji(h.badge)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {profileTab === "contrato" && (
+          <>
+            <div className="grid grid-cols-3 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
+              <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="uppercase">Contrato</div>
+                <div className="font-mono text-sm" style={{ color: (rider.contractYears ?? 0) > 0 ? COLORS.text : COLORS.muted }}>
+                  {(rider.contractYears ?? 0) > 0 ? `${rider.contractYears} año${rider.contractYears === 1 ? "" : "s"}` : "Sin contrato"}
+                </div>
+              </div>
+              <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="uppercase">Salario/año</div>
+                <div className="font-mono text-sm" style={{ color: COLORS.text }}>€{(rider.salary || 0).toLocaleString()}</div>
+              </div>
+              <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="uppercase">Valor de mercado</div>
+                <div className="font-mono text-sm" style={{ color: COLORS.text }}>€{(rider.marketValue || 0).toLocaleString()}</div>
+              </div>
+            </div>
+
+            {isConfirmedForUs && signedNegotiation.status === "confirmed" && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
+                Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
+              </div>
+            )}
+            {isConfirmedForUs && signedNegotiation.status === "applied" && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
+                Renovación firmada — el contrato ya está actualizado.
+              </div>
+            )}
+            {signedNegotiation && !isSignedWithPlayer && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                {signedNegotiation.kind === "renewal"
+                  ? `Este piloto ya ha renovado con ${signedNegotiation.toTeamName} para la próxima temporada.`
+                  : `Este piloto ya ha firmado con ${signedNegotiation.toTeamName} para la próxima temporada.`}
+              </div>
+            )}
+            {existingNegotiation && !signedNegotiation && !isCounterOffer && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+                Negociación en curso — os avisaremos tras el próximo Gran Premio.
+              </div>
+            )}
+
+            {isCounterOffer && (onAcceptCounterOffer || onModifyOffer || onWithdrawOffer) && (
+              <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #E08E45" }}>
+                <div className="font-semibold" style={{ color: "#E08E45" }}>Contraoferta recibida</div>
+                {existingNegotiation.status === "team_countered" && (
+                  <p style={{ color: COLORS.text }}>{existingNegotiation.fromTeamName} pide €{Math.round(existingNegotiation.teamOfferAmount).toLocaleString()} de compensación.</p>
+                )}
+                {existingNegotiation.status === "rider_countered" && (
+                  <p style={{ color: COLORS.text }}>{rider.name} pide €{Math.round(existingNegotiation.riderTerms.salary).toLocaleString()}/año.</p>
+                )}
+
+                <div className="text-xs" style={{ color: COLORS.muted }}>
+                  {(existingNegotiation.history || []).map((h, i) => (
+                    <div key={i}>{historyStepLabel(h)}</div>
+                  ))}
+                </div>
+
+                {renderOfferFields(existingNegotiation.status === "team_countered")}
+
+                <div className="flex gap-2 pt-1">
+                  {onAcceptCounterOffer && (
+                    <button onClick={() => onAcceptCounterOffer(existingNegotiation.id)}
+                      className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
+                      Aceptar
+                    </button>
+                  )}
+                  {onModifyOffer && (
+                    <button
+                      onClick={() => onModifyOffer(existingNegotiation.id, teamOfferAmount, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus })}
+                      className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#E08E45", color: "#12151A" }}>
+                      Modificar
+                    </button>
+                  )}
+                  {onWithdrawOffer && (
+                    <button onClick={() => onWithdrawOffer(existingNegotiation.id)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.danger }}>
+                      Retirar
+                    </button>
+                  )}
+                </div>
+                <p style={{ color: COLORS.muted }}>Si modificás la oferta, la respuesta llegará tras el próximo Gran Premio.</p>
+              </div>
+            )}
+
+            {offerEligible && !existingNegotiation && onCreateOffer && !showOfferForm && (
+              <RiderActionButton tone="green" onClick={() => setShowOfferForm(true)}>
+                {offerLabel}
+              </RiderActionButton>
+            )}
+
+            {offerEligible && !existingNegotiation && onCreateOffer && showOfferForm && (
+              <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #3F9142" }}>
+                {renderOfferFields(offerNeedsTeamDeal)}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      onCreateOffer(rider, categoryKey, offerNeedsTeamDeal ? teamOfferAmount : null, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus });
+                      setShowOfferForm(false);
+                    }}
+                    className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
+                    Enviar oferta
+                  </button>
+                  <button onClick={() => setShowOfferForm(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.muted }}>
+                    Cancelar
+                  </button>
+                </div>
+                <p style={{ color: COLORS.muted }}>La respuesta llegará tras disputarse el próximo Gran Premio.</p>
+              </div>
+            )}
+
+            {signEligible && onSignFreeAgent && (
+              <button onClick={() => onSignFreeAgent(rider)} disabled={signCost > budget}
+                className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40 font-semibold"
+                style={{ background: accent, color: "#12151A" }}>
+                Fichar por {playerTeam.name} — €{signCost.toLocaleString()}
+              </button>
+            )}
+
+            {isOwnRider && onFireRider && !confirmFire && (
+              <RiderActionButton tone="red" onClick={() => setConfirmFire(true)} disabled={fireCost > budget}>
+                Despedir — €{fireCost.toLocaleString()}
+              </RiderActionButton>
+            )}
+
+            {isOwnRider && onFireRider && confirmFire && (
+              <div className="mb-3 rounded-md p-3 text-xs" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}` }}>
+                <p className="mb-2" style={{ color: COLORS.text }}>
+                  ¿Rescindir el contrato de {rider.name}? Abandonará la escudería de inmediato y pasará al mercado de pilotos libres. El coste de la rescisión (€{fireCost.toLocaleString()}) se descontará del presupuesto ahora mismo.
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => onFireRider(rider.id)} disabled={fireCost > budget}
+                    className="flex-1 py-1.5 rounded font-semibold disabled:opacity-40"
+                    style={{ background: COLORS.danger, color: "#fff" }}>
+                    Confirmar despido
+                  </button>
+                  <button onClick={() => setConfirmFire(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel2, color: COLORS.muted }}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isOwnRider && onMarkReleaseAtSeasonEnd && !rider.releasedAtSeasonEnd && (
+              <RiderActionButton tone="blue" onClick={() => onMarkReleaseAtSeasonEnd(rider.id, true)} disabled={releaseCost > budget}>
+                Designar para quedar libre al final de temporada{releaseCost > 0 ? ` — €${releaseCost.toLocaleString()}` : ""}
+              </RiderActionButton>
+            )}
+            {isOwnRider && onMarkReleaseAtSeasonEnd && rider.releasedAtSeasonEnd && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span>Dejará el equipo al finalizar la temporada.</span>
+                  <button onClick={() => onMarkReleaseAtSeasonEnd(rider.id, false)} disabled={rosterPlanningLocked}
+                    className="underline-none font-semibold flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed" style={{ color: rosterPlanningLocked ? COLORS.muted : accent }}>
+                    Deshacer
+                  </button>
+                </div>
+                {rosterPlanningLocked && (
+                  <div className="mt-1.5" style={{ color: COLORS.muted }}>
+                    No es posible deshacer esta acción porque la plantilla de la próxima temporada ya está completa.
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {profileTab === "trayectoria" && (
+          <>
+            <div className="grid grid-cols-3 gap-2 my-4">
+              {CATEGORY_ORDER.map((ck) => (
+                <div key={ck} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                  <div className="text-xs uppercase" style={{ color: COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
+                  <div className="font-mono text-sm">{rider.careerWins?.[ck] || 0}V · {rider.careerPodiums?.[ck] || 0}P</div>
+                </div>
+              ))}
+            </div>
+
+            {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
+              <div className="rounded-md p-2 text-center mb-4" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="text-xs uppercase" style={{ color: COLORS.muted }}>Sprint MotoGP</div>
+                <div className="font-mono text-sm">{rider.careerSprintWins?.motogp || 0}V · {rider.careerSprintPodiums?.motogp || 0}P</div>
+              </div>
+            )}
+
+            <div>
+              <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
+                <Medal size={13} /> Historial de temporadas
+              </div>
+              {history.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Aún no ha completado ninguna temporada en la partida.</p>}
+              <ul className="text-sm space-y-1">
+                {history.map((h, i) => (
+                  <li key={i} className="flex justify-between">
+                    <span>T{h.season} · {CATEGORY_DATA[h.category]?.label} · {h.teamName}</span>
+                    <span>{h.position}º · {h.points ?? 0} pts {badgeEmoji(h.badge)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+
         </div>
       </div>
     </div>

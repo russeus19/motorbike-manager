@@ -191,3 +191,58 @@ export function evaluateSeasonVsExpectation(finalPosition, expectation) {
   }
   return "cumplida";
 }
+
+/** Approximate expected final rank for each rider expectation tier (see
+ * RIDER_EXPECTATION_TIERS/riderTierForRank above) — the tier is a label,
+ * not a number, so this maps each one back to the midpoint of the rank
+ * band it was actually assigned from, giving a fair, comparable number
+ * to weigh against where the rider actually finished. */
+const RIDER_TIER_EXPECTED_RANK = {
+  "Luchar por el campeonato": 2,
+  "Entrar en el Top 5": 5.5,
+  "Luchar por el Top 10": 10.5,
+  "Estar regularmente en los puntos": 16.5,
+  "Intentar puntuar": 22,
+};
+
+/**
+ * End-of-season awards for ONE category: the single biggest positive
+ * surprise and the single biggest negative surprise, for riders and for
+ * teams. A rider/team's own pre-season expectation
+ * (assignSeasonExpectations, fixed for the whole season) is compared
+ * against where they actually finished; the bigger that gap, the
+ * stronger the candidate. Returns null for any award with no valid
+ * candidate (e.g. missing expectation data), rather than forcing a
+ * misleading pick.
+ */
+export function findSeasonAwards({ teams, riderStandings, teamStandings }) {
+  let riderUp = null, riderDown = null, teamUp = null, teamDown = null;
+
+  const ridersById = {};
+  (teams || []).forEach((t) => t.riders.forEach((r) => { ridersById[r.id] = { rider: r, teamName: t.name }; }));
+
+  const riderRows = Object.entries(riderStandings || {}).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
+  riderRows.forEach((row, i) => {
+    const info = ridersById[row.id];
+    const expectedRank = info && RIDER_TIER_EXPECTED_RANK[info.rider.expectation];
+    if (!info || !Number.isFinite(expectedRank)) return;
+    const finalPos = i + 1;
+    const delta = expectedRank - finalPos;
+    const entry = { rider: info.rider, teamName: info.teamName, finalPos, delta };
+    if (delta > 0 && (!riderUp || delta > riderUp.delta)) riderUp = entry;
+    if (delta < 0 && (!riderDown || delta < riderDown.delta)) riderDown = entry;
+  });
+
+  const teamRows = Object.entries(teamStandings || {}).map(([id, pts]) => ({ id, points: pts })).sort((a, b) => b.points - a.points);
+  teamRows.forEach((row, i) => {
+    const team = (teams || []).find((t) => t.id === row.id);
+    if (!team || !team.expectation) return;
+    const finalPos = i + 1;
+    const delta = team.expectation.min - finalPos;
+    const entry = { team, finalPos, delta };
+    if (delta > 0 && (!teamUp || delta > teamUp.delta)) teamUp = entry;
+    if (delta < 0 && (!teamDown || delta < teamDown.delta)) teamDown = entry;
+  });
+
+  return { riderRevelacion: riderUp, riderDecepcion: riderDown, teamRevelacion: teamUp, teamDecepcion: teamDown };
+}

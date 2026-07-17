@@ -153,7 +153,7 @@ export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, 
       0.005, 0.16
     );
     const crashed = Math.random() < dnfChance;
-    const skill = (isWet ? wetRiderSkill(r) : riderSkill(r)) * moraleSkillMultiplier(r);
+    const skill = (isWet ? wetRiderSkill(r, circuit) : riderSkill(r, circuit)) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {
@@ -230,7 +230,7 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
       0.02 * dnfScale, 0.45
     );
     const crashed = Math.random() < dnfChance;
-    const skill = (isWet ? wetRiderSkill(r) : riderSkill(r)) * moraleSkillMultiplier(r);
+    const skill = (isWet ? wetRiderSkill(r, circuit) : riderSkill(r, circuit)) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {
