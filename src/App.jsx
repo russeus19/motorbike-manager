@@ -36,6 +36,7 @@ import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCat
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
 import { buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
+import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { assignSeasonExpectations } from "./utils/teamExpectations.js";
 import { releaseSubstitutesToPool, resolveSeasonMarketAcrossCategories } from "./utils/transferMarket.js";
 import { consumeWarehouseForResult, initWarehouse, queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
@@ -84,6 +85,7 @@ export default function MotorbikeManager() {
   const [profileTarget, setProfileTarget] = useState(null);
   const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
+  const [topProfileModal, setTopProfileModal] = useState(null);
 
   const storageOk = typeof window !== "undefined" && window.storage;
   const inGame = phase === "season" || phase === "qualifying" || phase === "sprint" || phase === "result" || phase === "seasonend" || phase === "market" || phase === "career-offers" || phase === "market-summary" || phase === "substitute-select";
@@ -103,6 +105,7 @@ export default function MotorbikeManager() {
   const riderWins = game?.riderWins ?? {};
   const riderPodiums = game?.riderPodiums ?? {};
   const sprintWins = game?.sprintWins ?? {};
+  const seasonArchive = game?.seasonArchive ?? [];
   const sprintPodiums = game?.sprintPodiums ?? {};
   const teamStandings = game?.teamStandings ?? {};
   const lastResult = game?.lastResult ?? null;
@@ -146,6 +149,7 @@ export default function MotorbikeManager() {
   const setRiderWins = makeFieldSetter("riderWins");
   const setRiderPodiums = makeFieldSetter("riderPodiums");
   const setSprintWins = makeFieldSetter("sprintWins");
+  const setSeasonArchive = makeFieldSetter("seasonArchive");
   const setSprintPodiums = makeFieldSetter("sprintPodiums");
   const setTeamStandings = makeFieldSetter("teamStandings");
   const setLastResult = makeFieldSetter("lastResult");
@@ -169,6 +173,7 @@ export default function MotorbikeManager() {
 
   function openProfile(rider, teamName, categoryKey) {
     setProfileTarget({ rider, teamName, categoryKey });
+    setTopProfileModal("rider");
   }
 
   /* profileTarget is a snapshot taken at the moment a name was clicked.
@@ -180,25 +185,26 @@ export default function MotorbikeManager() {
     const id = profileTarget.rider.id;
     if (playerTeam) {
       const own = findInTeamRoster(playerTeam, id);
-      if (own) return { rider: own, teamName: playerTeam.name, categoryKey: category };
+      if (own) return { rider: own, teamName: playerTeam.name, categoryKey: category, team: playerTeam };
     }
     for (const t of rivalTeams) {
       const found = findInTeamRoster(t, id);
-      if (found) return { rider: found, teamName: t.name, categoryKey: category };
+      if (found) return { rider: found, teamName: t.name, categoryKey: category, team: t };
     }
     for (const [key, catState] of Object.entries(otherCategories)) {
       for (const t of catState.teams) {
         const found = findInTeamRoster(t, id);
-        if (found) return { rider: found, teamName: t.name, categoryKey: key };
+        if (found) return { rider: found, teamName: t.name, categoryKey: key, team: t };
       }
     }
     const fa = freeAgents.find((r) => r.id === id);
-    if (fa) return { rider: fa, teamName: "Agente libre", categoryKey: profileTarget.categoryKey };
+    if (fa) return { rider: fa, teamName: "Agente libre", categoryKey: profileTarget.categoryKey, team: null };
     return profileTarget;
   }
 
   function openTeamProfile(team, categoryKey) {
     setTeamProfileTarget({ teamId: team.id, categoryKey });
+    setTopProfileModal("team");
   }
 
   /* Same idea as resolveLiveProfileTarget: re-resolve the team by id
@@ -378,6 +384,7 @@ export default function MotorbikeManager() {
       riderPodiums: {},
       sprintWins: {},
       sprintPodiums: {},
+      seasonArchive: [],
       ...data,
       gameMode: restoredGameMode,
       playerTeam,
@@ -457,7 +464,7 @@ export default function MotorbikeManager() {
       seasonNumber: 1,
       budget: chosenTeam.budget,
       riderStandings: rsFixed,
-      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {},
+      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [],
       teamStandings: ts,
       lastResult: null,
       gpHistory: [],
@@ -645,7 +652,7 @@ export default function MotorbikeManager() {
       seasonNumber: 1,
       budget: chosen.budget,
       riderStandings: rsFixed,
-      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {},
+      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [],
       teamStandings: ts,
       lastResult: null,
       gpHistory: [],
@@ -1434,6 +1441,14 @@ export default function MotorbikeManager() {
     const ctxOtherCategories = ctxOverride.otherCategories ?? otherCategories;
     const ctxCategory = ctxOverride.category ?? category;
 
+    const archiveCategoriesData = {
+      [ctxCategory]: { teams: [ctxPlayerTeam, ...ctxRivalTeams], riderStandings, teamStandings: ctxTeamStandings },
+    };
+    Object.entries(ctxOtherCategories).forEach(([k, v]) => {
+      archiveCategoriesData[k] = { teams: v.teams, riderStandings: v.riderStandings, teamStandings: v.teamStandings };
+    });
+    setSeasonArchive([...seasonArchive, buildSeasonArchiveEntry(seasonNumber, archiveCategoriesData)]);
+
     // Root-cause fix: a full snapshot of every rider that exists right
     // now, taken before anything moves. Compared at the very end of this
     // function against everyone who's still somewhere afterwards — the
@@ -1808,7 +1823,7 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: runQualifying }}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: runQualifying }}
           notifCount={countUnread(notifications.motogp) + countUnread(notifications.moto2) + countUnread(notifications.moto3)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
@@ -1879,11 +1894,14 @@ export default function MotorbikeManager() {
         onModifyOffer={phase === "complete-roster" ? modifyRosterCompletionOffer : modifyPlayerOffer}
         onWithdrawOffer={withdrawPlayerOffer}
         scale={scale}
+        onOpenTeamProfile={openTeamProfile}
+        onTop={topProfileModal === "rider"}
       />
       <TeamProfileModal
         target={resolveLiveTeamProfileTarget()}
         onClose={() => setTeamProfileTarget(null)}
         onOpenRiderProfile={openProfile}
+        onTop={topProfileModal === "team"}
       />
       {openPackageId && playerTeam && (
         <BikePackageModal

@@ -3,6 +3,7 @@ import { AlertTriangle, Medal, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { RiderNumber } from "./RiderNumber.jsx";
+import { TeamLogo } from "./TeamLogo.jsx";
 import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
@@ -43,7 +44,7 @@ function tagLabel(tag) {
   return tag.label || "Habilidad especial";
 }
 
-export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, scale }) {
+export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, scale, onOpenTeamProfile, onTop = true }) {
   const [confirmFire, setConfirmFire] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [teamOfferAmount, setTeamOfferAmount] = useState(0);
@@ -80,7 +81,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   }, [target?.rider?.id, scale]);
 
   if (!target) return null;
-  const { rider, teamName, categoryKey } = target;
+  const { rider, teamName, categoryKey, team: currentTeam } = target;
   const accent = COLORS.gold;
   const overall = overallRating(rider);
   const history = [...(rider.history || [])].reverse();
@@ -162,7 +163,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0 relative overflow-hidden" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           {rider.number != null && (
@@ -254,6 +255,20 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
         {profileTab === "contrato" && (
           <>
+            {!isFreeAgent && currentTeam && (
+              <button onClick={() => onOpenTeamProfile?.(currentTeam, categoryKey)}
+                className="w-full mb-4 text-left rounded-md p-3 flex items-center gap-3 hover:opacity-80"
+                style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <TeamLogo team={currentTeam} size={44} />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{teamName}</div>
+                  <div className="text-xs" style={{ color: COLORS.muted }}>
+                    {currentTeam.tier}{currentTeam.manufacturer ? ` · ${currentTeam.manufacturer}` : ""} · Ver escudería
+                  </div>
+                </div>
+              </button>
+            )}
+
             <div className="grid grid-cols-3 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
               <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                 <div className="uppercase">Contrato</div>

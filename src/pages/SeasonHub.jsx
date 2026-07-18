@@ -8,7 +8,7 @@ import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
 import { StaffPanel } from "../components/StaffPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
-import { DetailedStandingsPanel, StandingsPanel } from "../components/Standings.jsx";
+import { DetailedStandingsPanel, SeasonArchivePanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
@@ -24,7 +24,7 @@ import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
   const circuit = CIRCUITS[round];
   const circuitProfile = CIRCUIT_PROFILES[round];
@@ -359,6 +359,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             openProfile={openProfile}
             onOpenTeamProfile={onOpenTeamProfile}
           />
+          <SeasonArchivePanel seasonArchive={seasonArchive} accent={accent} category={category} />
         </div>
       )}
 

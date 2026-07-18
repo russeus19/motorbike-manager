@@ -18,7 +18,7 @@ import { overallRating } from "../utils/riders.js";
  * CountryFlag, RiderNameButton and TeamLogo instead of duplicating any of
  * that rendering logic.
  */
-export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
+export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = true }) {
   if (!target) return null;
   const { team, categoryKey } = target;
   const accent = team.color || COLORS.gold;
@@ -26,7 +26,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile }) {
   const { factory, staff } = ensureRD(team);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)" }} onClick={onClose}>
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           <div className="flex items-center gap-3 min-w-0">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, TrendingUp, Trophy } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, TrendingUp, Trophy } from "lucide-react";
 import { Panel, RiderNameButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
@@ -257,5 +257,93 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
       </div>
     </Panel>
   );
+}
+
+/**
+ * Browses the permanent archive of completed seasons (utils/seasonArchive.js
+ * — one entry per season, captured right before the transition to the
+ * next one resets anything). Purely a viewer: season and category
+ * pickers, then whichever of pilotos/equipos/constructores is selected
+ * for that season+category snapshot.
+ */
+export function SeasonArchivePanel({ seasonArchive, accent, category }) {
+  const [seasonIdx, setSeasonIdx] = useState(Math.max(0, (seasonArchive || []).length - 1));
+  const [catTab, setCatTab] = useState(category);
+  const [viewTab, setViewTab] = useState("pilotos");
+
+  if (!seasonArchive || seasonArchive.length === 0) {
+    return (
+      <Panel title="Histórico de temporadas" icon={Archive} accent={accent}>
+        <p className="text-sm" style={{ color: COLORS.muted }}>Aún no se ha completado ninguna temporada en esta partida.</p>
+      </Panel>
+    );
+  }
+
+  const clampedIdx = clampIdx(seasonIdx, seasonArchive.length);
+  const entry = seasonArchive[clampedIdx];
+  const catData = entry.categories[catTab] || { riders: [], teams: [], constructors: [] };
+  const rows = viewTab === "pilotos" ? catData.riders : viewTab === "equipos" ? catData.teams : catData.constructors;
+
+  return (
+    <Panel title={`Histórico de temporadas — T${entry.seasonNumber}`} icon={Archive} accent={accent}>
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => setSeasonIdx(clampIdx(clampedIdx - 1, seasonArchive.length))} disabled={clampedIdx === 0}
+          className="p-1 rounded disabled:opacity-30" style={{ background: COLORS.panel2 }}>
+          <ChevronLeft size={16} style={{ color: COLORS.muted }} />
+        </button>
+        <span className="text-xs font-semibold" style={{ color: COLORS.text }}>Temporada {entry.seasonNumber}</span>
+        <button onClick={() => setSeasonIdx(clampIdx(clampedIdx + 1, seasonArchive.length))} disabled={clampedIdx === seasonArchive.length - 1}
+          className="p-1 rounded disabled:opacity-30" style={{ background: COLORS.panel2 }}>
+          <ChevronRight size={16} style={{ color: COLORS.muted }} />
+        </button>
+      </div>
+
+      <div className="flex gap-1.5 mb-2">
+        {CATEGORY_ORDER.map((ck) => (
+          <button key={ck} onClick={() => setCatTab(ck)}
+            className="text-xs px-2 py-1 rounded font-semibold"
+            style={{
+              background: catTab === ck ? accent : COLORS.panel2,
+              color: catTab === ck ? "#12151A" : COLORS.muted,
+              border: `1px solid ${catTab === ck ? accent : COLORS.rule}`,
+              fontFamily: "Rajdhani, sans-serif",
+            }}>
+            {CATEGORY_DATA[ck].label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-1.5 mb-3">
+        {[["pilotos", "Pilotos"], ["equipos", "Escuderías"], ["constructores", "Constructores"]].map(([key, label]) => (
+          <button key={key} onClick={() => setViewTab(key)}
+            className="text-xs px-2 py-0.5 rounded font-semibold"
+            style={{
+              background: viewTab === key ? COLORS.panel2 : "transparent",
+              color: viewTab === key ? accent : COLORS.muted,
+              borderBottom: viewTab === key ? `2px solid ${accent}` : "2px solid transparent",
+              fontFamily: "Rajdhani, sans-serif",
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <ol className="text-sm space-y-1 max-h-80 overflow-y-auto pr-1">
+        {rows.length === 0 && <p style={{ color: COLORS.muted }}>Sin datos para esta categoría.</p>}
+        {rows.map((r, i) => (
+          <li key={r.id || r.name} className="flex justify-between">
+            <span style={{ color: i < 3 ? COLORS.gold : COLORS.text }}>
+              {i + 1}. {r.name}{r.teamName ? <span style={{ color: COLORS.muted }}> ({r.teamName})</span> : null}
+            </span>
+            <span className="font-mono" style={{ color: COLORS.muted }}>{r.points}</span>
+          </li>
+        ))}
+      </ol>
+    </Panel>
+  );
+}
+
+function clampIdx(i, len) {
+  return Math.max(0, Math.min(len - 1, i));
 }
 
