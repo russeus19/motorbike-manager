@@ -367,7 +367,7 @@ export function buildClassificationDisplay(results, circuit, fastestLapRiderId =
   return results.map((r) => {
     const isFastestLap = fastestLapRiderId != null && r.id === fastestLapRiderId;
     if (r.crashed) {
-      return { ...r, laps: Math.max(1, laps - randInt(1, 6)), timeDisplay: "DNF", gapDisplay: "DNF", isFastestLap };
+      return { ...r, laps: Math.max(1, laps - randInt(1, 6)), timeDisplay: "DNF", gapDisplay: "DNF", gapSeconds: null, isFastestLap };
     }
     const gapSeconds = r.position === 1 ? 0 : clamp((bestPerf - r.perf) * 0.18, 0.1, gapCeiling);
     return {
@@ -375,6 +375,7 @@ export function buildClassificationDisplay(results, circuit, fastestLapRiderId =
       laps,
       timeDisplay: r.position === 1 ? formatRaceTime(winnerTotal) : formatGap(gapSeconds),
       gapDisplay: r.position === 1 ? "Líder" : formatGap(gapSeconds),
+      gapSeconds,
       isFastestLap,
     };
   });

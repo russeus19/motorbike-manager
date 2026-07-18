@@ -17,6 +17,8 @@ import { WarehousePanel } from "../components/WarehousePanel.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
+import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
+import { SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "../data/superbikesCalendar.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { raceLineup } from "../utils/raceSimulation.js";
@@ -26,14 +28,19 @@ import { initWarehouse } from "../utils/warehouseEngine.js";
 
 export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
-  const circuit = CIRCUITS[round];
-  const circuitProfile = CIRCUIT_PROFILES[round];
+  const isRestWeek = category === "superbikes" && !isSuperbikesRaceWeek(round);
+  const circuit = category === "superbikes"
+    ? (isRestWeek ? null : SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]])
+    : CIRCUITS[round];
+  const circuitProfile = category === "superbikes"
+    ? (isRestWeek ? CIRCUIT_PROFILES[round] : SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]])
+    : CIRCUIT_PROFILES[round];
   const [showRiderDetails, setShowRiderDetails] = useState(false);
   const [seasonTab, setSeasonTab] = useState("inicio");
   const ridersNeeded = raceLineup(playerTeam).length || 1;
   const warehouse = playerTeam.warehouse || initWarehouse();
   const lowStockParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock <= 2);
-  const missingParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock < ridersNeeded);
+  const missingParts = isRestWeek ? [] : WAREHOUSE_PARTS.filter((p) => warehouse[p].stock < ridersNeeded);
   const canRace = missingParts.length === 0;
   const priorityAlerts = buildPriorityAlerts({
     playerTeam, marketNegotiations,
@@ -78,7 +85,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
     <button onClick={onStartQualifying} disabled={!canRace}
       className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
       style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-      <Flag size={18} /> Simular GP
+      <Flag size={18} /> {isRestWeek ? "Semana sin GP — Continuar" : "Simular GP"}
     </button>
   );
 

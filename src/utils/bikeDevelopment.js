@@ -88,7 +88,7 @@ export function projectSpec(area, currentLevel, kind, scale, team) {
 
   const gainBase = kind === "dev"
     ? clamp(Math.round(7 * (1 - difficulty)) + 1, 1, 8)
-    : clamp(Math.round(9 * (1 - difficulty)) + 1, 1, 10);
+    : clamp(Math.round(3 * (1 - difficulty)) + 1, 1, 4);
   const gain = Math.round(gainBase * (1 + staff.level * 0.0025));
 
   const prestige = team?.facilitiesRating ?? 60;
@@ -191,6 +191,7 @@ export function advanceTeamProjects(team) {
   const remaining = [];
   const techBase = { ...baseTechBase };
   const pendingPackages = [...(team.pendingPackages || [])];
+  const pendingPrototypes = [...(team.pendingPrototypes || [])];
   (team.activeProjects || []).forEach((p) => {
     const rem = p.remaining - 1;
     if (rem > 0) { remaining.push({ ...p, remaining: rem }); return; }
@@ -209,11 +210,21 @@ export function advanceTeamProjects(team) {
       });
       arrivals.push({ area: p.area, kind: "dev", success: tier === "completo", tier, gain: actualGain, pending: true });
     } else {
-      techBase[p.area] = clamp(techBase[p.area] + actualGain, 0, 99);
-      arrivals.push({ area: p.area, kind: "research", success: tier === "completo", tier, gain: actualGain });
+      // Research no longer banks straight into the Base Tecnológica —
+      // it becomes a prototype waiting to be tested in preseason
+      // (utils/bikeDevelopment.js's testPrototype/applyPrototype below)
+      // before it's trusted with next year's bike. Can carry its own
+      // downside too, exactly like a development package can.
+      const downside = rollPackageDownside(p.area, actualGain, p, team);
+      pendingPrototypes.push({
+        id: `proto-${p.area}-${Date.now()}-${Math.round(Math.random() * 100000)}`,
+        area: p.area, trueGain: actualGain, tier,
+        downsideArea: downside?.area ?? null, downsideAmount: downside?.amount ?? 0,
+      });
+      arrivals.push({ area: p.area, kind: "research", success: tier === "completo", tier, gain: actualGain, pending: true });
     }
   });
-  return { team: { ...team, techBase, activeProjects: remaining, pendingPackages }, arrivals };
+  return { team: { ...team, techBase, activeProjects: remaining, pendingPackages, pendingPrototypes }, arrivals };
 }
 
 /**
@@ -430,6 +441,105 @@ export function aiConsiderFacilityUpgrade(team, scale) {
   if (!spec) return normalized;
   const started = startFacilityUpgrade(normalized, kind, spec);
   return { ...started, budget: (normalized.budget || 0) - spec.money };
+}
+
+/* ======================================================================
+   PRESEASON TESTING — a completed research prototype (see
+   advanceTeamProjects above) isn't trusted on the strength of the lab
+   number alone. At preseason testing (Sepang, Jerez, Tailandia — real
+   test venues), the team gets a NOISY reading of the true gain, not the
+   real number itself. A team with strong Staff+Fábrica reads it close
+   to the truth; a small team can be genuinely fooled either way — a
+   good prototype can test poorly, a mediocre one can test well. The
+   decision to keep it or bin it is made on that noisy reading, exactly
+   like a real preseason.
+   ====================================================================== */
+
+/** Perceived gain for one prototype test: the true gain plus noise whose
+ * size shrinks with Staff+Factory quality. Never negative — a bad test
+ * reads as "barely anything", not literally worse than nothing. */
+export function testPrototype(prototype, team) {
+  const { factory, staff } = ensureRD(team);
+  const infra = (factory.level + staff.level) / 2;
+  const noiseMagnitude = clamp(6 - infra * 0.045, 1, 6);
+  const noise = (Math.random() * 2 - 1) * noiseMagnitude;
+  return Math.max(0, Math.round(prototype.trueGain + noise));
+}
+
+/** Commits a prototype's REAL gain (not the perceived test reading) —
+ * and its downside, if it has one — into the Base Tecnológica (so it's
+ * never lost, and feeds next year's rollover too) AND directly onto the
+ * current bike, since preseason testing happens after this year's bike
+ * is already set: an accepted prototype is the team literally fitting
+ * the tested part before GP1. Removes it from the pending list either
+ * way. */
+/** Commits a prototype's REAL gain (not the perceived test reading) —
+ * and its downside, if it has one — into the Base Tecnológica in full
+ * (so it's never lost, and feeds every future rollover exactly like any
+ * other research). The CURRENT bike only gets a capped preview of that
+ * gain, though — the same +4 ceiling rolloverBike normally uses for an
+ * ordinary season-to-season improvement — so accepting a prototype
+ * shows up meaningfully this season without shortcutting the smoothing
+ * rolloverBike relies on every season after. Without this cap, a
+ * prototype's full gain would hit the bike immediately AND get banked
+ * permanently (pushing next season's rollover target up again too),
+ * effectively applying the same gain twice and letting the bike
+ * explode to its ceiling in a season or two on quite modest research.
+ * Removes the prototype from the pending list either way. */
+export function applyPrototype(team, prototypeId) {
+  const proto = (team.pendingPrototypes || []).find((p) => p.id === prototypeId);
+  if (!proto) return team;
+  const { techBase } = ensureRD(team);
+  const nextTechBase = { ...techBase, [proto.area]: clamp(techBase[proto.area] + proto.trueGain, 0, 99) };
+  const immediateBikeGain = Math.min(proto.trueGain, 4);
+  const nextBike = { ...team.bike, [proto.area]: clamp(team.bike[proto.area] + immediateBikeGain, 1, 99) };
+  if (proto.downsideArea) {
+    nextTechBase[proto.downsideArea] = clamp(nextTechBase[proto.downsideArea] - proto.downsideAmount, 0, 99);
+    nextBike[proto.downsideArea] = clamp(nextBike[proto.downsideArea] - proto.downsideAmount, 1, 99);
+  }
+  return { ...team, techBase: nextTechBase, bike: nextBike, pendingPrototypes: team.pendingPrototypes.filter((p) => p.id !== prototypeId) };
+}
+
+/** Discards a prototype with no effect on the bike at all — the
+ * research money/time already spent is a sunk cost either way. */
+export function discardPrototype(team, prototypeId) {
+  return { ...team, pendingPrototypes: (team.pendingPrototypes || []).filter((p) => p.id !== prototypeId) };
+}
+
+/**
+ * AI resolves every one of its own pending prototypes in one pass,
+ * testing each one (getting the same kind of noisy reading a human
+ * would) and keeping it only if that reading looks worthwhile — so an
+ * AI team can end up keeping a dud or binning a gem, exactly like a
+ * player relying on an imperfect test.
+ */
+export function aiResolvePrototypes(team) {
+  let current = team;
+  (current.pendingPrototypes || []).slice().forEach((proto) => {
+    const perceivedGain = testPrototype(proto, current);
+    const netValue = perceivedGain - (proto.downsideAmount || 0) * 1.15;
+    current = netValue > 0 ? applyPrototype(current, proto.id) : discardPrototype(current, proto.id);
+  });
+  return current;
+}
+
+/**
+ * A rider's own gut feeling about a prototype after riding it — an
+ * independent noisy read on the SAME true value (gain minus downside),
+ * but based on the rider's own mental/adaptabilidad rather than the
+ * team's Staff/Fábrica. A sharp, adaptable rider reads it more
+ * accurately; either can spot something the official test missed, or
+ * misjudge something the test got right. Returns a tone ("favorable" |
+ * "neutral" | "desfavorable") the UI turns into a quote.
+ */
+export function riderPrototypeOpinion(rider, prototype) {
+  const sharpness = clamp(((rider.mental ?? 60) + (rider.adaptabilidad ?? 60)) / 2, 0, 99);
+  const noiseMagnitude = clamp(6 - sharpness * 0.045, 1, 6);
+  const noise = (Math.random() * 2 - 1) * noiseMagnitude;
+  const netFeel = prototype.trueGain - (prototype.downsideAmount || 0) + noise;
+  if (netFeel >= 2) return "favorable";
+  if (netFeel <= -2) return "desfavorable";
+  return "neutral";
 }
 
 /* ======================================================================

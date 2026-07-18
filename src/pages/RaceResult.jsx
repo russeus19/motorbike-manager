@@ -5,11 +5,21 @@ import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { TeamNumberBadge } from "../components/TeamNumberBadge.jsx";
 
-export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, sprintMode = false }) {
+export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRound, category, sprintMode = false, sessionLabel = null }) {
   const { circuitName, isWet, results, arrivals, classificationByCategory } = lastResult;
   const [tab, setTab] = useState(category);
   const tabClassification = classificationByCategory?.[tab] || results[tab] || [];
   const lapsForTab = tabClassification[0]?.laps;
+  const injured = tabClassification.filter((r) => r.injuryResult);
+
+  // sessionLabel covers WorldSBK's Race 1 / Superpole Race specifically;
+  // sprintMode still covers MotoGP's Sprint exactly as before.
+  const sessionTitle = sessionLabel === "race1" ? "Race 1" : sessionLabel === "superpole" ? "Superpole Race" : sprintMode ? "Sprint" : "Resultado";
+  const sessionWord = sessionLabel === "race1" ? "la Race 1" : sessionLabel === "superpole" ? "la Superpole Race" : sprintMode ? "el Sprint" : "la carrera";
+  const defaultContinueLabel = sessionLabel === "race1" ? "Continuar a la Superpole Race"
+    : sessionLabel === "superpole" ? "Continuar a la Race 2"
+    : sprintMode ? "Continuar a la carrera"
+    : (isLastRound ? "Ver resultado final de temporada" : "Continuar");
 
   // This screen used to inherit whatever scroll position the previous
   // screen was left at, so it could open showing the bottom of the
@@ -27,12 +37,12 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
-      <div className="text-xs uppercase tracking-[0.2em] mb-1" style={{ color: COLORS.muted }}>{sprintMode ? "Sprint" : "Resultado"}</div>
+      <div className="text-xs uppercase tracking-[0.2em] mb-1" style={{ color: COLORS.muted }}>{sessionTitle}</div>
       <h2 className="text-2xl font-bold mb-1 flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>
         <Flag size={22} style={{ color: accent }} /> {circuitName}
       </h2>
       <div className="text-xs mb-4 flex items-center gap-3" style={{ color: isWet ? COLORS.ice : COLORS.muted }}>
-        <span>{isWet ? "🌧️" : "☀️"} {sprintMode ? "Sprint" : "Carrera"} en {isWet ? "mojado" : "seco"}</span>
+        <span>{isWet ? "🌧️" : "☀️"} {sessionTitle} en {isWet ? "mojado" : "seco"}</span>
         {lapsForTab && <span style={{ color: COLORS.muted }}>· {lapsForTab} vueltas</span>}
       </div>
 
@@ -59,7 +69,7 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
 
       <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
         <div className="flex gap-2">
-          {!sprintMode && CATEGORY_ORDER.map((ck) => (
+          {!sprintMode && !sessionLabel && CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => setTab(ck)}
               className="text-xs px-3 py-1.5 rounded font-semibold"
               style={{
@@ -75,9 +85,24 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
         <button onClick={continueAfterResult}
           className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
           style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-          {sprintMode ? "Continuar a la carrera" : (isLastRound ? "Ver resultado final de temporada" : "Continuar")} <ChevronRight size={18} />
+          {defaultContinueLabel} <ChevronRight size={18} />
         </button>
       </div>
+
+      {injured.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {injured.map((r) => (
+            <div key={r.id} className="rounded-md px-3 py-2 text-sm flex items-center gap-2"
+              style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}` }}>
+              <AlertTriangle size={16} style={{ color: COLORS.danger }} />
+              <span>
+                <strong>{r.name}</strong> ({r.teamName}) se cae en {sessionWord} — {r.injuryResult.name.toLowerCase()} (lesión {r.injuryResult.severityLabel}).
+                {(sprintMode || sessionLabel === "race1" || sessionLabel === "superpole") ? ` No podrá disputar ${sessionLabel === "race1" ? "la Superpole Race" : sessionLabel === "superpole" ? "la Race 2" : "la carrera"}.` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: COLORS.rule }}>
         {tabClassification.map((r, i) => (

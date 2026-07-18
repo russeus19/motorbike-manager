@@ -435,7 +435,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
         {profileTab === "trayectoria" && (
           <>
-            <div className="grid grid-cols-3 gap-2 my-4">
+            <div className="grid grid-cols-4 gap-2 my-4">
               {CATEGORY_ORDER.map((ck) => (
                 <div key={ck} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <div className="text-xs uppercase" style={{ color: COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>

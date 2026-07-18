@@ -174,7 +174,7 @@ export function riderWantsToStay(rider, team, categoryKey) {
  * the mechanism behind the "efecto dominó": the most attractive teams
  * see the deepest pool, and whatever's left cascades down to the rest. */
 export function teamPullingPower(team, categoryKey) {
-  const catWeight = { motogp: 3, moto2: 1.6, moto3: 1 }[categoryKey] ?? 1;
+  const catWeight = { motogp: 3, moto2: 1.6, superbikes: 1.4, moto3: 1 }[categoryKey] ?? 1;
   return (team.prestige ?? 60) * catWeight + (team.expectation ? Math.max(0, 20 - team.expectation.min) : 0);
 }
 

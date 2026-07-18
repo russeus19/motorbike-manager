@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { LogOut, Save } from "lucide-react";
-import { SPRINT_POINTS } from "./data/pointsSystem.js";
+import { POINTS, SPRINT_POINTS } from "./data/pointsSystem.js";
+import { BIKE_LABELS } from "./data/bikeAreas.js";
 import { useGoogleFonts } from "./hooks/useGoogleFonts.js";
 import { NotificationCenterModal } from "./components/NotificationCenter.jsx";
 import { RiderProfileModal } from "./components/RiderProfileModal.jsx";
@@ -8,6 +9,8 @@ import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
 import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "./data/circuits.js";
+import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "./data/circuitsSuperbikes.js";
+import { SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "./data/superbikesCalendar.js";
 import { COLORS } from "./data/colors.js";
 import { CareerNameScreen, CareerOffersScreen, CareerPickerScreen } from "./pages/CareerSetup.jsx";
 import { SubstituteScreen } from "./pages/InjurySubstitute.jsx";
@@ -16,19 +19,21 @@ import { HomeScreen } from "./pages/MainMenu.jsx";
 import { SetupScreen } from "./pages/QuickSetup.jsx";
 import { ResultScreen } from "./pages/RaceResult.jsx";
 import { QualifyingScreen } from "./pages/QualifyingResult.jsx";
+import { PreseasonScreen } from "./pages/Preseason.jsx";
+import { LiveRaceScreen } from "./pages/LiveRace.jsx";
 import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { RosterCompletionScreen } from "./pages/RosterCompletion.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
-import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, bikeAvg, canStartFacilityUpgrade, canStartProject, discardPendingPackage, processApprovedPackages, rolloverBike, startFacilityUpgrade, startProjectOnTeam } from "./utils/bikeDevelopment.js";
+import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyPrototype, bikeAvg, canStartFacilityUpgrade, canStartProject, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
 import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
-import { mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
+import { emptyNotifications, mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { buildClassificationDisplay, buildEntries, bumpCareerStats, findInTeamRoster, simulateFullGridRound, simulateQualifying, simulateRound } from "./utils/raceSimulation.js";
 import { buildGpHistoryEntry } from "./utils/raceHistory.js";
 import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, createNegotiation, modifyOffer, needsTeamCompensation, nextSeasonCommittedRiderCount, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
-import { clamp } from "./utils/random.js";
+import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
@@ -37,6 +42,7 @@ import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
 import { buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
+import { buildLiveRaceSimulation } from "./utils/liveRace.js";
 import { assignSeasonExpectations } from "./utils/teamExpectations.js";
 import { releaseSubstitutesToPool, resolveSeasonMarketAcrossCategories } from "./utils/transferMarket.js";
 import { consumeWarehouseForResult, initWarehouse, queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
@@ -86,9 +92,10 @@ export default function MotorbikeManager() {
   const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
   const [topProfileModal, setTopProfileModal] = useState(null);
+  const [preseasonState, setPreseasonState] = useState(null);
 
   const storageOk = typeof window !== "undefined" && window.storage;
-  const inGame = phase === "season" || phase === "qualifying" || phase === "sprint" || phase === "result" || phase === "seasonend" || phase === "market" || phase === "career-offers" || phase === "market-summary" || phase === "substitute-select";
+  const inGame = phase === "season" || phase === "qualifying" || phase === "sprint" || phase === "result" || phase === "seasonend" || phase === "market" || phase === "career-offers" || phase === "market-summary" || phase === "substitute-select" || phase === "preseason" || phase === "live-race" || phase === "worldsbk-race1" || phase === "worldsbk-superpole";
 
   // Derived reads from `game` (used by all the gameplay logic below,
   // exactly like the individual useState values they replace).
@@ -115,11 +122,16 @@ export default function MotorbikeManager() {
   const seasonEvents = game?.seasonEvents ?? [];
   const careerOffers = game?.careerOffers ?? [];
   const marketSummary = game?.marketSummary ?? null;
-  const notifications = game?.notifications ?? { motogp: [], moto2: [], moto3: [] };
+  const notifications = game?.notifications ?? emptyNotifications();
   const pendingSubstitution = game?.pendingSubstitution ?? null;
   const pendingQualifying = game?.pendingQualifying ?? null;
   const pendingSprintResult = game?.pendingSprintResult ?? null;
   const pendingSprintForHistory = game?.pendingSprintForHistory ?? null;
+  const pendingWorldSbkRace1 = game?.pendingWorldSbkRace1 ?? null;
+  const pendingWorldSbkRace1ForHistory = game?.pendingWorldSbkRace1ForHistory ?? null;
+  const pendingSuperpoleRace = game?.pendingSuperpoleRace ?? null;
+  const pendingSuperpoleRaceForHistory = game?.pendingSuperpoleRaceForHistory ?? null;
+  const pendingLiveRace = game?.pendingLiveRace ?? null;
   const scale = category ? CATEGORY_DATA[category].scale : 1;
 
   /* Thin "setter" wrappers so all the existing gameplay logic below can
@@ -379,7 +391,7 @@ export default function MotorbikeManager() {
     });
 
     setGame({
-      notifications: { motogp: [], moto2: [], moto3: [] },
+      notifications: emptyNotifications(),
       pendingSubstitution: null,
       riderPodiums: {},
       sprintWins: {},
@@ -473,7 +485,7 @@ export default function MotorbikeManager() {
       seasonEvents: [],
       careerOffers: [],
       marketSummary: null,
-      notifications: { motogp: [], moto2: [], moto3: [] },
+      notifications: emptyNotifications(),
       pendingSubstitution: null,
     });
     setCareerStarterOptions(null);
@@ -661,7 +673,7 @@ export default function MotorbikeManager() {
       seasonEvents: [],
       careerOffers: [],
       marketSummary: null,
-      notifications: { motogp: [], moto2: [], moto3: [] },
+      notifications: emptyNotifications(),
       pendingSubstitution: null,
     });
     setPhase("season");
@@ -1014,9 +1026,9 @@ export default function MotorbikeManager() {
     }
   }
 
-  function simulateSprintForTeams(teams, circuitProfile, isWet, gridPositionById, categoryKey, notifQueue) {
-    const roundsLeft = CIRCUITS.length - round;
-    const { results } = simulateFullGridRound(teams, circuitProfile, isWet, roundsLeft, gridPositionById, SPRINT_POINTS, 0.6);
+  function simulateSprintForTeams(teams, circuitProfile, isWet, gridPositionById, categoryKey, notifQueue, pointsTable = SPRINT_POINTS, dnfScale = 0.6, isSprintStyle = true, roundsLeftOverride = null) {
+    const roundsLeft = roundsLeftOverride ?? (CIRCUITS.length - round);
+    const { results } = simulateFullGridRound(teams, circuitProfile, isWet, roundsLeft, gridPositionById, pointsTable, dnfScale);
     const resultsByTeam = {};
     results.forEach((r) => { (resultsByTeam[r.teamId] ||= []).push(r); });
 
@@ -1040,7 +1052,7 @@ export default function MotorbikeManager() {
 
       riders = riders.map((r) => {
         const res = teamResults.find((x) => x.id === r.id);
-        return res ? bumpCareerStats(r, categoryKey, res.position, res.crashed, res.points, true) : r;
+        return res ? bumpCareerStats(r, categoryKey, res.position, res.crashed, res.points, isSprintStyle) : r;
       });
 
       return { ...t, riders, substitutes, warehouse };
@@ -1058,10 +1070,112 @@ export default function MotorbikeManager() {
     return { teams: newTeams, results };
   }
 
-  function runQualifying() {
+  /**
+   * Only relevant when the player's own category is Superbikes: on any
+   * of the 10 weeks (out of 22) where Superbikes has no scheduled round
+   * (see data/superbikesCalendar.js), there's nothing for the player to
+   * race — but MotoGP/Moto2/Moto3 still race that week regardless, same
+   * as any other week. This mirrors runQualifying/runRace's background-
+   * category loops exactly, just with no played-category side at all,
+   * and lands back in "season" with the round advanced instead of
+   * showing a qualifying/race screen for a category that isn't racing.
+   */
+  function advanceRestWeek() {
     const circuitProfile = CIRCUIT_PROFILES[round];
     const isWet = Math.random() * 100 < circuitProfile.wetPct;
     const roundsLeft = CIRCUITS.length - round;
+    const notifQueue = [];
+    const poolRef = { pool: [...freeAgents] };
+
+    const applyWeekInjuries = (results) => {
+      const injuriesById = {};
+      results.forEach((r) => {
+        if (!r.injuryResult) return;
+        injuriesById[r.id] = { ...r.injuryResult, deferSubstituteDecision: true };
+      });
+      return injuriesById;
+    };
+    const applyInjuriesToTeam = (team, injuriesById) => {
+      const ridersTouched = team.riders.some((r) => injuriesById[r.id]);
+      const subsTouched = Object.values(team.substitutes || {}).some((s) => injuriesById[s.id]);
+      if (!ridersTouched && !subsTouched) return team;
+      const riders = team.riders.map((r) => (injuriesById[r.id] ? { ...r, injury: injuriesById[r.id] } : r));
+      const substitutes = { ...(team.substitutes || {}) };
+      Object.entries(substitutes).forEach(([ownerId, sub]) => {
+        if (injuriesById[sub.id]) substitutes[ownerId] = { ...sub, injury: injuriesById[sub.id] };
+      });
+      return { ...team, riders, substitutes };
+    };
+
+    const nextOther = {};
+    Object.entries(otherCategories).forEach(([key, catState]) => {
+      const qEntries = buildEntries(catState.teams);
+      const q = simulateQualifying(qEntries, circuitProfile, isWet, roundsLeft, key);
+      const qInjuries = applyWeekInjuries(q.results);
+      let teams = catState.teams.map((t) => applyInjuriesToTeam(t, qInjuries));
+
+      let rS = { ...catState.riderStandings };
+      let tS = { ...catState.teamStandings };
+      let sW = { ...(catState.sprintWins || {}) };
+      let sP = { ...(catState.sprintPodiums || {}) };
+      let raceTeams = teams;
+
+      if (key === "motogp") {
+        const sprintOutcome = simulateSprintForTeams(teams, circuitProfile, isWet, q.gridPositionById, key, notifQueue);
+        raceTeams = sprintOutcome.teams;
+        sprintOutcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
+        sprintOutcome.results.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
+        sprintOutcome.results.forEach((r) => { if (r.position === 1 && !r.crashed) sW[r.id] = (sW[r.id] || 0) + 1; });
+        sprintOutcome.results.forEach((r) => { if (r.position <= 3 && !r.crashed) sP[r.id] = (sP[r.id] || 0) + 1; });
+      }
+
+      const preRaceSnapshot = { ...tS };
+      const { results: catResults } = simulateFullGridRound(raceTeams, circuitProfile, isWet, roundsLeft, q.gridPositionById);
+      catResults.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
+      catResults.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
+      const rW = { ...catState.riderWins };
+      catResults.forEach((r) => { if (r.position === 1 && !r.crashed) rW[r.id] = (rW[r.id] || 0) + 1; });
+      const rP = { ...catState.riderPodiums };
+      catResults.forEach((r) => { if (r.position <= 3 && !r.crashed) rP[r.id] = (rP[r.id] || 0) + 1; });
+
+      const catRows = raceTeams.map((t) => ({ id: t.id, points: preRaceSnapshot[t.id] || 0 })).sort((a, b) => b.points - a.points);
+      const catPosMap = {};
+      catRows.forEach((r, i) => { catPosMap[r.id] = i + 1; });
+      const catScale = CATEGORY_DATA[key].scale;
+
+      const teamsNext = raceTeams.map((t) => processTeamAfterRace(t, catResults, key, {
+        isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
+      }, poolRef, notifQueue));
+      const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
+
+      nextOther[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP, sprintWins: sW, sprintPodiums: sP };
+    });
+
+    setGame((g) => (g ? {
+      ...g,
+      otherCategories: nextOther,
+      freeAgents: poolRef.pool,
+      notifications: mergeNotificationItems(g.notifications, notifQueue, category),
+    } : g));
+    const nextRound = round + 1;
+    setRound(nextRound);
+    if (nextRound >= CIRCUITS.length) setPhase("seasonend");
+  }
+
+  function startWeekend() {
+    if (category === "superbikes" && !isSuperbikesRaceWeek(round)) {
+      advanceRestWeek();
+    } else {
+      runQualifying();
+    }
+  }
+
+  function runQualifying() {
+    const mainCircuitProfile = CIRCUIT_PROFILES[round];
+    const circuitName = category === "superbikes" ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]] : CIRCUITS[round];
+    const circuitProfile = category === "superbikes" ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
+    const isWet = Math.random() * 100 < circuitProfile.wetPct;
+    const roundsLeft = category === "superbikes" ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
     const notifQueue = [];
 
     const applyQualifyingInjuries = (results) => {
@@ -1100,8 +1214,11 @@ export default function MotorbikeManager() {
     const resultByCategory = { [category]: playedQuali.results };
     const nextOtherCategories = { ...otherCategories };
     Object.entries(otherCategories).forEach(([key, catState]) => {
+      if (key === "superbikes" && !isSuperbikesRaceWeek(round)) return; // no session this week — team stays untouched
+      const catCircuit = key === "superbikes" ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
+      const catRoundsLeft = key === "superbikes" ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
       const entries = buildEntries(catState.teams).map((r) => ({ ...r, categoryKeyForNotif: key }));
-      const q = simulateQualifying(entries, circuitProfile, isWet, roundsLeft, key);
+      const q = simulateQualifying(entries, catCircuit, isWet, catRoundsLeft, key);
       const injuriesById = applyQualifyingInjuries(q.results);
       nextOtherCategories[key] = { ...catState, teams: catState.teams.map((t) => applyInjuriesToTeam(t, injuriesById)) };
       gridByCategory[key] = q.gridPositionById;
@@ -1114,7 +1231,7 @@ export default function MotorbikeManager() {
       rivalTeams: newRivalTeams,
       otherCategories: nextOtherCategories,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
-      pendingQualifying: { isWet, gridByCategory, resultByCategory, circuitName: CIRCUITS[round], circuitProfile },
+      pendingQualifying: { isWet, gridByCategory, resultByCategory, circuitName, circuitProfile },
     } : g));
     setPhase("qualifying");
   }
@@ -1148,6 +1265,8 @@ export default function MotorbikeManager() {
     });
 
     const classification = buildClassificationDisplay(sprintResults, circuitProfile, null, category, true);
+    const liveLaps = classification[0]?.laps ?? Math.round((circuitProfile.records?.[category]?.laps ?? 20) / 2);
+    const liveSim = buildLiveRaceSimulation(classification, liveLaps, newPlayerTeam.riders.map((r) => r.id));
 
     setGame((g) => (g ? {
       ...g,
@@ -1163,15 +1282,147 @@ export default function MotorbikeManager() {
         results: { [category]: sprintResults }, classificationByCategory: { [category]: classification }, arrivals: [],
       },
       pendingSprintForHistory: sprintResults,
+      pendingLiveRace: { kind: "sprint", ...liveSim },
     } : g));
-    setPhase("sprint");
+    setPhase("live-race");
+  }
+
+  function finishLiveRace() {
+    const kind = pendingLiveRace?.kind;
+    setGame((g) => (g ? { ...g, pendingLiveRace: null } : g));
+    if (kind === "sprint") setPhase("sprint");
+    else if (kind === "worldsbk-race1") setPhase("worldsbk-race1");
+    else if (kind === "worldsbk-superpole") setPhase("worldsbk-superpole");
+    else setPhase("result");
+  }
+
+  /**
+   * First of WorldSBK's three weekend sessions — a full race, full
+   * points, same grid as Superpole (pendingQualifying, left untouched
+   * here so the Superpole Race and Race 2 can both still read it).
+   * Doesn't touch round/market/history — that only happens once, at
+   * the very end of Race 2 (the existing runRace, reused unchanged).
+   */
+  function runSuperbikesRace1() {
+    const circuitProfile = pendingQualifying?.circuitProfile ?? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]];
+    const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
+    const gridByCategory = pendingQualifying?.gridByCategory ?? {};
+    const circuitName = pendingQualifying?.circuitName ?? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]];
+    const superbikesRoundsLeft = 12 - (SUPERBIKES_ROUND_MAP[round] + 1);
+    const notifQueue = [];
+
+    const { teams: raceTeams, results: raceResults } = simulateSprintForTeams(
+      [playerTeam, ...rivalTeams], circuitProfile, isWet, gridByCategory[category], category, notifQueue,
+      POINTS, 1, false, superbikesRoundsLeft
+    );
+    const [newPlayerTeam, ...newRivalTeams] = raceTeams;
+
+    const riderStandingsNext = { ...riderStandings };
+    raceResults.forEach((r) => { riderStandingsNext[r.id] = { name: r.name, teamName: r.teamName, points: (riderStandingsNext[r.id]?.points || 0) + r.points }; });
+    const teamStandingsNext = { ...teamStandings };
+    raceResults.forEach((r) => { teamStandingsNext[r.teamId] = (teamStandingsNext[r.teamId] || 0) + r.points; });
+    const riderWinsNext = { ...riderWins };
+    raceResults.forEach((r) => { if (r.position === 1 && !r.crashed) riderWinsNext[r.id] = (riderWinsNext[r.id] || 0) + 1; });
+    const riderPodiumsNext = { ...riderPodiums };
+    raceResults.forEach((r) => { if (r.position <= 3 && !r.crashed) riderPodiumsNext[r.id] = (riderPodiumsNext[r.id] || 0) + 1; });
+
+    const gpShortName = circuitName.split("—")[0].trim();
+    const playerResults = raceResults.filter((r) => r.teamId === "player");
+    playerResults.forEach((r) => {
+      if (r.crashed || r.position > 3) return;
+      const label = r.position === 1 ? `¡Victoria de ${r.name} en la Race 1 del ${gpShortName}!` : `${r.name} sube al podio de la Race 1 (P${r.position}) en el ${gpShortName}.`;
+      notifQueue.unshift({ type: "race", category, riderId: photoIdFor(r), text: label });
+    });
+
+    const classification = buildClassificationDisplay(raceResults, circuitProfile, null, category, false);
+    const liveLaps = classification[0]?.laps ?? (circuitProfile.records?.[category]?.laps ?? 20);
+    const liveSim = buildLiveRaceSimulation(classification, liveLaps, newPlayerTeam.riders.map((r) => r.id));
+
+    setGame((g) => (g ? {
+      ...g,
+      playerTeam: newPlayerTeam,
+      rivalTeams: newRivalTeams,
+      riderStandings: riderStandingsNext,
+      teamStandings: teamStandingsNext,
+      riderWins: riderWinsNext,
+      riderPodiums: riderPodiumsNext,
+      notifications: mergeNotificationItems(g.notifications, notifQueue, category),
+      pendingWorldSbkRace1: {
+        circuitName, circuitProfile, isWet, category,
+        results: { [category]: raceResults }, classificationByCategory: { [category]: classification }, arrivals: [],
+      },
+      pendingWorldSbkRace1ForHistory: raceResults,
+      pendingLiveRace: { kind: "worldsbk-race1", ...liveSim },
+    } : g));
+    setPhase("live-race");
+  }
+
+  /**
+   * Second of WorldSBK's three sessions — exactly like MotoGP's Sprint
+   * (half points, same reduced-lap mechanics), same Superpole grid.
+   * Chains to Race 2 (the existing runRace).
+   */
+  function runSuperpoleRace() {
+    const circuitProfile = pendingQualifying?.circuitProfile ?? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]];
+    const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
+    const gridByCategory = pendingQualifying?.gridByCategory ?? {};
+    const circuitName = pendingQualifying?.circuitName ?? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]];
+    const superbikesRoundsLeft = 12 - (SUPERBIKES_ROUND_MAP[round] + 1);
+    const notifQueue = [];
+
+    const { teams: sprintTeams, results: sprintResults } = simulateSprintForTeams(
+      [playerTeam, ...rivalTeams], circuitProfile, isWet, gridByCategory[category], category, notifQueue,
+      SPRINT_POINTS, 0.6, true, superbikesRoundsLeft
+    );
+    const [newPlayerTeam, ...newRivalTeams] = sprintTeams;
+
+    const riderStandingsNext = { ...riderStandings };
+    sprintResults.forEach((r) => { riderStandingsNext[r.id] = { name: r.name, teamName: r.teamName, points: (riderStandingsNext[r.id]?.points || 0) + r.points }; });
+    const teamStandingsNext = { ...teamStandings };
+    sprintResults.forEach((r) => { teamStandingsNext[r.teamId] = (teamStandingsNext[r.teamId] || 0) + r.points; });
+    const sprintWinsNext = { ...sprintWins };
+    sprintResults.forEach((r) => { if (r.position === 1 && !r.crashed) sprintWinsNext[r.id] = (sprintWinsNext[r.id] || 0) + 1; });
+    const sprintPodiumsNext = { ...sprintPodiums };
+    sprintResults.forEach((r) => { if (r.position <= 3 && !r.crashed) sprintPodiumsNext[r.id] = (sprintPodiumsNext[r.id] || 0) + 1; });
+
+    const gpShortName = circuitName.split("—")[0].trim();
+    const playerResults = sprintResults.filter((r) => r.teamId === "player");
+    playerResults.forEach((r) => {
+      if (r.crashed || r.position > 3) return;
+      const label = r.position === 1 ? `¡Victoria de ${r.name} en la Superpole Race del ${gpShortName}!` : `${r.name} sube al podio de la Superpole Race (P${r.position}) en el ${gpShortName}.`;
+      notifQueue.unshift({ type: "race", category, riderId: photoIdFor(r), text: label });
+    });
+
+    const classification = buildClassificationDisplay(sprintResults, circuitProfile, null, category, true);
+    const liveLaps = classification[0]?.laps ?? Math.round((circuitProfile.records?.[category]?.laps ?? 20) / 2);
+    const liveSim = buildLiveRaceSimulation(classification, liveLaps, newPlayerTeam.riders.map((r) => r.id));
+
+    setGame((g) => (g ? {
+      ...g,
+      playerTeam: newPlayerTeam,
+      rivalTeams: newRivalTeams,
+      riderStandings: riderStandingsNext,
+      teamStandings: teamStandingsNext,
+      sprintWins: sprintWinsNext,
+      sprintPodiums: sprintPodiumsNext,
+      notifications: mergeNotificationItems(g.notifications, notifQueue, category),
+      pendingSuperpoleRace: {
+        circuitName, circuitProfile, isWet, category,
+        results: { [category]: sprintResults }, classificationByCategory: { [category]: classification }, arrivals: [],
+      },
+      pendingSuperpoleRaceForHistory: sprintResults,
+      pendingLiveRace: { kind: "worldsbk-superpole", ...liveSim },
+    } : g));
+    setPhase("live-race");
   }
 
   function runRace() {
-    const circuitProfile = pendingQualifying?.circuitProfile ?? CIRCUIT_PROFILES[round];
+    const mainCircuitProfile = CIRCUIT_PROFILES[round];
+    const circuitProfile = pendingQualifying?.circuitProfile ?? mainCircuitProfile;
+    const circuitName = pendingQualifying?.circuitName ?? (category === "superbikes" ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]] : CIRCUITS[round]);
     const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
     const gridByCategory = pendingQualifying?.gridByCategory ?? {};
-    const roundsLeft = CIRCUITS.length - round;
+    const roundsLeft = category === "superbikes" ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
     const notifQueue = [];
     const poolRef = { pool: [...freeAgents] };
 
@@ -1237,6 +1488,12 @@ export default function MotorbikeManager() {
     const otherFastestLapByCat = {};
     let motogpSprintResultsForHistory = null;
     Object.entries(otherCategories).forEach(([key, catState]) => {
+      if (key === "superbikes" && !isSuperbikesRaceWeek(round)) {
+        nextOtherCategories[key] = catState;
+        return;
+      }
+      const catCircuit = key === "superbikes" ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
+      const catRoundsLeft = key === "superbikes" ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
       let raceTeams = catState.teams;
       let rS = { ...catState.riderStandings };
       let tS = { ...catState.teamStandings };
@@ -1247,7 +1504,7 @@ export default function MotorbikeManager() {
       // category being played — simulated here, silently, right before
       // its own race, using the same qualifying grid.
       if (key === "motogp") {
-        const sprintOutcome = simulateSprintForTeams(catState.teams, circuitProfile, isWet, gridByCategory[key], key, notifQueue);
+        const sprintOutcome = simulateSprintForTeams(catState.teams, mainCircuitProfile, isWet, gridByCategory[key], key, notifQueue);
         raceTeams = sprintOutcome.teams;
         motogpSprintResultsForHistory = sprintOutcome.results;
         sprintOutcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
@@ -1256,9 +1513,27 @@ export default function MotorbikeManager() {
         sprintOutcome.results.forEach((r) => { if (r.position <= 3 && !r.crashed) sP[r.id] = (sP[r.id] || 0) + 1; });
       }
 
+      // WorldSBK runs Race 1 (full points) then the Superpole Race (half
+      // points, like a Sprint) silently before its own Race 2 below —
+      // same rules the player experiences directly when it's their own
+      // category, just condensed into one background tick.
+      if (key === "superbikes") {
+        const race1Outcome = simulateSprintForTeams(catState.teams, catCircuit, isWet, gridByCategory[key], key, notifQueue, POINTS, 1, false, catRoundsLeft);
+        raceTeams = race1Outcome.teams;
+        race1Outcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
+        race1Outcome.results.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
+
+        const superpoleOutcome = simulateSprintForTeams(raceTeams, catCircuit, isWet, gridByCategory[key], key, notifQueue, SPRINT_POINTS, 0.6, true, catRoundsLeft);
+        raceTeams = superpoleOutcome.teams;
+        superpoleOutcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
+        superpoleOutcome.results.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
+        superpoleOutcome.results.forEach((r) => { if (r.position === 1 && !r.crashed) sW[r.id] = (sW[r.id] || 0) + 1; });
+        superpoleOutcome.results.forEach((r) => { if (r.position <= 3 && !r.crashed) sP[r.id] = (sP[r.id] || 0) + 1; });
+      }
+
       const preRaceStandingsSnapshot = { ...tS };
 
-      const { results: catResults, fastestLapRiderId: catFastestLapRiderId } = simulateFullGridRound(raceTeams, circuitProfile, isWet, roundsLeft, gridByCategory[key]);
+      const { results: catResults, fastestLapRiderId: catFastestLapRiderId } = simulateFullGridRound(raceTeams, catCircuit, isWet, catRoundsLeft, gridByCategory[key]);
       otherResultsByCat[key] = catResults;
       otherFastestLapByCat[key] = catFastestLapRiderId;
       catResults.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
@@ -1282,7 +1557,7 @@ export default function MotorbikeManager() {
     });
 
     const gpResultsByCategory = { ...otherResultsByCat, [category]: results };
-    const gpHistoryEntry = buildGpHistoryEntry({ round, seasonNumber, circuitName: CIRCUITS[round], isWet, resultsByCategory: gpResultsByCategory, sprintResults: pendingSprintForHistory ?? motogpSprintResultsForHistory });
+    const gpHistoryEntry = buildGpHistoryEntry({ round, seasonNumber, circuitName, isWet, resultsByCategory: gpResultsByCategory, sprintResults: pendingSprintForHistory ?? motogpSprintResultsForHistory });
 
     const fastestLapByCategory = { ...otherFastestLapByCat, [category]: fastestLapRiderId };
     const classificationByCategory = {};
@@ -1321,9 +1596,13 @@ export default function MotorbikeManager() {
       };
     });
 
+    const playedClassification = classificationByCategory[category] || [];
+    const liveLaps = playedClassification[0]?.laps ?? (CIRCUIT_PROFILES[round].records?.[category]?.laps ?? 22);
+    const liveSim = buildLiveRaceSimulation(playedClassification, liveLaps, playerTeamAfterRenewals.riders.map((r) => r.id));
+
     setGame((g) => (g ? {
       ...g,
-      lastResult: { circuitName: CIRCUITS[round], circuitProfile, isWet, category, results: gpResultsByCategory, classificationByCategory, arrivals, fastestLapByCategory },
+      lastResult: { circuitName, circuitProfile, isWet, category, results: gpResultsByCategory, classificationByCategory, arrivals, fastestLapByCategory },
       riderStandings: riderStandingsNext,
       riderWins: riderWinsNext,
       riderPodiums: riderPodiumsNext,
@@ -1338,19 +1617,21 @@ export default function MotorbikeManager() {
       pendingQualifying: null,
       pendingSprintResult: null,
       pendingSprintForHistory: null,
+      pendingLiveRace: { kind: "race", ...liveSim },
       gpHistory: [...(g.gpHistory || []), gpHistoryEntry],
       marketRumors: marketTick.marketRumors,
       marketNegotiations: marketTick.marketNegotiations,
     } : g));
 
-    setPhase("result");
+    setPhase("live-race");
   }
 
   /* Opening the center marks every notification (all three categories) as
      read — this only flips a flag on each item, nothing is ever removed
      from the history. */
   function openNotificationCenter() {
-    setNotifications((prev) => markAllNotificationsRead(prev));
+    const visibleCategories = category === "superbikes" ? ["superbikes"] : CATEGORY_ORDER.filter((ck) => ck !== "superbikes");
+    setNotifications((prev) => markAllNotificationsRead(prev, visibleCategories));
     setShowNotifications(true);
   }
 
@@ -1364,17 +1645,133 @@ export default function MotorbikeManager() {
     return team.riders.find((r) => r.injury && r.injury.sidelined && r.injury.gpRemaining > 0 && !(team.substitutes || {})[r.id]) || null;
   }
 
-  function goToSeasonOrOfferSubstitute(team) {
+  function goToSeasonOrOfferSubstitute(team, fromTransition = false) {
     if (team.riders.length < 2) {
       setPhase("complete-roster");
       return;
     }
     const rider = findRiderNeedingSubstitute(team);
     if (rider) {
-      setPendingSubstitution({ teamId: team.id, riderId: rider.id, riderName: rider.name });
+      setPendingSubstitution({ teamId: team.id, riderId: rider.id, riderName: rider.name, fromTransition });
       setPhase("substitute-select");
+      return;
+    }
+    setPhase("season");
+  }
+
+  // Only for the true season-transition points (after the market summary,
+  // or after completing an incomplete roster) — continueAfterResult also
+  // calls goToSeasonOrOfferSubstitute directly, after every ordinary race
+  // all season long, where preseason testing must never trigger even if
+  // research completed earlier that same season and is still sitting in
+  // pendingPrototypes waiting for the actual transition.
+  function goToSeasonPreseasonOrSubstitute(team) {
+    if (team.riders.length < 2 || findRiderNeedingSubstitute(team)) {
+      goToSeasonOrOfferSubstitute(team, true);
+      return;
+    }
+    if ((team.pendingPrototypes || []).length > 0) {
+      startPreseason(team);
+      return;
+    }
+    setPhase("season");
+  }
+
+  // Gender-neutral phrasing on purpose ("la mejora/el trabajo en X"),
+  // since BIKE_LABELS mixes masculine (motor, chasis, freno) and
+  // feminine (aerodinámica, electrónica) nouns — this sidesteps needing
+  // el/la agreement per area.
+  const PRESEASON_FAVORABLE_TEMPLATES = [
+    (name, area) => `${name} se muestra satisfecho con la evolución de ${area} de cara a la próxima temporada.`,
+    (name, area) => `${name} termina la jornada con una sonrisa: la mejora en ${area} le ha convencido.`,
+    (name, area) => `Buenas sensaciones de ${name} con el trabajo realizado en ${area}.`,
+  ];
+  const PRESEASON_UNFAVORABLE_TEMPLATES = [
+    (name, area) => `Enfado de ${name} tras comprobar que la mejora en ${area} no da los resultados esperados.`,
+    (name, area) => `${name} sale disconforme del box: no nota mejoría en ${area}.`,
+    (name, area) => `Cara larga de ${name} — el trabajo en ${area} le genera dudas.`,
+  ];
+  const PRESEASON_NEUTRAL_TEMPLATES = [
+    (name, area) => `${name} se muestra prudente respecto a ${area}: habrá que verlo ya en carrera.`,
+  ];
+
+  // Sepang, Jerez, Tailandia — real preseason test venues, reused as
+  // circuit profiles for a short, no-stakes test rather than a race.
+  // Every pending prototype gets its own session; with more than three,
+  // the three venues simply repeat in a cycle (Sepang, Jerez, Tailandia,
+  // Sepang, Jerez, ...) rather than capping how many can be tested.
+  const PRESEASON_TEST_ROUNDS = [18, 3, 0];
+
+  function startPreseason(team) {
+    setPreseasonState({ prototypes: team.pendingPrototypes || [], sessionIndex: 0, perceivedGain: null, riderOpinions: [], classification: null, tested: false });
+    setPhase("preseason");
+  }
+
+  function runPreseasonTest() {
+    const proto = preseasonState.prototypes[preseasonState.sessionIndex];
+    if (!proto) return;
+    const perceived = testPrototype(proto, playerTeam);
+    const areaLabel = BIKE_LABELS[proto.area];
+    const riderOpinions = playerTeam.riders.map((r) => {
+      const tone = riderPrototypeOpinion(r, proto);
+      const templates = tone === "favorable" ? PRESEASON_FAVORABLE_TEMPLATES : tone === "desfavorable" ? PRESEASON_UNFAVORABLE_TEMPLATES : PRESEASON_NEUTRAL_TEMPLATES;
+      return { rider: r, tone, text: pick(templates)(r.name, areaLabel) };
+    });
+
+    // A full test-session classification for the whole grid — same
+    // mechanics as a normal qualifying (including injury risk), but
+    // with zero championship consequence. Uses the CURRENT bike, which
+    // may already include whatever was accepted in an earlier test this
+    // same preseason — this is exactly how the times move as the bike
+    // evolves test to test.
+    const testRound = PRESEASON_TEST_ROUNDS[preseasonState.sessionIndex % PRESEASON_TEST_ROUNDS.length];
+    const testCircuit = CIRCUIT_PROFILES[testRound];
+    const entries = buildEntries([playerTeam, ...rivalTeams]);
+    const testResult = simulateQualifying(entries, testCircuit, false, CIRCUITS.length, category);
+
+    const injuriesById = {};
+    const notifQueue = [];
+    testResult.results.forEach((r) => {
+      if (!r.injuryResult) return;
+      injuriesById[r.id] = { ...r.injuryResult, deferSubstituteDecision: true };
+      notifQueue.push({
+        type: "injury", category, riderId: photoIdFor(r),
+        text: `${r.name} sufre una caída durante los test de pretemporada y se diagnostica ${r.injuryResult.name.toLowerCase()} (lesión ${r.injuryResult.severityLabel}).`,
+      });
+    });
+    function applyTestInjuries(team) {
+      const ridersTouched = team.riders.some((r) => injuriesById[r.id]);
+      const subsTouched = Object.values(team.substitutes || {}).some((s) => injuriesById[s.id]);
+      if (!ridersTouched && !subsTouched) return team;
+      const riders = team.riders.map((r) => (injuriesById[r.id] ? { ...r, injury: injuriesById[r.id] } : r));
+      const substitutes = { ...(team.substitutes || {}) };
+      Object.entries(substitutes).forEach(([ownerId, sub]) => {
+        if (injuriesById[sub.id]) substitutes[ownerId] = { ...sub, injury: injuriesById[sub.id] };
+      });
+      return { ...team, riders, substitutes };
+    }
+    setPlayerTeam((t) => applyTestInjuries(t));
+    setRivalTeams((prev) => prev.map((t) => applyTestInjuries(t)));
+    if (notifQueue.length) pushNotifications(notifQueue);
+
+    setPreseasonState((s) => ({ ...s, perceivedGain: perceived, riderOpinions, classification: testResult.results, tested: true }));
+  }
+
+  function decidePreseasonSession(accept) {
+    const proto = preseasonState.prototypes[preseasonState.sessionIndex];
+    if (proto) {
+      setPlayerTeam((t) => accept ? applyPrototype(t, proto.id) : discardPrototype(t, proto.id));
+    }
+    finishPreseasonSession();
+  }
+
+  function finishPreseasonSession() {
+    const nextIndex = preseasonState.sessionIndex + 1;
+    if (nextIndex >= preseasonState.prototypes.length) {
+      setPreseasonState(null);
+      goToSeasonOrOfferSubstitute(playerTeam);
     } else {
-      setPhase("season");
+      setPreseasonState({ prototypes: preseasonState.prototypes, sessionIndex: nextIndex, perceivedGain: null, riderOpinions: [], classification: null, tested: false });
     }
   }
 
@@ -1395,20 +1792,30 @@ export default function MotorbikeManager() {
     if (!isFreeAgentEligibleForCategory(chosenRider, category)) return;
     const cost = substituteHireCost(chosenRider, scale);
     if (cost > budget) return;
-    const { riderId } = pendingSubstitution;
-    setPlayerTeam((t) => ({
-      ...t,
-      substitutes: { ...(t.substitutes || {}), [riderId]: { ...chosenRider, isNewTeamThisSeason: true } },
-    }));
+    const { riderId, fromTransition } = pendingSubstitution;
+    const updatedTeam = {
+      ...playerTeam,
+      substitutes: { ...(playerTeam.substitutes || {}), [riderId]: { ...chosenRider, isNewTeamThisSeason: true } },
+    };
+    setPlayerTeam(updatedTeam);
     setFreeAgents((prev) => prev.filter((r) => r.id !== chosenRider.id));
     setBudget((b) => b - cost);
     setPendingSubstitution(null);
-    setPhase("season");
+    if (fromTransition) {
+      goToSeasonPreseasonOrSubstitute(updatedTeam);
+    } else {
+      setPhase("season");
+    }
   }
 
   function skipSubstitute() {
+    const fromTransition = pendingSubstitution?.fromTransition;
     setPendingSubstitution(null);
-    setPhase("season");
+    if (fromTransition) {
+      goToSeasonPreseasonOrSubstitute(playerTeam);
+    } else {
+      setPhase("season");
+    }
   }
 
   function proceedFromSeasonEnd() {
@@ -1604,8 +2011,9 @@ export default function MotorbikeManager() {
     const catTeamStandings = {};
     CATEGORY_ORDER.forEach((ck) => { catTeamStandings[ck] = ck === ctxCategory ? ctxTeamStandings : ctxOtherCategories[ck].teamStandings; });
 
-    const marketLog = { motogp: [], moto2: [], moto3: [] };
-    const excludeIds = { motogp: ctxCategory === "motogp" ? "player" : null, moto2: ctxCategory === "moto2" ? "player" : null, moto3: ctxCategory === "moto3" ? "player" : null };
+    const marketLog = {};
+    const excludeIds = {};
+    CATEGORY_ORDER.forEach((ck) => { marketLog[ck] = []; excludeIds[ck] = ck === ctxCategory ? "player" : null; });
 
     CATEGORY_ORDER.forEach((ck) => {
       const released = releaseSubstitutesToPool(catTeams[ck], poolFreeAgents, marketLog[ck], CATEGORY_DATA[ck].label);
@@ -1658,9 +2066,9 @@ export default function MotorbikeManager() {
     // --- New-season bikes: rebuilt from each team's hidden Base
     // Tecnológica plus Fábrica/Staff quality and a small random variation. ---
     const rolledPlayerTeam = rolloverBike(playerTeamResolved);
-    evolvedRivals = evolvedRivals.map(rolloverBike);
+    evolvedRivals = evolvedRivals.map((t) => rolloverBike(aiResolvePrototypes(t)));
     Object.keys(nextOther).forEach((key) => {
-      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map(rolloverBike) };
+      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => rolloverBike(aiResolvePrototypes(t))) };
     });
 
     // --- Season-boundary validation: guarantees every team — the
@@ -1777,7 +2185,7 @@ export default function MotorbikeManager() {
 
   return (
     <div className="min-h-screen w-full relative" style={{ background: COLORS.bg, color: COLORS.text, fontFamily: "Inter, sans-serif" }}>
-      {inGame && phase !== "season" && phase !== "result" && phase !== "qualifying" && phase !== "sprint" && (
+      {inGame && phase !== "season" && phase !== "result" && phase !== "qualifying" && phase !== "sprint" && phase !== "preseason" && phase !== "live-race" && phase !== "worldsbk-race1" && phase !== "worldsbk-superpole" && (
         <div className="fixed top-4 right-4 z-40 flex items-center gap-2">
           {saveOk && <span className="text-xs" style={{ color: COLORS.gold }}>Guardado ✓</span>}
           <button onClick={() => openSaveModal(false)}
@@ -1823,8 +2231,8 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: runQualifying }}
-          notifCount={countUnread(notifications.motogp) + countUnread(notifications.moto2) + countUnread(notifications.moto3)}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: startWeekend }}
+          notifCount={(category === "superbikes" ? ["superbikes"] : CATEGORY_ORDER.filter((ck) => ck !== "superbikes")).reduce((sum, ck) => sum + countUnread(notifications[ck]), 0)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
           onExitGame={() => setShowExitConfirm(true)}
@@ -1836,10 +2244,19 @@ export default function MotorbikeManager() {
         />
       )}
       {phase === "qualifying" && pendingQualifying && playerTeam && (
-        <QualifyingScreen pendingQualifying={pendingQualifying} accent={playerTeam.color} category={category} onContinue={category === "motogp" ? runSprint : runRace} />
+        <QualifyingScreen pendingQualifying={pendingQualifying} accent={playerTeam.color} category={category} onContinue={category === "motogp" ? runSprint : category === "superbikes" ? runSuperbikesRace1 : runRace} />
+      )}
+      {phase === "live-race" && pendingLiveRace && playerTeam && (
+        <LiveRaceScreen pendingLiveRace={pendingLiveRace} accent={playerTeam.color} onFinish={finishLiveRace} />
       )}
       {phase === "sprint" && pendingSprintResult && playerTeam && (
         <ResultScreen lastResult={pendingSprintResult} accent={playerTeam.color} continueAfterResult={runRace} isLastRound={false} category={category} sprintMode />
+      )}
+      {phase === "worldsbk-race1" && pendingWorldSbkRace1 && playerTeam && (
+        <ResultScreen lastResult={pendingWorldSbkRace1} accent={playerTeam.color} continueAfterResult={runSuperpoleRace} isLastRound={false} category={category} sessionLabel="race1" />
+      )}
+      {phase === "worldsbk-superpole" && pendingSuperpoleRace && playerTeam && (
+        <ResultScreen lastResult={pendingSuperpoleRace} accent={playerTeam.color} continueAfterResult={runRace} isLastRound={false} category={category} sessionLabel="superpole" />
       )}
       {phase === "result" && lastResult && playerTeam && (
         <ResultScreen lastResult={lastResult} accent={playerTeam.color} continueAfterResult={continueAfterResult} isLastRound={round >= CIRCUITS.length - 1} category={category} />
@@ -1856,12 +2273,20 @@ export default function MotorbikeManager() {
         <CareerOffersScreen offers={careerOffers} category={category} onAccept={acceptCareerOffer} onDecline={declineCareerOffers} />
       )}
       {phase === "market-summary" && marketSummary && (
-        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonOrOfferSubstitute(playerTeam)} />
+        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonPreseasonOrSubstitute(playerTeam)} />
+      )}
+      {phase === "preseason" && preseasonState && playerTeam && (
+        <PreseasonScreen
+          preseasonState={preseasonState}
+          accent={playerTeam.color}
+          onTest={runPreseasonTest}
+          onDecide={decidePreseasonSession}
+        />
       )}
       {phase === "complete-roster" && playerTeam && (
         <RosterCompletionScreen
           playerTeam={playerTeam} freeAgents={freeAgents} category={category} accent={playerTeam.color}
-          openProfile={openProfile} onContinue={() => goToSeasonOrOfferSubstitute(playerTeam)}
+          openProfile={openProfile} onContinue={() => goToSeasonPreseasonOrSubstitute(playerTeam)}
         />
       )}
       {phase === "substitute-select" && playerTeam && pendingSubstitution && (

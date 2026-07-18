@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Search, Users } from "lucide-react";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { OverallBadge, Panel } from "./UIPrimitives.jsx";
-import { CATEGORY_DATA } from "../data/categories.js";
+import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { isFreeAgentEligibleForCategory, lastTeamName, overallRating } from "../utils/riders.js";
 
@@ -101,7 +101,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
     if (contractFilter === "contracted" && !e.teamName) return false;
     if (contractFilter === "free" && e.teamName) return false;
     if (categoryFilter === "free" && e.teamName) return false;
-    if (["motogp", "moto2", "moto3"].includes(categoryFilter) && e.categoryKey !== categoryFilter) return false;
+    if (CATEGORY_ORDER.includes(categoryFilter) && e.categoryKey !== categoryFilter) return false;
     const r = e.rider;
     const ca = overallRating(r);
     if (r.age < minAge || r.age > maxAge) return false;

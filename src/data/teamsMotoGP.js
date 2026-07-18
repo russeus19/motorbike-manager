@@ -5,9 +5,9 @@ export const MOTOGP_TEAMS_DATA = [
     riders: [
       { name: "Marc Márquez", photoId: 1, nat: "🇪🇸", age: 33, potential: 45, tecnica: 99, ritmo: 98, adelantamientos: 99, mental: 95, adaptabilidad: 96, fisico: 83, prestige: 195 , number: 93,
         tags: [
-          { type: "favoriteCircuit", round: 11, circuitLabel: "Sachsenring", label: "Maestro de Sachsenring" },
-          { type: "favoriteCircuit", round: 14, circuitLabel: "Misano", label: "Maestro de Misano" },
-          { type: "favoriteCircuit", round: 13, circuitLabel: "MotorLand Aragón", label: "Maestro de MotorLand Aragón" },
+          { type: "favoriteCircuit", round: 10, circuitLabel: "Sachsenring", label: "Maestro de Sachsenring" },
+          { type: "favoriteCircuit", round: 13, circuitLabel: "Misano", label: "Maestro de Misano" },
+          { type: "favoriteCircuit", round: 12, circuitLabel: "MotorLand Aragón", label: "Maestro de MotorLand Aragón" },
         ] },
       { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 90, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63 },
     ],

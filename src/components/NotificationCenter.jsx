@@ -6,6 +6,7 @@ import { COLORS } from "../data/colors.js";
 import { NOTIF_ICON } from "../data/notificationIcons.js";
 
 export function NotificationCenterModal({ notifications, category, onClose }) {
+  const visibleCategories = category === "superbikes" ? ["superbikes"] : CATEGORY_ORDER.filter((ck) => ck !== "superbikes");
   const [tab, setTab] = useState(category);
   const items = notifications[tab] || [];
 
@@ -19,7 +20,7 @@ export function NotificationCenterModal({ notifications, category, onClose }) {
           <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
         <div className="flex gap-2 px-5 pt-4 flex-shrink-0">
-          {CATEGORY_ORDER.map((ck) => (
+          {visibleCategories.map((ck) => (
             <button key={ck} onClick={() => setTab(ck)}
               className="flex-1 text-xs px-2 py-1.5 rounded font-semibold"
               style={{

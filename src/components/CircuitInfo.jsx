@@ -6,6 +6,8 @@ import { ATTRS } from "../data/attributes.js";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
+import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
+import { SUPERBIKES_RACE_MAIN_ROUNDS } from "../data/superbikesCalendar.js";
 import { COLORS } from "../data/colors.js";
 import { findGpHistoryEntry } from "../utils/raceHistory.js";
 
@@ -66,23 +68,34 @@ export function CircuitInfoPanel({ circuitProfile, accent }) {
 export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
+
+  const isSuperbikes = category === "superbikes";
+  const circuitsList = isSuperbikes ? SUPERBIKES_CIRCUITS : CIRCUITS;
+  const profilesList = isSuperbikes ? SUPERBIKES_CIRCUIT_PROFILES : CIRCUIT_PROFILES;
+  // For Superbikes, each of its 12 rounds maps to a specific week on the
+  // shared 22-week master clock (data/superbikesCalendar.js) — that's
+  // what decides its status and what looks up the right gpHistory entry,
+  // since history is always recorded by the master round.
+  const masterRoundFor = (i) => (isSuperbikes ? SUPERBIKES_RACE_MAIN_ROUNDS[i] : i);
+
   return (
     <Panel title="Calendario" icon={MapPin} accent={accent} onHeaderClick={() => setExpanded((v) => !v)}
       headerRight={expanded ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}>
       {expanded && (
         <div className="space-y-1" style={{ maxHeight: 384, overflowY: "auto" }}>
-          {CIRCUITS.map((c, i) => {
-            const prof = CIRCUIT_PROFILES[i];
-            const status = i < round ? "Disputada" : i === round ? "Próxima" : "Pendiente";
-            const statusColor = i === round ? accent : COLORS.muted;
+          {circuitsList.map((c, i) => {
+            const prof = profilesList[i];
+            const masterRound = masterRoundFor(i);
+            const status = masterRound < round ? "Disputada" : masterRound === round ? "Próxima" : "Pendiente";
+            const statusColor = masterRound === round ? accent : COLORS.muted;
             return (
               <button key={i} onClick={() => setSelectedRound(i)}
                 className="w-full flex items-center justify-between text-sm py-1.5 text-left"
-                style={{ borderBottom: `1px solid ${COLORS.rule}`, opacity: i < round ? 0.5 : 1 }}>
+                style={{ borderBottom: `1px solid ${COLORS.rule}`, opacity: masterRound < round ? 0.5 : 1 }}>
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-6 text-right font-mono text-xs flex-shrink-0" style={{ color: COLORS.muted }}>{i + 1}</span>
                   <CountryFlag nat={prof.flag} width={18} className="flex-shrink-0" />
-                  <span className="truncate">{c.split("—")[0].replace("Gran Premio de ", "").trim()}</span>
+                  <span className="truncate">{c.split("—")[0].replace("Gran Premio de ", "").replace("Ronda de ", "").trim()}</span>
                 </span>
                 <span className="text-xs font-semibold flex-shrink-0 ml-2" style={{ color: statusColor }}>{status}</span>
               </button>
@@ -93,9 +106,9 @@ export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category
       {selectedRound !== null && (
         <GpResultModal
           round={selectedRound}
-          circuitName={CIRCUITS[selectedRound]}
-          isPlayed={selectedRound < round}
-          entry={findGpHistoryEntry(gpHistory, seasonNumber, selectedRound)}
+          circuitName={circuitsList[selectedRound]}
+          isPlayed={masterRoundFor(selectedRound) < round}
+          entry={findGpHistoryEntry(gpHistory, seasonNumber, masterRoundFor(selectedRound))}
           category={category}
           accent={accent}
           onClose={() => setSelectedRound(null)}
