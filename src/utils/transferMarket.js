@@ -29,6 +29,27 @@ import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
  *     actually says yes (wouldRiderJoin), or falls back to a freshly
  *     generated prospect if the whole pool says no.
  */
+/**
+ * Strips a rider ID out of every team's roster, in every category,
+ * except the one team they're about to actually join. Call this right
+ * before committing any signing that could plausibly cross categories
+ * — without it, a rider who wasn't cleanly detached from their old
+ * roster ends up duplicated (old team AND new team both list them),
+ * and the season-transition's later cross-category integrity check
+ * (which keeps whichever copy it finds first, in category order) can
+ * end up favoring the stale copy and silently discarding the very
+ * signing the market log just announced.
+ */
+function stripRiderFromAllRosters(teamsByCategory, riderId, exceptCategoryKey, exceptTeamId) {
+  Object.keys(teamsByCategory).forEach((ck) => {
+    teamsByCategory[ck] = teamsByCategory[ck].map((t) => {
+      if (ck === exceptCategoryKey && t.id === exceptTeamId) return t;
+      if (!t.riders.some((r) => r.id === riderId)) return t;
+      return { ...t, riders: t.riders.filter((r) => r.id !== riderId) };
+    });
+  });
+}
+
 export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPool, retiredIds, log) {
   let pool = [...freeAgentPool];
   const teamsByCategory = {};
@@ -134,6 +155,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           const years = proposedContractYears(bestOutside.p);
           const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = bestOutside.p;
           const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+          stripRiderFromAllRosters(teamsByCategory, newRider.id, ck, teamId);
           kept.push(newRider);
           log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${t.name}, que prescinde de ${r.name} tras encontrar una opción mejor en el mercado`, category: CATEGORY_DATA[ck].label });
           return;
@@ -274,6 +296,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const years = proposedContractYears(signed.rider);
       const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = signed.rider;
       const newRider = { ...cleanRider, contractYears: years, salary: signed.salary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+      stripRiderFromAllRosters(teamsByCategory, newRider.id, categoryKey, teamId);
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
       const catRank = { motogp: 3, moto2: 2, moto3: 1 };
       const fromCat = _fromCategoryKey;
@@ -343,6 +366,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           const years = proposedContractYears(r);
           const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = r;
           const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+          stripRiderFromAllRosters(teamsByCategory, newRider.id, ck, teamId);
           teamsByCategory[ck] = teamsByCategory[ck].map((t) => (
             t.id === teamId ? { ...t, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
           ));
