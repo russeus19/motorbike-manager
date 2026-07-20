@@ -271,7 +271,7 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // Salto de categoría: subir siempre resulta atractivo salvo que la
   // diferencia de prestigio sea excesiva; bajar solo tiene sentido si el
   // proyecto o el salario lo justifican.
-  const catRank = { motogp: 3, moto2: 2, moto3: 1 };
+  const catRank = { motogp: 3, moto2: 2, superbikes: 2, moto3: 1 };
   const catDelta = (catRank[categoryKey] ?? 2) - (catRank[fromCategoryKey] ?? 2);
   if (catDelta > 0) score += 0.22;
   else if (catDelta < 0) {

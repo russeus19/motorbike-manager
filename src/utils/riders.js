@@ -37,7 +37,7 @@ export function makeAffinity() {
 export function isFreeAgentEligibleForCategory(rider, categoryKey) {
   if (categoryKey === "motogp" || categoryKey === "superbikes") return true;
   if (categoryKey === "moto2") return rider.age <= 30;
-  return rider.age <= 27;
+  return rider.age <= 25;
 }
 
 

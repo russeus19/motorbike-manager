@@ -87,6 +87,40 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
   });
 }
 
+/* A free agent can rack up a real result this season and still be back
+   in the pool by the time recordSeasonHistory runs for each category —
+   the most common case is a substitute stint that ended mid-season
+   (injury recovered, or the original rider's ban lifted), which sends
+   them straight back to the pool well before the season wraps up. At
+   that point they're on no team's roster in any category, so the
+   normal per-team history pass never reaches them, and a real result
+   sitting unused in that category's standings would otherwise be lost
+   entirely. This checks every category's standings for every pool
+   member and adds an entry for each one where they actually raced —
+   so someone who filled in across two different categories the same
+   year ends up with both results recorded, never just one. */
+export function applyPoolHistory(pool, standingsByCategory, seasonNum) {
+  return pool.map((rider) => {
+    let next = rider;
+    Object.entries(standingsByCategory).forEach(([categoryKey, standingsForCategory]) => {
+      if (!standingsForCategory?.[rider.id]) return;
+      const sorted = Object.entries(standingsForCategory).sort((a, b) => b[1].points - a[1].points);
+      const pos = sorted.findIndex(([id]) => id === rider.id) + 1;
+      const points = standingsForCategory[rider.id].points ?? 0;
+      const teamName = standingsForCategory[rider.id].teamName || "Agente libre";
+      const badge = pos === 1 ? "campeon" : pos === 2 ? "subcampeon" : pos === 3 ? "tercero" : null;
+      const entry = { season: seasonNum, category: categoryKey, position: pos, teamName, points, badge };
+      // Never double-record the same season+category if this rider was
+      // somehow already captured elsewhere (e.g. finalizePlayerDepartureHistory
+      // already ran for them this exact transition).
+      const alreadyHas = (next.history || []).some((h) => h.season === seasonNum && h.category === categoryKey);
+      if (alreadyHas) return;
+      next = { ...next, history: [...(next.history || []), entry] };
+    });
+    return next;
+  });
+}
+
 
 export function teamExpectationTier(team) {
   const avg = bikeAvg(team.bike);

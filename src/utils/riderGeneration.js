@@ -1,11 +1,10 @@
 import { CATEGORY_DATA } from "../data/categories.js";
 import { BIKE_AREA_KEYS } from "../data/bikeAreas.js";
 import { FREE_AGENT_LEGENDS_DATA } from "../data/freeAgentLegends.js";
-import { ROOKIE_FIRST, ROOKIE_LAST } from "../data/rookieNames.js";
-import { ROOKIE_NATS } from "../data/rookieNats.js";
+import { pickRookieNat, pickRookieName } from "../data/rookieNames.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { nextId } from "./idGenerator.js";
-import { clamp, pick, randInt } from "./random.js";
+import { clamp, randInt } from "./random.js";
 import { finalizeRiderEconomics, initRiderPotentialFields, assignUniqueNumber, dedupeRiderNumbers } from "./riders.js";
 import { initialRiderPrestige, initialTeamPrestige } from "./prestige.js";
 import { initWarehouse } from "./warehouseEngine.js";
@@ -70,9 +69,10 @@ export function rollRookiePotential() {
 
 
 export function makeRookie(scale) {
+  const nat = pickRookieNat();
   const base = {
-    name: `${pick(ROOKIE_FIRST)} ${pick(ROOKIE_LAST)}`,
-    nat: pick(ROOKIE_NATS),
+    name: pickRookieName(nat),
+    nat,
     age: randInt(16, 18),
     potential: rollRookiePotential(),
     tecnica: randInt(40, 62),

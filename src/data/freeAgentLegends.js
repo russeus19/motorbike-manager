@@ -16,4 +16,12 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Marcos Ramírez", photoId: 91, nat: "🇪🇸", age: 27, potential: 52, tecnica: 71, ritmo: 71, adelantamientos: 69, mental: 67, adaptabilidad: 69, fisico: 67 , prestige: 38 , number: 58 },
   { name: "Eduardo Gutiérrez", photoId: 92, nat: "🇪🇸", age: 19, potential: 62, tecnica: 60, ritmo: 62, adelantamientos: 60, mental: 55, adaptabilidad: 58, fisico: 64 , prestige: 24 , number: 45 },
   { name: "Marcos Uriarte", photoId: 93, nat: "🇪🇸", age: 18, potential: 66, tecnica: 58, ritmo: 60, adelantamientos: 58, mental: 52, adaptabilidad: 56, fisico: 62 , prestige: 22 , number: 91 },
+  { name: "Andrea Iannone", photoId: 120, nat: "🇮🇹", age: 36, potential: 30, tecnica: 79, ritmo: 75, adelantamientos: 73, mental: 71, adaptabilidad: 71, fisico: 69 , prestige: 96 , number: 29 },
+  { name: "Tito Rabat", photoId: 121, nat: "🇪🇸", age: 36, potential: 25, tecnica: 72, ritmo: 67, adelantamientos: 64, mental: 71, adaptabilidad: 67, fisico: 61 , prestige: 70 , number: 53 },
+  { name: "Scott Redding", photoId: 122, nat: "🇬🇧", age: 33, potential: 32, tecnica: 76, ritmo: 74, adelantamientos: 71, mental: 69, adaptabilidad: 69, fisico: 67 , prestige: 91 , number: 45 },
+  { name: "Bradley Smith", photoId: 123, nat: "🇬🇧", age: 35, potential: 25, tecnica: 69, ritmo: 66, adelantamientos: 64, mental: 70, adaptabilidad: 66, fisico: 61 , prestige: 66 , number: 38 },
+  { name: "Jordi Torres", photoId: 124, nat: "🇪🇸", age: 35, potential: 25, tecnica: 69, ritmo: 67, adelantamientos: 64, mental: 64, adaptabilidad: 64, fisico: 62 , prestige: 55 , number: 81 },
+  { name: "Héctor Garzó", photoId: 125, nat: "🇪🇸", age: 26, potential: 50, tecnica: 64, ritmo: 64, adelantamientos: 62, mental: 58, adaptabilidad: 60, fisico: 64 , prestige: 36 , number: 66 },
+  { name: "Darryn Binder", photoId: 126, nat: "🇿🇦", age: 28, potential: 45, tecnica: 72, ritmo: 70, adelantamientos: 69, mental: 63, adaptabilidad: 65, fisico: 69 , prestige: 46 , number: 15 },
+  { name: "Noah Dettwiler", photoId: 127, nat: "🇨🇭", age: 19, potential: 60, tecnica: 58, ritmo: 61, adelantamientos: 58, mental: 52, adaptabilidad: 55, fisico: 58 , prestige: 20 , number: 55 },
 ];

@@ -40,7 +40,7 @@ import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
-import { buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
+import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
 import { assignSeasonExpectations } from "./utils/teamExpectations.js";
@@ -1916,8 +1916,10 @@ export default function MotorbikeManager() {
     const playerTeamResolved = afterNegotiations.playerTeam;
     const evolvedRivalsSource = afterNegotiations.rivalTeams;
     const otherCategoriesResolved = afterNegotiations.otherCategories;
+    const standingsByCategoryForPool = { [ctxCategory]: riderStandings };
+    Object.entries(otherCategoriesResolved).forEach(([key, catState]) => { standingsByCategoryForPool[key] = catState.riderStandings; });
     let poolFreeAgents = [
-      ...freeAgents,
+      ...applyPoolHistory(freeAgents, standingsByCategoryForPool, seasonNumber),
       ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
       ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
@@ -2059,6 +2061,7 @@ export default function MotorbikeManager() {
     if (ctxCategory === "motogp") evolvedRivals = catTeams.motogp;
     if (ctxCategory === "moto2") evolvedRivals = catTeams.moto2;
     if (ctxCategory === "moto3") evolvedRivals = catTeams.moto3;
+    if (ctxCategory === "superbikes") evolvedRivals = catTeams.superbikes;
     CATEGORY_ORDER.forEach((ck) => {
       if (ck !== ctxCategory) nextOther[ck] = { ...nextOther[ck], teams: catTeams[ck] };
     });

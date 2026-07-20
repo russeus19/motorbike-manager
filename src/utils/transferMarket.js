@@ -128,6 +128,15 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     const [r1, r2] = t.riders;
     const kept = [];
     t.riders.forEach((r) => {
+      // Moto3's own age ceiling overrides even an active contract — once
+      // a rider turns 26, the category simply isn't an option anymore,
+      // contract or not, exactly like a real Moto3 team wouldn't keep
+      // someone past the category's real-world age cutoff.
+      if (ck === "moto3" && r.age > 25) {
+        pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} al superar la edad límite de Moto3`, category: CATEGORY_DATA[ck].label });
+        return;
+      }
       // Contract truth: still under contract, no market decision needed.
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
 
@@ -459,7 +468,7 @@ export function findBestReplacement(lowerTeams, freeAgentsPool) {
 /* ---------------------------------------------------------------------- */
 
 
-export function pickBestFreeAgentSub(pool, categoryKey, budget, scale) {
+export function pickBestFreeAgentSub(pool, categoryKey, budget, scale, team) {
   if (!pool || !pool.length) return null;
   const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && substituteHireCost(r, scale) <= (budget ?? 0));
   if (!eligible.length) return null;
@@ -467,7 +476,21 @@ export function pickBestFreeAgentSub(pool, categoryKey, budget, scale) {
     r,
     score: overallRating(r) + (r.age >= 27 ? 3 : 0) - (r.salary || 0) / 3000000,
   })).sort((a, b) => b.score - a.score);
-  return scored[0].r;
+  // A short substitute stint is a much lower bar than a real contract —
+  // no salary negotiation, no long-term commitment — so this leans on
+  // wouldRiderJoin exactly like a real signing would, just with a
+  // token salary and isUnemployed always true (their actual pay for
+  // stepping in is handled separately via substituteHireCost). This is
+  // what stops a free MotoGP-caliber legend from reflexively taking
+  // any open seat regardless of category: the same prestige-gap logic
+  // that already governs real signings decides whether they'd bother.
+  for (const { r } of scored) {
+    if (!team) return r; // some callers (e.g. background-only contexts) may not have a team handy — fall back to the old behavior
+    if (wouldRiderJoin(r, team, categoryKey, r.salary || 0, { fromCategoryKey: r._fromCategoryKey || categoryKey, isUnemployed: false, seasonsUnsigned: r.seasonsUnsigned || 0 })) {
+      return r;
+    }
+  }
+  return null;
 }
 
 /* Runs a team through everything that happens to it after a race: income,

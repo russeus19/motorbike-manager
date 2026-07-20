@@ -63,7 +63,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
-            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale);
+            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
             if (sub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
@@ -101,7 +101,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
-            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale);
+            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
             if (sub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
