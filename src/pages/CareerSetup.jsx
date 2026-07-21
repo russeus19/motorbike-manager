@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { ChevronRight, Rocket } from "lucide-react";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { OverallBadge } from "../components/UIPrimitives.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { randomManagerNamePlaceholder } from "../data/managerNameExamples.js";
 import { overallRating } from "../utils/riders.js";
 
 export function CareerNameScreen({ managerName, setManagerName, onSubmit, goHome }) {
   const canContinue = managerName.trim().length > 0;
+  const [namePlaceholder] = useState(randomManagerNamePlaceholder);
   return (
     <div className="max-w-lg mx-auto px-6 py-16">
       <button onClick={goHome} className="text-xs mb-4" style={{ color: COLORS.muted }}>← Volver al menú</button>
@@ -15,13 +18,13 @@ export function CareerNameScreen({ managerName, setManagerName, onSubmit, goHome
         <Rocket size={20} style={{ color: COLORS.gold }} />
         <span className="text-xs tracking-[0.2em] uppercase" style={{ color: COLORS.muted }}>Modo Carrera</span>
       </div>
-      <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: "Rajdhani, sans-serif" }}>Empezá desde abajo</h2>
-      <p className="text-sm mb-6" style={{ color: COLORS.muted }}>Vas a arrancar en Moto3, con uno de los equipos más humildes de la parrilla. Si hacés buena temporada, te llegarán ofertas de equipos mejores — incluso de Moto2 y MotoGP.</p>
+      <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: "Rajdhani, sans-serif" }}>Empieza desde abajo, acaba en lo más alto</h2>
+      <p className="text-sm mb-6" style={{ color: COLORS.muted }}>Vas a empezar con uno de los equipos más humildes de la categoría más baja. Gestiona bien tu escudería, desarrolla la moto, ficha a los mejores pilotos y te lloverán las ofertas.</p>
 
       <div className="space-y-4">
         <div>
           <label className="text-xs uppercase tracking-wider block mb-1.5" style={{ color: COLORS.muted }}>Tu nombre de mánager</label>
-          <input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="Ej: Sara Bianchi"
+          <input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder={namePlaceholder}
             className="w-full rounded-md px-3 py-2 outline-none border" style={{ background: COLORS.panel, borderColor: COLORS.rule, color: COLORS.text }} />
         </div>
         <button disabled={!canContinue} onClick={onSubmit}
@@ -42,8 +45,8 @@ export function CareerPickerScreen({ choices, onChoose }) {
         <Rocket size={20} style={{ color: COLORS.gold }} />
         <span className="text-xs tracking-[0.2em] uppercase" style={{ color: COLORS.muted }}>Modo Carrera · Moto3</span>
       </div>
-      <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: "Rajdhani, sans-serif" }}>Elegí tu primera escudería</h2>
-      <p className="text-sm mb-6" style={{ color: COLORS.muted }}>Estos tres equipos son de los más modestos de la parrilla. Es tu punto de partida — todo lo demás hay que ganárselo.</p>
+      <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: "Rajdhani, sans-serif" }}>Empieza desde abajo, acaba en lo más alto</h2>
+      <p className="text-sm mb-6" style={{ color: COLORS.muted }}>Vas a empezar con uno de los equipos más humildes de la categoría más baja. Gestiona bien tu escudería, desarrolla la moto, ficha a los mejores pilotos y te lloverán las ofertas.</p>
       <div className="grid sm:grid-cols-3 gap-3">
         {choices.map((t) => (
           <button key={t.id} onClick={() => onChoose(t)}
@@ -97,7 +100,7 @@ export function CareerOffersScreen({ offers, category, onAccept, onDecline }) {
                 <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: o.team.color }}>{o.team.name}</span>
               </span>
               <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>
-                {o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : CATEGORY_DATA[category].label}
+                {o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : CATEGORY_DATA[category].label}
               </span>
             </div>
             <div className="space-y-1">

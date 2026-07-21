@@ -547,13 +547,16 @@ export default function MotorbikeManager() {
     if (offer.kind === "lateral") {
       const newTeamId = offer.team.id;
       const oldPlayerAsRegular = { ...playerTeam, id: newTeamId };
-      const newRivals = rivalTeams.map((t) => (t.id === newTeamId ? oldPlayerAsRegular : t));
-      setPlayerTeam({ ...offer.team, id: "player" });
+      const rivalsWithSwap = rivalTeams.map((t) => (t.id === newTeamId ? oldPlayerAsRegular : t));
+      const combinedWithHistory = recordSeasonHistory([offer.team, ...rivalsWithSwap], riderStandings, category, seasonNumber);
+      const newPlayerTeamRecorded = combinedWithHistory.find((t) => t.id === offer.team.id);
+      const newRivals = combinedWithHistory.filter((t) => t.id !== offer.team.id);
+      setPlayerTeam({ ...newPlayerTeamRecorded, id: "player" });
       setRivalTeams(newRivals);
       setCareerOffers([]);
       // Rebuild standings fresh for the new season with the swapped roster
       const rsFixed = {};
-      offer.team.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: offer.team.name, points: 0 }; });
+      newPlayerTeamRecorded.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: offer.team.name, points: 0 }; });
       newRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
       const ts = { player: 0 };
       newRivals.forEach((t) => { ts[t.id] = 0; });
@@ -563,7 +566,7 @@ export default function MotorbikeManager() {
     setSprintWins({});
     setSprintPodiums({});
       setTeamStandings(ts);
-      goToMarketWith({ ...offer.team, id: "player" }, newRivals, ts, otherCategories, category);
+      goToMarketWith({ ...newPlayerTeamRecorded, id: "player" }, newRivals, ts, otherCategories, category);
       return;
     }
 
@@ -572,10 +575,18 @@ export default function MotorbikeManager() {
     // regular AI team in what becomes the new background category.
     const newCategory = offer.categoryKey;
     const newCatState = otherCategories[newCategory];
-    const newPlayerTeamRaw = newCatState.teams.find((t) => t.id === offer.team.id);
-    const newRivals = newCatState.teams.filter((t) => t.id !== offer.team.id);
+    // Neither side of this jump ever goes through the normal season-
+    // transition path, so this is the only place the just-finished
+    // season's real result gets baked into each rider's history —
+    // without this, everyone in the destination category (and the
+    // player's own old team, left behind) would show no entry at all
+    // for the season the player just played.
+    const newCatTeamsWithHistory = recordSeasonHistory(newCatState.teams, newCatState.riderStandings, newCategory, newCatState.seasonNumber);
+    const newPlayerTeamRaw = newCatTeamsWithHistory.find((t) => t.id === offer.team.id);
+    const newRivals = newCatTeamsWithHistory.filter((t) => t.id !== offer.team.id);
 
-    const oldCatTeams = [...rivalTeams, { ...playerTeam, id: playerTeam.id === "player" ? `${category}-former-player` : playerTeam.id }];
+    const oldCatTeamsRaw = [...rivalTeams, { ...playerTeam, id: playerTeam.id === "player" ? `${category}-former-player` : playerTeam.id }];
+    const oldCatTeams = recordSeasonHistory(oldCatTeamsRaw, riderStandings, category, seasonNumber);
     const oldRs = {}; oldCatTeams.forEach((t) => t.riders.forEach((r) => { oldRs[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
     const oldTs = {}; oldCatTeams.forEach((t) => { oldTs[t.id] = 0; });
 

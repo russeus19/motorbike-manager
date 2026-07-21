@@ -1,14 +1,17 @@
-import { Box, Flag } from "lucide-react";
+import { useState } from "react";
+import { Flag } from "lucide-react";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { OverallBadge, Panel } from "../components/UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { randomManagerNamePlaceholder } from "../data/managerNameExamples.js";
 import { computeTechCapacity } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
 
 export function SetupScreen({ managerName, setManagerName, category, pickCategory, teams, chooseTeam, goHome }) {
   const canPick = managerName.trim().length > 0;
+  const [namePlaceholder] = useState(randomManagerNamePlaceholder);
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
       <button onClick={goHome} className="text-xs mb-4" style={{ color: COLORS.muted }}>← Volver al menú</button>
@@ -17,14 +20,14 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
           <Flag size={20} style={{ color: COLORS.gold }} />
           <span className="text-xs tracking-[0.2em] uppercase" style={{ color: COLORS.muted }}>Motorbike Manager · Temporada 2026</span>
         </div>
-        <h1 className="text-4xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>Box, Box — Dirige un equipo real</h1>
-        <p className="text-sm mt-2" style={{ color: COLORS.muted }}>Elegí categoría y escudería oficial de 2026, con pilotos reales valorados según su trayectoria y su nivel actual. Desarrollá la moto en cinco áreas, competí las 22 carreras del calendario real y ascendé talento de la categoría inferior en el mercado de fin de temporada.</p>
+        <h1 className="text-4xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>Dirige al equipo real que prefieras</h1>
+        <p className="text-sm mt-2" style={{ color: COLORS.muted }}>Elige la categoría y la escudería oficial de 2026. Desarrolla la moto, ficha o despide a tus pilotos, asciende al talento joven y compite en cada gran premio por ganar el campeonato.</p>
       </div>
 
       <div className="space-y-5 mb-6 max-w-xl">
         <div>
           <label className="text-xs uppercase tracking-wider block mb-1.5" style={{ color: COLORS.muted }}>Tu nombre de mánager</label>
-          <input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="Ej: Sara Bianchi"
+          <input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder={namePlaceholder}
             className="w-full rounded-md px-3 py-2 outline-none border" style={{ background: COLORS.panel, borderColor: COLORS.rule, color: COLORS.text }} />
         </div>
       </div>
