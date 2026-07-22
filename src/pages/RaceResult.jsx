@@ -12,11 +12,14 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
   const lapsForTab = tabClassification[0]?.laps;
   const injured = tabClassification.filter((r) => r.injuryResult);
 
-  // sessionLabel covers WorldSBK's Race 1 / Superpole Race specifically;
-  // sprintMode still covers MotoGP's Sprint exactly as before.
+  // sessionLabel covers the WorldSBK/WorldSSP shared Race 1 (both
+  // categories run one) and the Superpole Race, which is exclusive to
+  // WorldSBK — WorldSSP goes straight from Race 1 to Race 2, so its
+  // "what comes next" text has to branch on category, not just session.
+  const hasSuperpoleRace = category === "superbikes";
   const sessionTitle = sessionLabel === "race1" ? "Race 1" : sessionLabel === "superpole" ? "Superpole Race" : sprintMode ? "Sprint" : "Resultado";
   const sessionWord = sessionLabel === "race1" ? "la Race 1" : sessionLabel === "superpole" ? "la Superpole Race" : sprintMode ? "el Sprint" : "la carrera";
-  const defaultContinueLabel = sessionLabel === "race1" ? "Continuar a la Superpole Race"
+  const defaultContinueLabel = sessionLabel === "race1" ? (hasSuperpoleRace ? "Continuar a la Superpole Race" : "Continuar a la Race 2")
     : sessionLabel === "superpole" ? "Continuar a la Race 2"
     : sprintMode ? "Continuar a la carrera"
     : (isLastRound ? "Ver resultado final de temporada" : "Continuar");
@@ -97,7 +100,7 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
               <AlertTriangle size={16} style={{ color: COLORS.danger }} />
               <span>
                 <strong>{r.name}</strong> ({r.teamName}) se cae en {sessionWord} — {r.injuryResult.name.toLowerCase()} (lesión {r.injuryResult.severityLabel}).
-                {(sprintMode || sessionLabel === "race1" || sessionLabel === "superpole") ? ` No podrá disputar ${sessionLabel === "race1" ? "la Superpole Race" : sessionLabel === "superpole" ? "la Race 2" : "la carrera"}.` : ""}
+                {(sprintMode || sessionLabel === "race1" || sessionLabel === "superpole") ? ` No podrá disputar ${sessionLabel === "race1" ? (hasSuperpoleRace ? "la Superpole Race" : "la Race 2") : sessionLabel === "superpole" ? "la Race 2" : "la carrera"}.` : ""}
               </span>
             </div>
           ))}

@@ -6,7 +6,8 @@ import { COLORS } from "../data/colors.js";
 import { NOTIF_ICON } from "../data/notificationIcons.js";
 
 export function NotificationCenterModal({ notifications, category, onClose }) {
-  const visibleCategories = category === "superbikes" ? ["superbikes"] : CATEGORY_ORDER.filter((ck) => ck !== "superbikes");
+  const isSbkCalendarCategory = (ck) => ck === "superbikes" || ck === "supersport";
+  const visibleCategories = isSbkCalendarCategory(category) ? ["superbikes", "supersport"] : CATEGORY_ORDER.filter((ck) => !isSbkCalendarCategory(ck));
   const [tab, setTab] = useState(category);
   const items = notifications[tab] || [];
 

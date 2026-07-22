@@ -100,7 +100,7 @@ export function CareerOffersScreen({ offers, category, onAccept, onDecline }) {
                 <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: o.team.color }}>{o.team.name}</span>
               </span>
               <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>
-                {o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : CATEGORY_DATA[category].label}
+                {o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : o.kind === "supersport" ? "Salto a WorldSSP" : CATEGORY_DATA[category].label}
               </span>
             </div>
             <div className="space-y-1">

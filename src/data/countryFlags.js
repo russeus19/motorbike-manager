@@ -19,6 +19,7 @@ export const EMOJI_TO_COUNTRY_ID = {
   "🇨🇿": "czechia",
   "🇨🇭": "switzerland",
   "🇩🇪": "germany",
+  "🇩🇰": "denmark",
   "🇪🇪": "estonia",
   "🇪🇸": "spain",
   "🇫🇮": "finland",

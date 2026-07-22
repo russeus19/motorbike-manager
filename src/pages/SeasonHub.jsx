@@ -28,17 +28,19 @@ import { initWarehouse } from "../utils/warehouseEngine.js";
 
 export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
-  const isRestWeek = category === "superbikes" && !isSuperbikesRaceWeek(round);
-  // On a rest week there's no Superbikes round this exact week, but the
-  // player still benefits from seeing where their NEXT round actually
-  // is, rather than whatever GP happens to be running elsewhere that
-  // week — that circuit has nothing to do with their own calendar.
+  const isSbkCalendarCategory = category === "superbikes" || category === "supersport";
+  const isRestWeek = isSbkCalendarCategory && !isSuperbikesRaceWeek(round);
+  // On a rest week there's no Superbikes/Supersport round this exact
+  // week (both share the same 12-round calendar), but the player still
+  // benefits from seeing where their NEXT round actually is, rather
+  // than whatever GP happens to be running elsewhere that week — that
+  // circuit has nothing to do with their own calendar.
   const nextSuperbikesMainRound = isRestWeek ? SUPERBIKES_RACE_MAIN_ROUNDS.find((r) => r > round) : null;
   const superbikesRoundForDisplay = isRestWeek ? nextSuperbikesMainRound : round;
-  const circuit = category === "superbikes"
+  const circuit = isSbkCalendarCategory
     ? (superbikesRoundForDisplay != null ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay]] : null)
     : CIRCUITS[round];
-  const circuitProfile = category === "superbikes"
+  const circuitProfile = isSbkCalendarCategory
     ? (superbikesRoundForDisplay != null ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay]] : CIRCUIT_PROFILES[round])
     : CIRCUIT_PROFILES[round];
   const [showRiderDetails, setShowRiderDetails] = useState(false);

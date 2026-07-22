@@ -7,7 +7,8 @@ import { TeamNumberBadge } from "../components/TeamNumberBadge.jsx";
 export function QualifyingScreen({ pendingQualifying, accent, category, onContinue }) {
   const { circuitName, isWet, resultByCategory } = pendingQualifying;
   const [tab, setTab] = useState(category);
-  const continueLabel = category === "motogp" ? "Continuar al Sprint" : category === "superbikes" ? "Continuar a la Race 1" : "Continuar a la carrera";
+  const isSbkCalendarCategory = category === "superbikes" || category === "supersport";
+  const continueLabel = category === "motogp" ? "Continuar al Sprint" : isSbkCalendarCategory ? "Continuar a la Race 1" : "Continuar a la carrera";
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -18,7 +19,7 @@ export function QualifyingScreen({ pendingQualifying, accent, category, onContin
 
   const rows = resultByCategory[tab] || [];
   const injured = rows.filter((r) => r.injuryResult);
-  const qualifyingLabel = category === "superbikes" ? "Superpole" : "Clasificación";
+  const qualifyingLabel = isSbkCalendarCategory ? "Superpole" : "Clasificación";
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
@@ -59,7 +60,7 @@ export function QualifyingScreen({ pendingQualifying, accent, category, onContin
               style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}` }}>
               <AlertTriangle size={16} style={{ color: COLORS.danger }} />
               <span>
-                <strong>{r.name}</strong> ({r.teamName}) se cae en {qualifyingLabel.toLowerCase()} — {r.injuryResult.name.toLowerCase()} (lesión {r.injuryResult.severityLabel}). No podrá disputar {category === "superbikes" ? "la Race 1" : "la carrera"}.
+                <strong>{r.name}</strong> ({r.teamName}) se cae en {qualifyingLabel.toLowerCase()} — {r.injuryResult.name.toLowerCase()} (lesión {r.injuryResult.severityLabel}). No podrá disputar {isSbkCalendarCategory ? "la Race 1" : "la carrera"}.
               </span>
             </div>
           ))}

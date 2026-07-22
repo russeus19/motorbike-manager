@@ -12,6 +12,7 @@ export const CATEGORY_PRESTIGE_CONFIG = {
   motogp: { min: 120, max: 200 },
   moto2: { min: 80, max: 145 },
   superbikes: { min: 75, max: 140 },
+  supersport: { min: 50, max: 110 },
   moto3: { min: 40, max: 90 },
 };
 
@@ -38,6 +39,7 @@ export const COMPETITION_PRESTIGE = {
   motogp: 200,
   moto2: 170,
   superbikes: 160,
+  supersport: 130,
   moto3: 140,
 };
 

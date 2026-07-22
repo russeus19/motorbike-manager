@@ -4,6 +4,7 @@ import { RiderPhoto } from "./RiderPhoto.jsx";
 import { OverallBadge, Panel } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { countryIdFromEmoji } from "../data/countryFlags.js";
 import { isFreeAgentEligibleForCategory, lastTeamName, overallRating } from "../utils/riders.js";
 
 export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
@@ -72,7 +73,8 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [contractFilter, setContractFilter] = useState("all"); // all | contracted | free
-  const [categoryFilter, setCategoryFilter] = useState("all"); // all | motogp | moto2 | moto3 | free
+  const [categoryFilter, setCategoryFilter] = useState("all"); // all | <cada key de CATEGORY_ORDER> | free
+  const [natFilter, setNatFilter] = useState("all"); // all | emoji de bandera del piloto (r.nat)
   const [minAge, setMinAge] = useState(14);
   const [maxAge, setMaxAge] = useState(45);
   const [minCA, setMinCA] = useState(0);
@@ -97,12 +99,20 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: null }));
   const allEntries = [...currentCategoryEntries, ...otherCategoryEntries, ...freeAgentEntries];
 
+  // Every nationality actually present in the current search pool, so the
+  // dropdown never shows a country with zero riders in it. Sorted by
+  // display name (via countryIdFromEmoji) rather than by emoji, which
+  // sorts arbitrarily and unhelpfully.
+  const availableNats = [...new Set(allEntries.map((e) => e.rider.nat).filter(Boolean))]
+    .sort((a, b) => (countryIdFromEmoji(a) || "").localeCompare(countryIdFromEmoji(b) || ""));
+
   const filtered = allEntries.filter((e) => {
     if (contractFilter === "contracted" && !e.teamName) return false;
     if (contractFilter === "free" && e.teamName) return false;
     if (categoryFilter === "free" && e.teamName) return false;
     if (CATEGORY_ORDER.includes(categoryFilter) && e.categoryKey !== categoryFilter) return false;
     const r = e.rider;
+    if (natFilter !== "all" && r.nat !== natFilter) return false;
     const ca = overallRating(r);
     if (r.age < minAge || r.age > maxAge) return false;
     if (ca < minCA || ca > maxCA) return false;
@@ -136,10 +146,19 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
             <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
               className="px-2 py-1.5 rounded" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }}>
               <option value="all">Todas</option>
-              <option value="motogp">MotoGP</option>
-              <option value="moto2">Moto2</option>
-              <option value="moto3">Moto3</option>
+              {CATEGORY_ORDER.map((ck) => (
+                <option key={ck} value={ck}>{CATEGORY_DATA[ck].label}</option>
+              ))}
               <option value="free">Pilotos libres</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 mb-3 text-xs" style={{ color: COLORS.muted }}>País de procedencia
+            <select value={natFilter} onChange={(e) => setNatFilter(e.target.value)}
+              className="px-2 py-1.5 rounded" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }}>
+              <option value="all">Todos</option>
+              {availableNats.map((nat) => (
+                <option key={nat} value={nat}>{nat} {(countryIdFromEmoji(nat) || "").replace(/_/g, " ")}</option>
+              ))}
             </select>
           </label>
           <label className="flex flex-col gap-1 mb-3 text-xs" style={{ color: COLORS.muted }}>Estado del contrato

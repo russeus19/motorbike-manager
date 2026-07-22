@@ -35,7 +35,7 @@ export function makeAffinity() {
    MotoGP has no limit at all. Moto3 keeps the original 27-or-under
    restriction. Moto2 is more permissive: up to and including 30. */
 export function isFreeAgentEligibleForCategory(rider, categoryKey) {
-  if (categoryKey === "motogp" || categoryKey === "superbikes") return true;
+  if (categoryKey === "motogp" || categoryKey === "superbikes" || categoryKey === "supersport") return true;
   if (categoryKey === "moto2") return rider.age <= 30;
   return rider.age <= 25;
 }
