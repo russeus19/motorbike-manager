@@ -389,6 +389,64 @@ export function staffUpgradeSpec(team, scale) {
   return facilityUpgradeSpec(staff.level, "staff", scale);
 }
 
+/* The reverse of an upgrade: a struggling team (typically a small
+   Supersport or Moto3 privateer stuck in a losing points spiral) can
+   sell off part of its infrastructure for a partial cash refund instead
+   of running the budget into the ground with no way out. Deliberately
+   NOT a clean inverse of the upgrade cost — real teams don't get a full
+   refund for mothballing a wind tunnel or letting engineers go, so this
+   pays back a fraction (REFUND_RATE) of what it would cost to rebuild
+   that same block of levels from scratch, using the exact same
+   non-linear curve as the upgrade itself so the numbers stay coherent
+   at every level and category scale. `FLOOR` stops a team from
+   downsizing itself to nothing — a skeleton crew still exists.
+   Immediate, unlike an upgrade: there's no GP timer, since tearing
+   things down doesn't take the season to arrange. Returns null if
+   there's nothing meaningful left to reduce (already at/under FLOOR,
+   or mid-upgrade — downsizing while a build is already underway would
+   double-count the same levels). */
+const FACILITY_DOWNGRADE_FLOOR = 15;
+const FACILITY_DOWNGRADE_STEP = 8;
+const FACILITY_DOWNGRADE_REFUND_RATE = 0.4;
+
+function facilityDowngradeSpec(level, kind, scale) {
+  if (level <= FACILITY_DOWNGRADE_FLOOR) return null;
+  const step = Math.min(FACILITY_DOWNGRADE_STEP, level - FACILITY_DOWNGRADE_FLOOR);
+  const newLevel = level - step;
+  // What it would cost to build back up from newLevel is a reasonable
+  // stand-in for "what this block of levels is worth" — same curve,
+  // same category scale, just paid back at a loss.
+  const equivalentBuildCost = facilityUpgradeSpec(newLevel, kind, scale).money;
+  const refund = Math.round(equivalentBuildCost * FACILITY_DOWNGRADE_REFUND_RATE);
+  return { step, newLevel, refund };
+}
+
+export function factoryDowngradeSpec(team, scale) {
+  const { factory } = ensureRD(team);
+  return facilityDowngradeSpec(factory.level, "factory", scale);
+}
+
+export function staffDowngradeSpec(team, scale) {
+  const { staff } = ensureRD(team);
+  return facilityDowngradeSpec(staff.level, "staff", scale);
+}
+
+export function canStartFacilityDowngrade(team, kind, scale) {
+  const { factory, staff } = ensureRD(team);
+  const facility = kind === "factory" ? factory : staff;
+  if (facility.upgrading) return null; // don't tear down mid-build
+  return facilityDowngradeSpec(facility.level, kind, scale);
+}
+
+export function applyFacilityDowngrade(team, kind, spec) {
+  const { factory, staff } = ensureRD(team);
+  return {
+    ...team,
+    factory: kind === "factory" ? { ...factory, level: spec.newLevel } : factory,
+    staff: kind === "staff" ? { ...staff, level: spec.newLevel } : staff,
+  };
+}
+
 export function canStartFacilityUpgrade(team, kind, budgetAvailable, scale) {
   const { factory, staff } = ensureRD(team);
   const facility = kind === "factory" ? factory : staff;

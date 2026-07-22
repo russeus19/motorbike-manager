@@ -18,8 +18,28 @@ const DEFAULT_NUMBER = `${NUMBER_BASE}/default.png`;
  *
  * Usage: <RiderNumber rider={rider} size={32} />
  * or:    <RiderNumber riderId={rider.id} number={rider.number} size={24} />
+ *
+ * Pass `plain` to drop the dark rounded box behind the fallback digits
+ * (used where the number needs to sit directly on the page/panel
+ * background instead of looking like its own little badge — e.g. the
+ * rider profile screen).
+ *
+ * Pass `categoryKey` so the fallback digits can use Supersport's own
+ * blue (#344ec4) instead of the default orange — purely a Supersport
+ * quirk, every other category keeps the original orange regardless of
+ * `categoryKey`. Only matters for riders who don't have a real dorsal
+ * graphic yet; once a rider gets a real dorsal PNG, this has no effect.
+ *
+ * Pass `alignStart` to left-align the fallback digits within their box
+ * instead of centering them, and let the box hug the digits' actual
+ * width instead of reserving the full `size` — useful when the number
+ * sits directly above something narrower (like a small flag) that
+ * starts flush at the same left edge and is immediately followed by
+ * more content (name, badge…): reserving the full square width would
+ * push everything after it too far right even with the text
+ * left-aligned inside.
  */
-export function RiderNumber({ rider, riderId, number, size = 32, className = "" }) {
+export function RiderNumber({ rider, riderId, number, size = 32, className = "", plain = false, categoryKey = null, alignStart = false }) {
   const resolvedId = riderId || rider?.photoId || rider?.id || null;
   const resolvedNumber = number ?? rider?.number ?? null;
   const initialSrc = resolvedId ? `${NUMBER_BASE}/${resolvedId}.png` : DEFAULT_NUMBER;
@@ -38,14 +58,17 @@ export function RiderNumber({ rider, riderId, number, size = 32, className = "" 
 
   if (broken || !resolvedId) {
     if (!Number.isFinite(resolvedNumber)) return null;
+    const isSupersport = categoryKey === "supersport";
     return (
       <div
         className={className}
         style={{
-          width: size, height: size, flexShrink: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          borderRadius: "6px", background: "#1C2128",
-          fontFamily: "Rajdhani, sans-serif", fontWeight: 700, color: "#E3A427",
+          width: alignStart ? "auto" : size, height: size, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: alignStart ? "flex-start" : "center",
+          borderRadius: plain ? 0 : "6px",
+          background: plain ? "transparent" : "#1C2128",
+          fontFamily: "Rajdhani, sans-serif", fontWeight: 700,
+          color: isSupersport ? "#344ec4" : "#E3A427",
           fontSize: size * 0.5,
         }}>
         {resolvedNumber}

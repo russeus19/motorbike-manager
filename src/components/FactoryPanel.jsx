@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Box, ChevronDown, ChevronUp, Timer } from "lucide-react";
 import { Panel } from "./UIPrimitives.jsx";
 import { COLORS } from "../data/colors.js";
-import { canStartFacilityUpgrade, ensureRD, factoryUpgradeSpec } from "../utils/bikeDevelopment.js";
+import { canStartFacilityUpgrade, ensureRD, factoryDowngradeSpec, factoryUpgradeSpec } from "../utils/bikeDevelopment.js";
 
 /**
  * Fábrica: infraestructura general del equipo (I+D, banco de motores,
@@ -12,11 +12,13 @@ import { canStartFacilityUpgrade, ensureRD, factoryUpgradeSpec } from "../utils/
  * computeTechCapacity) y reduce el riesgo de los proyectos de Desarrollo
  * e Investigación (ver projectSpec).
  */
-export function FactoryPanel({ playerTeam, budget, onStartUpgrade, accent, scale }) {
+export function FactoryPanel({ playerTeam, budget, onStartUpgrade, onStartDowngrade, accent, scale }) {
   const [expanded, setExpanded] = useState(false);
   const { factory } = ensureRD(playerTeam);
   const spec = factoryUpgradeSpec(playerTeam, scale);
+  const downSpec = factoryDowngradeSpec(playerTeam, scale);
   const canStart = !factory.upgrading && !!canStartFacilityUpgrade(playerTeam, "factory", budget, scale);
+  const canDowngrade = !factory.upgrading && !!downSpec;
 
   return (
     <Panel
@@ -48,12 +50,22 @@ export function FactoryPanel({ playerTeam, budget, onStartUpgrade, accent, scale
               <div className="text-xs" style={{ color: COLORS.muted }}>Al terminar: +{factory.upgrading.gain} niveles</div>
             </div>
           ) : (
-            <button disabled={!canStart} onClick={onStartUpgrade}
-              className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
-              style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
-              <span>Ampliar Fábrica (+{spec.gain} niveles)</span>
-              <span className="font-mono" style={{ color: COLORS.muted }}>€{spec.money.toLocaleString()} · {spec.gp} GP</span>
-            </button>
+            <div className="space-y-2">
+              <button disabled={!canStart} onClick={onStartUpgrade}
+                className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                <span>Ampliar Fábrica (+{spec.gain} niveles)</span>
+                <span className="font-mono" style={{ color: COLORS.muted }}>€{spec.money.toLocaleString()} · {spec.gp} GP</span>
+              </button>
+              {downSpec && (
+                <button disabled={!canDowngrade} onClick={onStartDowngrade}
+                  className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
+                  style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                  <span>Reducir Fábrica (-{downSpec.step} niveles)</span>
+                  <span className="font-mono" style={{ color: COLORS.gold }}>+€{downSpec.refund.toLocaleString()}</span>
+                </button>
+              )}
+            </div>
           )}
           {factory.level >= 99 && <p className="text-xs mt-2" style={{ color: COLORS.gold }}>Nivel máximo alcanzado.</p>}
         </>

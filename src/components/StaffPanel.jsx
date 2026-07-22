@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Timer, Users } from "lucide-react";
 import { Panel } from "./UIPrimitives.jsx";
 import { COLORS } from "../data/colors.js";
-import { canStartFacilityUpgrade, ensureRD, staffUpgradeSpec } from "../utils/bikeDevelopment.js";
+import { canStartFacilityUpgrade, ensureRD, staffDowngradeSpec, staffUpgradeSpec } from "../utils/bikeDevelopment.js";
 
 /**
  * Staff: director técnico, ingenieros, mecánicos y personal de
@@ -11,11 +11,13 @@ import { canStartFacilityUpgrade, ensureRD, staffUpgradeSpec } from "../utils/bi
  * proyectos de Desarrollo e Investigación y mejora ligeramente su
  * eficacia final (ver projectSpec), además de aportar Capacidad Técnica.
  */
-export function StaffPanel({ playerTeam, budget, onStartUpgrade, accent, scale }) {
+export function StaffPanel({ playerTeam, budget, onStartUpgrade, onStartDowngrade, accent, scale }) {
   const [expanded, setExpanded] = useState(false);
   const { staff } = ensureRD(playerTeam);
   const spec = staffUpgradeSpec(playerTeam, scale);
+  const downSpec = staffDowngradeSpec(playerTeam, scale);
   const canStart = !staff.upgrading && !!canStartFacilityUpgrade(playerTeam, "staff", budget, scale);
+  const canDowngrade = !staff.upgrading && !!downSpec;
 
   return (
     <Panel
@@ -47,12 +49,22 @@ export function StaffPanel({ playerTeam, budget, onStartUpgrade, accent, scale }
               <div className="text-xs" style={{ color: COLORS.muted }}>Al terminar: +{staff.upgrading.gain} niveles</div>
             </div>
           ) : (
-            <button disabled={!canStart} onClick={onStartUpgrade}
-              className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
-              style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
-              <span>Mejorar Staff (+{spec.gain} niveles)</span>
-              <span className="font-mono" style={{ color: COLORS.muted }}>€{spec.money.toLocaleString()} · {spec.gp} GP</span>
-            </button>
+            <div className="space-y-2">
+              <button disabled={!canStart} onClick={onStartUpgrade}
+                className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                <span>Mejorar Staff (+{spec.gain} niveles)</span>
+                <span className="font-mono" style={{ color: COLORS.muted }}>€{spec.money.toLocaleString()} · {spec.gp} GP</span>
+              </button>
+              {downSpec && (
+                <button disabled={!canDowngrade} onClick={onStartDowngrade}
+                  className="w-full text-left text-xs px-3 py-2 rounded disabled:opacity-30 flex items-center justify-between gap-2"
+                  style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                  <span>Reducir Staff (-{downSpec.step} niveles)</span>
+                  <span className="font-mono" style={{ color: COLORS.gold }}>+€{downSpec.refund.toLocaleString()}</span>
+                </button>
+              )}
+            </div>
           )}
           {staff.level >= 99 && <p className="text-xs mt-2" style={{ color: COLORS.gold }}>Nivel máximo alcanzado.</p>}
         </>

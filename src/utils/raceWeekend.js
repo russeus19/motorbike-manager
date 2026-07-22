@@ -1,6 +1,7 @@
 import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
+import { applySponsorRaceResult, resolveAiSponsorOffers, sponsorGpIncome } from "./sponsors.js";
 import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
 import { aiManageWarehouse, consumeWarehouseForResult, initWarehouse, resolveWarehouseProduction } from "./warehouseEngine.js";
 
@@ -20,14 +21,28 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   // single biggest source of AI teams drifting into invalid, negative
   // budgets over a season — the fix is here, not a later patch.
   let runningBudget = team.budget || 0;
+  let teamForSponsors = team;
   if (!ctx.isPlayer) {
     const prizeUnit = Math.max(1, Math.round(28000 * ctx.scale));
     const prize = teamResults.reduce((s, r) => s + (r.crashed ? Math.round(20000 * ctx.scale) : Math.max(Math.round(20000 * ctx.scale), (16 - r.position) * prizeUnit)), 0);
     const runningCost = Math.round(130000 * ctx.scale);
-    runningBudget = Math.max(0, runningBudget + prize - runningCost);
+    const sponsorIncome = sponsorGpIncome(team, teamResults.reduce((s, r) => s + (r.points || 0), 0));
+    const teamScoredThisRace = teamResults.some((r) => r.points > 0);
+    const sponsorResult = applySponsorRaceResult(team, teamScoredThisRace, categoryKey, ctx.scale);
+    teamForSponsors = resolveAiSponsorOffers(sponsorResult.team);
+    sponsorResult.brokenSlots.forEach(({ name }) => {
+      notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${name} rescinde su contrato de patrocinio con ${team.name} tras varias carreras seguidas sin puntuar.` });
+    });
+    sponsorResult.newOfferSlots.forEach((kind) => {
+      const signed = teamForSponsors.sponsors[kind];
+      if (signed) {
+        notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${signed.name} ficha como nuevo patrocinador ${kind === "main" ? "principal" : "secundario"} de ${team.name} tras su buena racha de resultados.` });
+      }
+    });
+    runningBudget = Math.max(0, runningBudget + prize + sponsorIncome - runningCost);
   }
 
-  let afterAI = { ...team, budget: runningBudget };
+  let afterAI = { ...teamForSponsors, budget: runningBudget };
 
   // Priority order (highest first): 1) make sure the team can actually
   // race — substitute a sidelined rider, keep the warehouse stocked —

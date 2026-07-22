@@ -79,7 +79,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
                   <RiderPhoto rider={r} size={44} className="rounded-lg" />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate flex items-center gap-1.5">
-                      <RiderNumber rider={r} size={22} />
+                      <RiderNumber rider={r} size={22} categoryKey={categoryKey} />
                       {r.name}
                     </div>
                     <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.muted }}>

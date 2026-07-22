@@ -7,6 +7,7 @@ import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
 import { StaffPanel } from "../components/StaffPanel.jsx";
+import { SponsorsPanel } from "../components/SponsorsPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, SeasonArchivePanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
@@ -26,7 +27,7 @@ import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
   const isSbkCalendarCategory = category === "superbikes" || category === "supersport";
   const isRestWeek = isSbkCalendarCategory && !isSuperbikesRaceWeek(round);
@@ -170,7 +171,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                   <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <RiderNumber rider={r} size={22} />
+                      <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
                       <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
                       <OverallBadge value={overallRating(r)} accent={accent} />
                     </span>
@@ -263,7 +264,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                 <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-semibold flex items-center gap-1.5">
-                    <RiderNumber rider={r} size={22} />
+                    <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
                     <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
                     <OverallBadge value={overallRating(r)} accent={accent} />
                   </span>
@@ -350,8 +351,9 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </div>
           </Panel>
           <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
-          <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} accent={accent} scale={scale} />
-          <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} accent={accent} scale={scale} />
+          <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} accent={accent} />
+          <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
+          <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
           <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} />
         </div>
       )}

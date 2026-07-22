@@ -216,7 +216,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   // renewed them, the same way a real MotoGP call-up overrides a Moto2
   // rider's plan to stay. Whatever seat they leave behind is a genuine
   // new vacancy, picked up naturally by Fase 3 below.
-  const PROMOTION_PAIRS = [{ higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" }];
+  const PROMOTION_PAIRS = [{ higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" }, { higher: "superbikes", lower: "supersport" }];
   PROMOTION_PAIRS.forEach(({ higher, lower }) => {
     if (!teamsByCategory[higher] || !teamsByCategory[lower]) return;
     const lowerStandings = categoriesData[lower]?.riderStandings || {};

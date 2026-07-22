@@ -37,7 +37,7 @@ import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { RosterCompletionScreen } from "./pages/RosterCompletion.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
-import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyPrototype, bikeAvg, canStartFacilityUpgrade, canStartProject, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
+import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyFacilityDowngrade, applyPrototype, bikeAvg, canStartFacilityDowngrade, canStartFacilityUpgrade, canStartProject, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
 import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
 import { emptyNotifications, mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
@@ -52,6 +52,7 @@ import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
+import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome } from "./utils/sponsors.js";
 import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
@@ -389,7 +390,7 @@ export default function MotorbikeManager() {
       const withManufacturer = withBike.manufacturer
         ? withBike
         : { ...withBike, manufacturer: CATEGORY_DATA[catKey]?.teams?.find((td) => td.name === withBike.name)?.manufacturer };
-      const withTeam = ensureTeamPrestige(withManufacturer, catKey);
+      const withTeam = ensureSponsors(ensureTeamPrestige(withManufacturer, catKey));
       return { ...withTeam, riders: withTeam.riders.map((r) => ensureRiderPrestige(r, catKey)) };
     };
     const playerTeam = data.playerTeam
@@ -460,7 +461,9 @@ export default function MotorbikeManager() {
     const rivalsRaw = allTeams.filter((t) => t.id !== chosenTeamRaw.id);
     // Season 1 has no research history yet, so it's excluded from the
     // strength calculation here (see computeTeamStrengthScore).
-    const [chosenTeam, ...rivals] = assignSeasonExpectations([chosenTeamRaw, ...rivalsRaw], false);
+    const [chosenTeamExp, ...rivalsExp] = assignSeasonExpectations([chosenTeamRaw, ...rivalsRaw], false);
+    const chosenTeam = seedInitialSponsors(chosenTeamExp, "moto3", CATEGORY_DATA.moto3.scale);
+    const rivals = rivalsExp.map((t) => seedInitialSponsors(t, "moto3", CATEGORY_DATA.moto3.scale));
     const rsFixed = {};
     chosenTeam.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosenTeam.name, points: 0 }; });
     rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
@@ -470,7 +473,8 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== "moto3");
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false);
+      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
+        .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
@@ -525,13 +529,17 @@ export default function MotorbikeManager() {
       if (weakest) offers.push({ kind: "promotion", team: weakest, categoryKey: upperKey });
     }
 
-    // Superbikes isn't part of the traditional promotion ladder, so it's
-    // judged on its own terms instead: how big a reach this would be
-    // from the player's current category (via the competition-prestige
-    // gap — a jump from Moto3 is a genuine step up, one from MotoGP is
-    // a real reach), how well this season went, and a random roll so
-    // it stays a special, occasional opportunity rather than automatic.
-    if (category !== "superbikes" && otherCategories.superbikes) {
+    // Superbikes isn't part of the traditional MotoGP/Moto2/Moto3 ladder,
+    // so a rider coming from any of those three is judged on its own
+    // terms: how big a reach this would be from their current category
+    // (via the competition-prestige gap), how well this season went, and
+    // a random roll so it stays a special, occasional opportunity rather
+    // than automatic. Supersport is excluded here on purpose — it's
+    // Superbikes' real feeder category now (CATEGORY_DATA.superbikes.lower),
+    // so a Supersport rider's route upward is the ordinary top-3
+    // "promotion" offer above, exactly like Moto2 into MotoGP, not this
+    // random side door.
+    if (category !== "superbikes" && category !== "supersport" && otherCategories.superbikes) {
       const gap = competitionPrestige(category) - competitionPrestige("superbikes");
       const posThreshold = gap <= 0 ? 6 : gap <= 20 ? 3 : 1;
       const chance = gap <= 0 ? 0.5 : gap <= 20 ? 0.35 : 0.18;
@@ -550,8 +558,12 @@ export default function MotorbikeManager() {
     // Same idea as the Superbikes offer just above, but against
     // Supersport's own (lower) competition-prestige value — so a strong
     // Moto3 season is a plausible Supersport approach, while a MotoGP
-    // rider only gets one as a rare, reach-y curiosity.
-    if (category !== "supersport" && otherCategories.supersport) {
+    // rider only gets one as a rare, reach-y curiosity. Superbikes is
+    // excluded: dropping from Superbikes to Supersport is a demotion,
+    // not an opportunity worth surfacing as a curated career offer —
+    // if it happens at all, it happens through the ordinary market/
+    // relegation flow, same as any other released rider.
+    if (category !== "supersport" && category !== "superbikes" && otherCategories.supersport) {
       const gap = competitionPrestige(category) - competitionPrestige("supersport");
       const posThreshold = gap <= 0 ? 6 : gap <= 20 ? 3 : 1;
       const chance = gap <= 0 ? 0.5 : gap <= 20 ? 0.35 : 0.18;
@@ -690,7 +702,9 @@ export default function MotorbikeManager() {
     const rivalsRaw = teams.filter((_, i) => i !== idx);
     // Season 1 has no research history yet, so it's excluded from the
     // strength calculation here (see computeTeamStrengthScore).
-    const [chosen, ...rivals] = assignSeasonExpectations([teams[idx], ...rivalsRaw], false);
+    const [chosenExp, ...rivalsExp] = assignSeasonExpectations([teams[idx], ...rivalsRaw], false);
+    const chosen = seedInitialSponsors(chosenExp, draftCategory, CATEGORY_DATA[draftCategory].scale);
+    const rivals = rivalsExp.map((t) => seedInitialSponsors(t, draftCategory, CATEGORY_DATA[draftCategory].scale));
     const rsFixed = {};
     chosen.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosen.name, points: 0 }; });
     rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
@@ -700,7 +714,8 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== draftCategory);
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false);
+      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
+        .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
@@ -789,6 +804,31 @@ export default function MotorbikeManager() {
     if (!spec) return;
     setBudget((b) => b - spec.money);
     setPlayerTeam((t) => startFacilityUpgrade(t, "staff", spec));
+  }
+
+  // Reducing infrastructure, unlike building it, is instant — there's
+  // no GP timer to wait out, just an immediate refund and a lower level.
+  function startFactoryDowngrade() {
+    const spec = canStartFacilityDowngrade(playerTeam, "factory", scale);
+    if (!spec) return;
+    setBudget((b) => b + spec.refund);
+    setPlayerTeam((t) => applyFacilityDowngrade(t, "factory", spec));
+  }
+
+  function startStaffDowngrade() {
+    const spec = canStartFacilityDowngrade(playerTeam, "staff", scale);
+    if (!spec) return;
+    setBudget((b) => b + spec.refund);
+    setPlayerTeam((t) => applyFacilityDowngrade(t, "staff", spec));
+  }
+
+  // Choosing a sponsor (main or secondary) from the candidate offers
+  // queued at season end — the only sponsor decision the player ever
+  // makes directly; AI teams auto-pick the best payout instead
+  // (resolveAiSponsorOffers, called at the same season-end moment).
+  function chooseSponsorOffer(kind, offer) {
+    if (!playerTeam) return;
+    setPlayerTeam((t) => signSponsorOffer(t, kind, offer));
   }
 
   function startWarehouseProduction(part) {
@@ -1673,9 +1713,25 @@ export default function MotorbikeManager() {
       };
     });
 
+    // Sponsors: income for this GP comes from whatever's currently
+    // signed, and a scoreless race nudges every active contract's break
+    // clause (see utils/sponsors.js) — checked here, right after the
+    // race, using this exact race's own result, not anything averaged
+    // over the season.
+    const playerPointsThisRace = playerResults.reduce((s, r) => s + (r.points || 0), 0);
+    const sponsorIncome = sponsorGpIncome(playerTeamAfterRenewals, playerPointsThisRace);
+    const playerScoredThisRace = playerResults.some((r) => r.points > 0);
+    const { team: playerTeamAfterSponsors, brokenSlots: brokenSponsorSlots, newOfferSlots: newSponsorOfferSlots } = applySponsorRaceResult(playerTeamAfterRenewals, playerScoredThisRace, category, scale);
+    brokenSponsorSlots.forEach(({ name }) => {
+      notifQueue.push({ type: "patrocinio", text: `${name} rescinde su contrato de patrocinio tras varias carreras seguidas sin puntuar`, category: CATEGORY_DATA[category].label });
+    });
+    newSponsorOfferSlots.forEach((kind) => {
+      notifQueue.push({ type: "patrocinio", text: `Tu buena racha de resultados ha atraído el interés de nuevos patrocinadores para tu hueco ${kind === "main" ? "principal" : "secundario"} — elige uno en Escudería → Patrocinadores.`, category: CATEGORY_DATA[category].label });
+    });
+
     const playedClassification = classificationByCategory[category] || [];
     const liveLaps = playedClassification[0]?.laps ?? (CIRCUIT_PROFILES[round].records?.[category]?.laps ?? 22);
-    const liveSim = buildLiveRaceSimulation(playedClassification, liveLaps, playerTeamAfterRenewals.riders.map((r) => r.id));
+    const liveSim = buildLiveRaceSimulation(playedClassification, liveLaps, playerTeamAfterSponsors.riders.map((r) => r.id));
 
     setGame((g) => (g ? {
       ...g,
@@ -1684,8 +1740,8 @@ export default function MotorbikeManager() {
       riderWins: riderWinsNext,
       riderPodiums: riderPodiumsNext,
       teamStandings: teamStandingsNext,
-      budget: g.budget + prize - runningCost,
-      playerTeam: playerTeamAfterRenewals,
+      budget: g.budget + prize + sponsorIncome - runningCost,
+      playerTeam: playerTeamAfterSponsors,
       rivalTeams: rivalsAfterRenewals,
       otherCategories: nextOtherCategoriesAfterRenewals,
       freeAgents: poolRef.pool,
@@ -2035,7 +2091,14 @@ export default function MotorbikeManager() {
       ctxTeamStandings, ctxCategory
     );
     const evolvedOwn = combinedPlayedCategory[0].riders;
-    let evolvedRivals = combinedPlayedCategory.slice(1);
+    // Sponsors renew here too, right alongside prestige — same moment,
+    // same freshly-evolved prestige value. The player gets candidate
+    // offers to choose from later (surfaced once the new season is
+    // live); every AI team resolves its own immediately, no different
+    // from how AI teams handle every other end-of-season decision.
+    const playerAfterSponsorSeasonEnd = advanceSponsorContractsForSeasonEnd(combinedPlayedCategory[0], ctxCategory, scale);
+    let evolvedRivals = combinedPlayedCategory.slice(1)
+      .map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, ctxCategory, scale)));
 
     // --- Evolve + record history for BOTH background categories ---
     const nextOther = {};
@@ -2053,7 +2116,7 @@ export default function MotorbikeManager() {
       const historied = applyTeamPrestigeEvolution(
         recordSeasonHistory(evolvedTeams, catState.riderStandings, key, catState.seasonNumber),
         catState.teamStandings, key
-      );
+      ).map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, key, catScale)));
       nextOther[key] = { teams: historied, seasonNumber: catState.seasonNumber + 1 };
     });
 
@@ -2145,8 +2208,15 @@ export default function MotorbikeManager() {
     });
 
     // --- New-season bikes: rebuilt from each team's hidden Base
-    // Tecnológica plus Fábrica/Staff quality and a small random variation. ---
-    const rolledPlayerTeam = rolloverBike(playerTeamResolved);
+    // Tecnológica plus Fábrica/Staff quality and a small random variation.
+    // Built from playerAfterSponsorSeasonEnd (== combinedPlayedCategory[0]
+    // plus advanced sponsors), NOT the older playerTeamResolved — that
+    // earlier object still carries last season's prestige, from before
+    // applyTeamPrestigeEvolution ran. Using the stale one here silently
+    // discarded the player's own team-prestige evolution every single
+    // season (rivals never had this problem, since evolvedRivals was
+    // already sourced from combinedPlayedCategory). ---
+    const rolledPlayerTeam = rolloverBike(playerAfterSponsorSeasonEnd);
     evolvedRivals = evolvedRivals.map((t) => rolloverBike(aiResolvePrototypes(t)));
     Object.keys(nextOther).forEach((key) => {
       nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => rolloverBike(aiResolvePrototypes(t))) };
@@ -2166,6 +2236,9 @@ export default function MotorbikeManager() {
     const finalRosterValidated = repairedPlayerTeam.riders;
 
     // --- Fresh season expectations for every team and rider ---
+    // rolledPlayerTeam already carries the correct prestige + sponsors
+    // (sourced from playerAfterSponsorSeasonEnd above), so this spread
+    // no longer needs to re-attach them by hand.
     let finalPlayerTeamWithExpectation;
     [finalPlayerTeamWithExpectation, ...evolvedRivals] = assignSeasonExpectations([{ ...rolledPlayerTeam, riders: finalRosterValidated, substitutes: {} }, ...evolvedRivals], true);
     Object.keys(nextOther).forEach((key) => {
@@ -2322,6 +2395,9 @@ export default function MotorbikeManager() {
           onOpenTeamProfile={openTeamProfile}
           onStartFactoryUpgrade={startFactoryUpgrade}
           onStartStaffUpgrade={startStaffUpgrade}
+          onStartFactoryDowngrade={startFactoryDowngrade}
+          onStartStaffDowngrade={startStaffDowngrade}
+          onChooseSponsorOffer={chooseSponsorOffer}
         />
       )}
       {phase === "qualifying" && pendingQualifying && playerTeam && (

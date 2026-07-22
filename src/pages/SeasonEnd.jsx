@@ -63,7 +63,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
         {championFull && (
           <div className="flex flex-col items-center gap-1.5 mb-3">
             <RiderPhoto rider={championFull} size={96} className="rounded-xl" />
-            <RiderNumber rider={championFull} size={48} className="-mt-1" />
+            <RiderNumber rider={championFull} size={48} className="-mt-1" categoryKey={category} />
           </div>
         )}
         <h2 className="text-3xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{champion?.name} es campeón de {CATEGORY_DATA[category].label}</h2>

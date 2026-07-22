@@ -168,13 +168,13 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0 relative overflow-hidden" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           {rider.number != null && (
             <div className="absolute inset-0 flex items-center justify-end pr-14 pointer-events-none" style={{ opacity: 0.1 }}>
-              <RiderNumber rider={rider} size={220} />
+              <RiderNumber rider={rider} size={220} plain categoryKey={categoryKey} />
             </div>
           )}
           <div className="flex items-center gap-3 min-w-0 relative">
             <div className="flex flex-col items-center gap-0 flex-shrink-0">
               <RiderPhoto rider={rider} size={88} className="rounded-xl" />
-              <RiderNumber rider={rider} size={56} className="-mt-1" />
+              <RiderNumber rider={rider} size={56} className="-mt-1" plain categoryKey={categoryKey} />
             </div>
             <div className="min-w-0">
               <h3 className="text-2xl font-bold flex items-center gap-2 truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>
