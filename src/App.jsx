@@ -53,6 +53,7 @@ import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCat
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
 import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome } from "./utils/sponsors.js";
+import { prizeForPosition, teamRunningCost } from "./utils/economy.js";
 import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
@@ -1572,9 +1573,9 @@ export default function MotorbikeManager() {
     );
 
     const playerResults = results.filter((r) => r.teamId === "player");
-    const prizeUnit = Math.max(1, Math.round(28000 * scale));
-    const prize = playerResults.reduce((s, r) => s + (r.crashed ? Math.round(20000 * scale) : Math.max(Math.round(20000 * scale), (16 - r.position) * prizeUnit)), 0);
-    const runningCost = Math.round(130000 * scale);
+    const gridSize = results.length;
+    const prize = playerResults.reduce((s, r) => s + prizeForPosition(r.position, r.crashed, scale, gridSize), 0);
+    const runningCost = teamRunningCost(scale, playerTeam.tier);
 
     // Player-facing race recap + notable results
     const gpShortName = CIRCUITS[round].split("—")[0].trim();

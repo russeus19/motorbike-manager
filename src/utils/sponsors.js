@@ -1,6 +1,6 @@
 import { clamp, randInt } from "./random.js";
 import { categoryPrestigeRange } from "../data/categoryPrestigeConfig.js";
-import { INITIAL_SPONSORS_BY_TEAM_NAME } from "../data/initialSponsors.js";
+import { INITIAL_SPONSORS_BY_CATEGORY } from "../data/initialSponsors.js";
 
 /**
  * Sponsorship — a second income stream alongside race prize money,
@@ -70,7 +70,7 @@ const FICTIONAL_SPONSOR_NAMES = [
 // grows automatically the moment Moto3/WorldSBK/WorldSSP get their own
 // entries there — nothing else needs to change.
 const REAL_SPONSOR_NAMES = [...new Set(
-  Object.values(INITIAL_SPONSORS_BY_TEAM_NAME).flatMap((e) => [e.main, e.secondary]).filter(Boolean)
+  Object.values(INITIAL_SPONSORS_BY_CATEGORY).flatMap((byTeam) => Object.values(byTeam).flatMap((e) => [e.main, e.secondary])).filter(Boolean)
 )];
 
 const SPONSOR_NAME_POOL = [...FICTIONAL_SPONSOR_NAMES, ...REAL_SPONSOR_NAMES];
@@ -153,7 +153,7 @@ export function estimateCurrentSponsorPayout(team, categoryKey, scale, kind = "m
 /** Called once, only for a team that doesn't have `sponsors` yet (a
  * brand-new career/quick-play team, never a loaded save that already
  * has them) — looks the team up by name in
- * data/initialSponsors.js#INITIAL_SPONSORS_BY_TEAM_NAME and, for
+ * data/initialSponsors.js#INITIAL_SPONSORS_BY_CATEGORY and, for
  * whichever slot(s) have a real name there, signs it using
  * `estimateCurrentSponsorPayout` against the team's actual, current
  * prestige/expectation. A team not in that table, or with a slot
@@ -163,7 +163,7 @@ export function estimateCurrentSponsorPayout(team, categoryKey, scale, kind = "m
  * happen to run out in the very same season. */
 export function seedInitialSponsors(team, categoryKey, scale) {
   if (team.sponsors) return team; // already has sponsors — not a fresh team, leave it alone
-  const entry = INITIAL_SPONSORS_BY_TEAM_NAME[team.name];
+  const entry = INITIAL_SPONSORS_BY_CATEGORY[categoryKey]?.[team.name];
   const sponsors = { main: null, secondary: null };
   if (entry) {
     ["main", "secondary"].forEach((kind) => {

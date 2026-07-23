@@ -8,7 +8,7 @@ export const MOTO2_TEAMS_DATA = [
   { name: "Elf Marc VDS Racing Team", logoId: "marc_vds", tier: "Puntero", slots: 2, manufacturer: "Boscoscuro", color: "#facd01",
     bike: { aero: 85, chasis: 85, motor: 85, freno: 84, electronica: 85 }, budget: 2500000,
     riders: [
-      { name: "Arón Canet", photoId: 25, nat: "🇪🇸", age: 26, potential: 48, tecnica: 86, ritmo: 85, adelantamientos: 84, mental: 75, adaptabilidad: 78, fisico: 78 , number: 44 },
+      { name: "Arón Canet", photoId: 25, nat: "🇪🇸", age: 26, potential: 48, tecnica: 83, ritmo: 82, adelantamientos: 81, mental: 72, adaptabilidad: 75, fisico: 75 , number: 44 },
       { name: "Deniz Öncü", photoId: 26, nat: "🇹🇷", age: 21, potential: 68, tecnica: 76, ritmo: 74, adelantamientos: 76, mental: 62, adaptabilidad: 65, fisico: 72 , number: 53 },
     ] },
   { name: "Sync Group SpeedRS Team", logoId: "speedrs", tier: "Independiente", slots: 1, manufacturer: "Boscoscuro", color: "#0086cb",

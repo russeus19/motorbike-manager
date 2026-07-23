@@ -1,4 +1,5 @@
 import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
+import { prizeForPosition, teamRunningCost } from "./economy.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
 import { applySponsorRaceResult, resolveAiSponsorOffers, sponsorGpIncome } from "./sponsors.js";
@@ -23,9 +24,8 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   let runningBudget = team.budget || 0;
   let teamForSponsors = team;
   if (!ctx.isPlayer) {
-    const prizeUnit = Math.max(1, Math.round(28000 * ctx.scale));
-    const prize = teamResults.reduce((s, r) => s + (r.crashed ? Math.round(20000 * ctx.scale) : Math.max(Math.round(20000 * ctx.scale), (16 - r.position) * prizeUnit)), 0);
-    const runningCost = Math.round(130000 * ctx.scale);
+    const prize = teamResults.reduce((s, r) => s + prizeForPosition(r.position, r.crashed, ctx.scale, raceResults.length), 0);
+    const runningCost = teamRunningCost(ctx.scale, team.tier);
     const sponsorIncome = sponsorGpIncome(team, teamResults.reduce((s, r) => s + (r.points || 0), 0));
     const teamScoredThisRace = teamResults.some((r) => r.points > 0);
     const sponsorResult = applySponsorRaceResult(team, teamScoredThisRace, categoryKey, ctx.scale);

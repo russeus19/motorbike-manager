@@ -96,7 +96,7 @@ export const SUPERSPORT_TEAMS_DATA = [
   { name: "Honda Racing WorldSSP Team", logoId: "honda_racing_wssp", tier: "Independiente", slots: 2, manufacturer: "Honda", color: "#de2929",
     bike: { aero: 67, chasis: 66, motor: 66, freno: 65, electronica: 66 }, budget: 520000,
     riders: [
-      { name: "Ana Carrasco", photoId: 139, nat: "🇪🇸", age: 29, potential: 22, tecnica: 58, ritmo: 55, adelantamientos: 54, mental: 62, adaptabilidad: 57, fisico: 52, number: 22 },
+      { name: "Ana Carrasco", photoId: 139, nat: "🇪🇸", age: 29, potential: 22, tecnica: 60, ritmo: 57, adelantamientos: 55, mental: 64, adaptabilidad: 59, fisico: 53, number: 22 },
       { name: "Corentin Perolari", photoId: 138, nat: "🇫🇷", age: 29, potential: 30, tecnica: 66, ritmo: 62, adelantamientos: 61, mental: 62, adaptabilidad: 60, fisico: 61, number: 6 },
     ] },
   { name: "Motozoo by Madforce Dubai", logoId: "motozoo_madforce_wssp", tier: "Independiente", slots: 2, manufacturer: "MV Agusta", color: "#b5121b",
