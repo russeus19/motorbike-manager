@@ -1,5 +1,6 @@
 import { CATEGORY_DATA } from "../data/categories.js";
 import { CIRCUITS } from "../data/circuits.js";
+import { teamDisplayNameFromSave } from "./teamNaming.js";
 
 /* Single source of truth for how many save slots exist. Every screen and
    every storage loop reads this instead of a hardcoded [1, 2, 3] — so
@@ -22,7 +23,7 @@ export function slotSummary(data) {
   }
   return {
     manager: data.managerName || "—",
-    team: data.playerTeam?.name || "—",
+    team: teamDisplayNameFromSave(CATEGORY_DATA, data.category, data.playerTeam),
     category: CATEGORY_DATA[data.category]?.label || data.category,
     mode: data.gameMode === "career" ? "Modo Carrera" : "Partida rápida",
     season: data.seasonNumber,

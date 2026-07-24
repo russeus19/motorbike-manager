@@ -289,7 +289,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
             {isConfirmedForUs && signedNegotiation.status === "confirmed" && (
               <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(63,145,66,0.12)", border: "1px solid #3F9142", color: "#3F9142" }}>
-                Ha firmado por {playerTeam?.name || "vuestro equipo"} para la próxima temporada.
+                Ha firmado por {playerTeam ? teamDisplayName(playerTeam) : "vuestro equipo"} para la próxima temporada.
               </div>
             )}
             {isConfirmedForUs && signedNegotiation.status === "applied" && (

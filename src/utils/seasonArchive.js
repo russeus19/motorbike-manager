@@ -10,6 +10,8 @@
  * teamStandings }` for that category — the played category and each of
  * the two background ones all share this same shape.
  */
+
+import { teamDisplayName } from "./teamNaming.js";
 export function buildSeasonArchiveEntry(seasonNumber, categoriesData) {
   const categories = {};
 
@@ -23,7 +25,7 @@ export function buildSeasonArchiveEntry(seasonNumber, categoriesData) {
       .sort((a, b) => b.points - a.points);
 
     const teamRows = Object.entries(data.teamStandings || {})
-      .map(([id, points]) => ({ id, name: teamById[id]?.name || id, manufacturer: teamById[id]?.manufacturer || null, points }))
+      .map(([id, points]) => ({ id, name: teamById[id] ? teamDisplayName(teamById[id]) : id, manufacturer: teamById[id]?.manufacturer || null, points }))
       .sort((a, b) => b.points - a.points);
 
     const constructorMap = {};

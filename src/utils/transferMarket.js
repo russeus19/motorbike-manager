@@ -380,8 +380,8 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           teamsByCategory[ck] = teamsByCategory[ck].map((t) => (
             t.id === teamId ? { ...t, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
           ));
-          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${liveTeam.name}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label });
-          log[ck].push({ type: "salida", riderId: photoIdFor(weakest), text: `${weakest.name} queda libre tras la mejora de plantilla de ${liveTeam.name}`, category: CATEGORY_DATA[ck].label });
+          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${teamDisplayName(liveTeam)}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label });
+          log[ck].push({ type: "salida", riderId: photoIdFor(weakest), text: `${weakest.name} queda libre tras la mejora de plantilla de ${teamDisplayName(liveTeam)}`, category: CATEGORY_DATA[ck].label });
           changed = true;
           liveTeam = findTeam(teamsByCategory, ck, teamId);
           break;

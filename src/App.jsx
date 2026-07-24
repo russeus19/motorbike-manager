@@ -55,7 +55,7 @@ import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } f
 import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
 import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./utils/economy.js";
 import { WAREHOUSE_LABELS } from "./data/warehouseParts.js";
-import { teamDisplayName } from "./utils/teamNaming.js";
+import { staticTeamDataFor, teamDisplayName } from "./utils/teamNaming.js";
 import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
@@ -400,6 +400,17 @@ export default function MotorbikeManager() {
     // same repair pass already trusted at season-end — no separate
     // "load-time" normalization logic to keep in sync with it.
     const category = data.category || "moto3";
+    // A team's `id` encodes its fixed position in that category's static
+    // roster (`${categoryKey}-team-${i}`, from instantiateTeams) — a far
+    // more reliable way to re-link a loaded team to its current static
+    // definition than matching by `.name`, which can (and did: Reds
+    // Racing used to be stored as "Reds Fantic Racing") change between
+    // sessions as team data gets corrected. Without this, a save made
+    // before `nameTemplate` existed — or before a team's base name was
+    // fixed — would load with neither, and `teamDisplayName` would show
+    // whatever raw `.name` happened to be frozen in that save forever,
+    // no matter what the player did with sponsors afterward.
+    const staticTeamDataForCategory = (catKey, teamId) => staticTeamDataFor(CATEGORY_DATA, catKey, teamId);
     const backfillPrestige = (t, catKey) => {
       if (!t) return t;
       // A save from before "suspensión" was renamed to "freno" still has
@@ -411,10 +422,16 @@ export default function MotorbikeManager() {
         migratedBike = { ...rest, freno: suspension };
       }
       const withBike = migratedBike === t.bike ? t : { ...t, bike: migratedBike };
+      const staticData = staticTeamDataForCategory(catKey, withBike.id);
       const withManufacturer = withBike.manufacturer
         ? withBike
-        : { ...withBike, manufacturer: CATEGORY_DATA[catKey]?.teams?.find((td) => td.name === withBike.name)?.manufacturer };
-      const withTeam = ensureSponsors(ensureTeamPrestige(withManufacturer, catKey));
+        : { ...withBike, manufacturer: staticData?.manufacturer ?? CATEGORY_DATA[catKey]?.teams?.find((td) => td.name === withBike.name)?.manufacturer };
+      // Always re-synced from the current static data, never left as
+      // whatever was frozen in the save: a team's swappable-sponsor
+      // template (or the lack of one) isn't something the player's
+      // save should be able to get permanently stuck on.
+      const withNameTemplate = { ...withManufacturer, nameTemplate: staticData?.nameTemplate ?? null };
+      const withTeam = ensureSponsors(ensureTeamPrestige(withNameTemplate, catKey));
       return { ...withTeam, riders: withTeam.riders.map((r) => ensureRiderPrestige(r, catKey)) };
     };
     const playerTeam = data.playerTeam
@@ -2127,8 +2144,8 @@ export default function MotorbikeManager() {
     Object.entries(otherCategoriesResolved).forEach(([key, catState]) => { standingsByCategoryForPool[key] = catState.riderStandings; });
     let poolFreeAgents = [
       ...applyPoolHistory(freeAgents, standingsByCategoryForPool, seasonNumber),
-      ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
-      ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, playerTeamBeforeMarket.name, riderStandings, ctxCategory, seasonNumber)),
+      ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
+      ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
     ];
 
