@@ -14,7 +14,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
   const canPick = managerName.trim().length > 0;
   const [namePlaceholder] = useState(randomManagerNamePlaceholder);
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 overflow-x-hidden">
       <button onClick={goHome} className="text-xs mb-4" style={{ color: COLORS.muted }}>← Volver al menú</button>
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-1">
@@ -35,7 +35,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
 
       <div className="mb-4">
         <label className="text-xs uppercase tracking-wider block mb-2" style={{ color: COLORS.muted }}>Categoría</label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => pickCategory(ck)}
               className="px-4 py-2 rounded-md text-sm font-semibold"
