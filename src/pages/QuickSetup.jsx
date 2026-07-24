@@ -10,6 +10,13 @@ import { teamDisplayName } from "../utils/teamNaming.js";
 import { computeTechCapacity } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
 
+// "Independiente" es, con diferencia, el nivel más largo de los cuatro
+// (Fábrica, Puntero, Satélite, Independiente) — en la franja estrecha de
+// la tarjeta de equipo (junto a los puntos de I+D) empujaba el resto de
+// la fila fuera de la pantalla en móvil. Solo se abrevia aquí; el resto
+// del juego sigue usando el nombre completo del nivel.
+const TIER_LABEL_COMPACT = { "Independiente": "Indep." };
+
 export function SetupScreen({ managerName, setManagerName, category, pickCategory, teams, chooseTeam, goHome }) {
   const canPick = managerName.trim().length > 0;
   const [namePlaceholder] = useState(randomManagerNamePlaceholder);
@@ -59,21 +66,21 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
             <button key={t.name} disabled={!canPick} onClick={() => chooseTeam(idx)}
               className="text-left rounded-lg border p-4 transition disabled:opacity-40"
               style={{ background: COLORS.panel, borderColor: COLORS.rule }}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
                 <span className="flex items-center gap-2 min-w-0">
                   <TeamLogo team={t} size={32} className="rounded" />
                   <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: t.color }}>{teamDisplayName(t)}</span>
                 </span>
-                <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>{t.tier} · {computeTechCapacity(t, t.budget)} pts I+D</span>
+                <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>{TIER_LABEL_COMPACT[t.tier] || t.tier} · {computeTechCapacity(t, t.budget)} pts I+D</span>
               </div>
               <div className="space-y-1">
                 {t.riders.map((r) => (
-                  <div key={r.name} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
+                  <div key={r.name} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="flex items-center gap-2 min-w-0">
                       <RiderPhoto rider={r} size={26} shape="circle" />
-                      {r.name} <span className="text-xs" style={{ color: COLORS.muted }}>({r.age} años)</span>
+                      <span className="truncate">{r.name} <span className="text-xs" style={{ color: COLORS.muted }}>({r.age} años)</span></span>
                     </span>
-                    <OverallBadge value={overallRating(r)} accent={t.color} />
+                    <span className="flex-shrink-0"><OverallBadge value={overallRating(r)} accent={t.color} /></span>
                   </div>
                 ))}
               </div>
