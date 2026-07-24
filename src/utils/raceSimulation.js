@@ -5,6 +5,7 @@ import { circuitBikeFit, circuitRiderFit } from "./circuitFit.js";
 import { clamp, pick, randInt, weightedPick } from "./random.js";
 import { moraleSkillMultiplier } from "./riderMorale.js";
 import { riderSkill, wetRiderSkill } from "./riders.js";
+import { teamDisplayName } from "./teamNaming.js";
 
 /* How much a grid position alone is worth in perf-units, added to a
    rider's race preRoll. Calibrated by Monte Carlo against an idealized
@@ -47,7 +48,7 @@ export function buildEntries(teamsList) {
   const entries = [];
   teamsList.forEach((t) => {
     const bAvg = bikeAvg(t.bike);
-    raceLineup(t).forEach((r) => entries.push({ ...r, teamId: t.id, teamName: t.name, teamColor: t.color, bikeAvgVal: bAvg, bike: t.bike }));
+    raceLineup(t).forEach((r) => entries.push({ ...r, teamId: t.id, teamName: teamDisplayName(t), teamColor: t.color, bikeAvgVal: bAvg, bike: t.bike }));
   });
   return entries;
 }

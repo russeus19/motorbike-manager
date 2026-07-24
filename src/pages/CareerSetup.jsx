@@ -7,6 +7,7 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { randomManagerNamePlaceholder } from "../data/managerNameExamples.js";
 import { overallRating } from "../utils/riders.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 
 export function CareerNameScreen({ managerName, setManagerName, onSubmit, goHome }) {
   const canContinue = managerName.trim().length > 0;
@@ -54,7 +55,7 @@ export function CareerPickerScreen({ choices, onChoose }) {
             style={{ background: COLORS.panel, borderColor: COLORS.rule }}>
             <div className="flex items-center gap-2 mb-2">
               <TeamLogo team={t} size={32} className="rounded" />
-              <div className="font-bold" style={{ fontFamily: "Rajdhani, sans-serif", color: t.color }}>{t.name}</div>
+              <div className="font-bold" style={{ fontFamily: "Rajdhani, sans-serif", color: t.color }}>{teamDisplayName(t)}</div>
             </div>
             <div className="space-y-1">
               {t.riders.map((r) => (
@@ -97,7 +98,7 @@ export function CareerOffersScreen({ offers, category, onAccept, onDecline }) {
             <div className="flex items-center justify-between mb-2">
               <span className="flex items-center gap-2 min-w-0">
                 <TeamLogo team={o.team} size={32} className="rounded" />
-                <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: o.team.color }}>{o.team.name}</span>
+                <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: o.team.color }}>{teamDisplayName(o.team)}</span>
               </span>
               <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>
                 {o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : o.kind === "supersport" ? "Salto a WorldSSP" : CATEGORY_DATA[category].label}

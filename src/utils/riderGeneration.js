@@ -20,6 +20,7 @@ export function instantiateTeams(categoryKey) {
       id: `${categoryKey}-team-${i}`,
       logoId: t.logoId || null,
       name: t.name,
+      nameTemplate: t.nameTemplate || null,
       tier: t.tier,
       manufacturer: t.manufacturer || null,
       color: t.color,

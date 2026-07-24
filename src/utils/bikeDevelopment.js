@@ -501,6 +501,33 @@ export function aiConsiderFacilityUpgrade(team, scale) {
   return { ...started, budget: (normalized.budget || 0) - spec.money };
 }
 
+/** The AI-side mirror of the player's own "reduce Fábrica/Staff" panel
+ * buttons — without it, a struggling rival just sits at 0 budget every
+ * race forever, with no way out, while the player has a real escape
+ * valve. Deliberately only fires when the team is in genuine distress
+ * (budget already at the floor this race, same signal the per-GP
+ * economy uses to mean "costs outran income") rather than on the same
+ * small constant roll as an upgrade — this isn't a proactive investment
+ * choice, it's damage control, and it should only happen when there's
+ * real damage to control. Picks whichever of Factory/Staff is currently
+ * HIGHER to reduce (the opposite of the upgrade's pick), since that's
+ * both the one with the most room left before the floor and the
+ * biggest chunk of sunk cost to convert back into cash. No notification
+ * is raised for this — a rival quietly downsizing its own facilities
+ * isn't something the player can act on or needs to track, unlike a
+ * sponsor leaving or a promotion, which do surface. */
+export function aiConsiderFacilityDowngrade(team, scale, notifQueue, categoryKey) {
+  const { factory, staff } = ensureRD(team);
+  const normalized = { ...team, factory, staff };
+  if ((normalized.budget || 0) > 0) return normalized; // not actually struggling this race
+  if (Math.random() > 0.12) return normalized;
+  const kind = factory.level >= staff.level ? "factory" : "staff";
+  const spec = canStartFacilityDowngrade(normalized, kind, scale);
+  if (!spec) return normalized;
+  const downgraded = applyFacilityDowngrade(normalized, kind, spec);
+  return { ...downgraded, budget: (normalized.budget || 0) + spec.refund };
+}
+
 /* ======================================================================
    PRESEASON TESTING — a completed research prototype (see
    advanceTeamProjects above) isn't trusted on the strength of the lab

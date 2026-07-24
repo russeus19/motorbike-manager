@@ -6,6 +6,7 @@ import { OverallBadge, Panel } from "../components/UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { randomManagerNamePlaceholder } from "../data/managerNameExamples.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 import { computeTechCapacity } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
 
@@ -61,7 +62,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
               <div className="flex items-center justify-between mb-2">
                 <span className="flex items-center gap-2 min-w-0">
                   <TeamLogo team={t} size={32} className="rounded" />
-                  <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: t.color }}>{t.name}</span>
+                  <span className="font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: t.color }}>{teamDisplayName(t)}</span>
                 </span>
                 <span className="text-xs uppercase tracking-wider px-2 py-0.5 rounded flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}>{t.tier} · {computeTechCapacity(t, t.budget)} pts I+D</span>
               </div>

@@ -4,6 +4,7 @@ import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
 import { assignUniqueNumber, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
+import { teamDisplayName } from "./teamNaming.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
 /**
@@ -134,7 +135,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       // someone past the category's real-world age cutoff.
       if (ck === "moto3" && r.age > 25) {
         pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
-        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} al superar la edad límite de Moto3`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${teamDisplayName(t)} al superar la edad límite de Moto3`, category: CATEGORY_DATA[ck].label });
         return;
       }
       // Contract truth: still under contract, no market decision needed.
@@ -166,7 +167,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
           stripRiderFromAllRosters(teamsByCategory, newRider.id, ck, teamId);
           kept.push(newRider);
-          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${t.name}, que prescinde de ${r.name} tras encontrar una opción mejor en el mercado`, category: CATEGORY_DATA[ck].label });
+          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), text: `${newRider.name} ficha por ${teamDisplayName(t)}, que prescinde de ${r.name} tras encontrar una opción mejor en el mercado`, category: CATEGORY_DATA[ck].label });
           return;
         }
       }
@@ -186,7 +187,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       if (teamWantsToRenew && riderWillingToStay) {
         const years = proposedContractYears(r);
         kept.push({ ...r, contractYears: years, salary: Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (0.95 + Math.random() * 0.2)) });
-        log[ck].push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${t.name} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "renovacion", riderId: photoIdFor(r), text: `${r.name} renueva con ${teamDisplayName(t)} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
         return;
       }
 
@@ -195,11 +196,11 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const lowerKey = CATEGORY_DATA[ck]?.lower;
       const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
       if (isRelegation) {
-        log[ck].push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${t.name}`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "descenso", riderId: photoIdFor(r), text: `${r.name} desciende de categoría tras dejar ${teamDisplayName(t)}`, category: CATEGORY_DATA[ck].label });
       } else if (!teamWantsToRenew) {
-        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${t.name} tras una temporada ${evalLabelForRetire.toLowerCase()}`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${teamDisplayName(t)} tras una temporada ${evalLabelForRetire.toLowerCase()}`, category: CATEGORY_DATA[ck].label });
       } else {
-        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} decide no continuar en ${t.name} pese a la renovación ofrecida`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} decide no continuar en ${teamDisplayName(t)} pese a la renovación ofrecida`, category: CATEGORY_DATA[ck].label });
       }
     });
     teamsByCategory[ck] = teamsByCategory[ck].map((team) => (team.id === teamId ? { ...team, riders: kept } : team));
@@ -313,12 +314,12 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       let text;
       if (fromCat && fromCat !== categoryKey && catRank[categoryKey] > catRank[fromCat]) {
         logType = "ascenso";
-        text = `${newRider.name} asciende de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${team.name})`;
+        text = `${newRider.name} asciende de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)})`;
       } else if (fromCat && fromCat !== categoryKey && catRank[categoryKey] < catRank[fromCat]) {
         logType = "descenso";
-        text = `${newRider.name} baja de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${team.name})`;
+        text = `${newRider.name} baja de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)})`;
       } else {
-        text = `${newRider.name} ficha por ${team.name}`;
+        text = `${newRider.name} ficha por ${teamDisplayName(team)}`;
       }
       log[categoryKey].push({ type: logType, riderId: photoIdFor(newRider), text, category: CATEGORY_DATA[categoryKey].label });
     } else {
@@ -326,7 +327,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       // gets their shot instead, exactly like the old rookie fallback.
       const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale);
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, rookie);
-      log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), text: `${rookie.name} debuta con ${team.name} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
+      log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), text: `${rookie.name} debuta con ${teamDisplayName(team)} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
     }
   });
 
@@ -429,7 +430,7 @@ export function releaseSubstitutesToPool(teams, freeAgentPool, log, categoryLabe
     if (!subs.length) return t;
     subs.forEach((sub) => {
       pool.push({ ...sub, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 });
-      if (log) log.push({ type: "salida", riderId: photoIdFor(sub), text: `${sub.name} finaliza su cesión temporal en ${t.name} y vuelve a agentes libres`, category: categoryLabel });
+      if (log) log.push({ type: "salida", riderId: photoIdFor(sub), text: `${sub.name} finaliza su cesión temporal en ${teamDisplayName(t)} y vuelve a agentes libres`, category: categoryLabel });
     });
     return { ...t, substitutes: {} };
   });
@@ -550,7 +551,7 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
 
     poolRef.pool = poolRef.pool.filter((r) => r.id !== better.id);
     poolRef.pool = [...poolRef.pool, { ...weakest, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: categoryKey, _fromBikeAvg: bikeAvgVal }];
-    notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(weakest), text: `${team.name} rescinde el contrato de ${weakest.name} en plena temporada y ficha a ${better.name} para reforzar la plantilla.` });
+    notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(weakest), text: `${teamDisplayName(team)} rescinde el contrato de ${weakest.name} en plena temporada y ficha a ${better.name} para reforzar la plantilla.` });
 
     const years = proposedContractYears(better);
     const { _fromCategoryKey, _fromBikeAvg, ...cleanBetter } = better;

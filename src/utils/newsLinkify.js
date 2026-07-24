@@ -8,6 +8,8 @@
  * when new kinds of news get added later.
  */
 
+import { teamDisplayName } from "./teamNaming.js";
+
 /** Builds the flat list of "things a piece of news might mention" from
  * the current game state — every rider (titular, substitute, free
  * agent) and every team across all three categories, each tagged with
@@ -20,7 +22,7 @@ export function buildNewsEntities({ playerTeam, rivalTeams, otherCategories, fre
   const addTeamAndRiders = (team, categoryKey) => {
     if (!team) return;
     if (!seenTeams.has(team.id)) {
-      entities.push({ type: "team", name: team.name, teamId: team.id, categoryKey });
+      entities.push({ type: "team", name: teamDisplayName(team), teamId: team.id, categoryKey });
       seenTeams.add(team.id);
     }
     (team.riders || []).forEach((r) => entities.push({ type: "rider", name: r.name, riderId: r.id, categoryKey }));

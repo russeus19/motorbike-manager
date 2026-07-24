@@ -4,6 +4,7 @@ import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, over
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears } from "./marketAI.js";
+import { teamDisplayName } from "./teamNaming.js";
 import { buildSeasonHistoryEntry, teamExpectationTier } from "./seasonHistory.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
@@ -68,17 +69,17 @@ export function marketHeat(round, totalRounds) {
    ------------------------------------------------------------------- */
 
 const RUMOR_TEMPLATES = [
-  (rider, team) => `${team.name} está interesado en ${rider.name}.`,
-  (rider, team) => `${team.name} estudia renovar a ${rider.name}.`,
-  (rider, team) => `${rider.name} podría abandonar ${team.name} a final de temporada.`,
+  (rider, team) => `${teamDisplayName(team)} está interesado en ${rider.name}.`,
+  (rider, team) => `${teamDisplayName(team)} estudia renovar a ${rider.name}.`,
+  (rider, team) => `${rider.name} podría abandonar ${teamDisplayName(team)} a final de temporada.`,
   (rider) => `${rider.name} recibe varias muestras de interés de otros equipos.`,
-  (_rider, team) => `${team.name} prepara cambios en su alineación para la próxima temporada.`,
+  (_rider, team) => `${teamDisplayName(team)} prepara cambios en su alineación para la próxima temporada.`,
   (rider) => `Se habla de un posible cambio de aires para ${rider.name}.`,
   (rider) => `El entorno de ${rider.name} negocia su futuro.`,
 ];
 
 const FREE_AGENT_RUMOR_TEMPLATES = [
-  (rider, team) => `${team.name} sondea a ${rider.name}, agente libre.`,
+  (rider, team) => `${teamDisplayName(team)} sondea a ${rider.name}, agente libre.`,
   (rider) => `${rider.name} sigue sin equipo y varios boxes lo vigilan.`,
 ];
 
@@ -353,7 +354,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
 
     created.push(createNegotiation({
       kind: "signing", rider, categoryKey, fromTeam,
-      toTeamId: buyer.id, toTeamName: buyer.name,
+      toTeamId: buyer.id, toTeamName: teamDisplayName(buyer),
       teamOfferAmount, riderTerms, round, seasonNumber,
     }));
   });
@@ -416,7 +417,7 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
       };
       created.push(createNegotiation({
         kind: "renewal", rider: r, categoryKey, fromTeam: t,
-        toTeamId: t.id, toTeamName: t.name,
+        toTeamId: t.id, toTeamName: teamDisplayName(t),
         teamOfferAmount: null, riderTerms, round, seasonNumber,
       }));
     });
@@ -453,7 +454,7 @@ export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, rou
   };
   return createNegotiation({
     kind: "signing", rider, categoryKey: category, fromTeam: playerTeam,
-    toTeamId: suitor.id, toTeamName: suitor.name,
+    toTeamId: suitor.id, toTeamName: teamDisplayName(suitor),
     teamOfferAmount, riderTerms, round, seasonNumber,
   });
 }
@@ -519,10 +520,10 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   function removeFromEverywhere(riderId, categoryKey) {
     if (categoryKey === category) {
       const ownIdx = nextPlayerRiders.findIndex((r) => r.id === riderId);
-      if (ownIdx >= 0) return { rider: nextPlayerRiders.splice(ownIdx, 1)[0], fromTeamName: playerTeam.name };
+      if (ownIdx >= 0) return { rider: nextPlayerRiders.splice(ownIdx, 1)[0], fromTeamName: teamDisplayName(playerTeam) };
       for (const t of nextRivals) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
-        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: t.name };
+        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t) };
       }
       return { rider: null, fromTeamName: null };
     }
@@ -530,7 +531,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
     if (!catState) return { rider: null, fromTeamName: null };
     for (const t of catState.teams) {
       const idx = t.riders.findIndex((r) => r.id === riderId);
-      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: t.name };
+      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t) };
     }
     return { rider: null, fromTeamName: null };
   }
@@ -734,7 +735,7 @@ export function createNegotiation({ kind, rider, categoryKey, fromTeam, toTeamId
     riderName: rider.name,
     categoryKey,
     fromTeamId: fromTeam?.id ?? null,
-    fromTeamName: fromTeam?.name ?? null,
+    fromTeamName: fromTeam ? teamDisplayName(fromTeam) : null,
     toTeamId,
     toTeamName,
     teamOfferAmount: teamOfferAmount ?? null,

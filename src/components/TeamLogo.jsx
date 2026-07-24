@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { teamDisplayName } from "../utils/teamNaming.js";
 
 const LOGO_BASE = "/assets/teams";
 const DEFAULT_LOGO = `${LOGO_BASE}/default.png`;
@@ -36,7 +37,7 @@ export function TeamLogo({ team, logoId, size = 48, className = "", alt }) {
   return (
     <img
       src={src}
-      alt={alt || (team?.name ? `Logo de ${team.name}` : "Logo del equipo")}
+      alt={alt || (team?.name ? `Logo de ${teamDisplayName(team)}` : "Logo del equipo")}
       width={size}
       height={size}
       loading="lazy"

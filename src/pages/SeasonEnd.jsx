@@ -6,13 +6,14 @@ import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { Panel } from "../components/UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 import { COLORS } from "../data/colors.js";
 import { findInTeamRoster } from "../utils/raceSimulation.js";
 import { findSeasonAwards } from "../utils/teamExpectations.js";
 
 export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, goToMarket, seasonNumber, openProfile, findRiderInCategory, onOpenTeamProfile, isCareer }) {
   const riderRows = Object.entries(riderStandings).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
-  const allTeamNames = { player: playerTeam.name, ...Object.fromEntries(rivalTeams.map((t) => [t.id, t.name])) };
+  const allTeamNames = { player: teamDisplayName(playerTeam), ...Object.fromEntries(rivalTeams.map((t) => [t.id, teamDisplayName(t)])) };
   const teamRows = Object.entries(teamStandings).map(([id, pts]) => ({ id, name: allTeamNames[id], points: pts })).sort((a, b) => b.points - a.points);
   const champion = riderRows[0];
   const champTeam = teamRows[0];
@@ -32,10 +33,10 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
 
   function findRider(id) {
     const own = findInTeamRoster(playerTeam, id);
-    if (own) return { rider: own, teamName: playerTeam.name };
+    if (own) return { rider: own, teamName: teamDisplayName(playerTeam) };
     for (const t of rivalTeams) {
       const found = findInTeamRoster(t, id);
-      if (found) return { rider: found, teamName: t.name };
+      if (found) return { rider: found, teamName: teamDisplayName(t) };
     }
     return null;
   }
@@ -67,7 +68,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
           </div>
         )}
         <h2 className="text-3xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{champion?.name} es campeón de {CATEGORY_DATA[category].label}</h2>
-        <p className="text-sm mt-1" style={{ color: COLORS.muted }}>{champTeam?.name} se lleva el título de constructores. Tu equipo, {playerTeam.name}, terminó {myPosition}º.</p>
+        <p className="text-sm mt-1" style={{ color: COLORS.muted }}>{champTeam?.name} se lleva el título de constructores. Tu equipo, {teamDisplayName(playerTeam)}, terminó {myPosition}º.</p>
       </div>
 
       <div className="mb-6">
@@ -135,7 +136,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
               <div className="flex items-center gap-3">
                 <TeamLogo team={teamRevelacion.team} size={40} />
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{teamRevelacion.team.name}</div>
+                  <div className="text-sm font-semibold truncate">{teamDisplayName(teamRevelacion.team)}</div>
                   <div className="text-xs" style={{ color: COLORS.muted }}>terminó {teamRevelacion.finalPos}º (esperaban {teamRevelacion.team.expectation.label})</div>
                 </div>
               </div>
@@ -149,7 +150,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
               <div className="flex items-center gap-3">
                 <TeamLogo team={teamDecepcion.team} size={40} />
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{teamDecepcion.team.name}</div>
+                  <div className="text-sm font-semibold truncate">{teamDisplayName(teamDecepcion.team)}</div>
                   <div className="text-xs" style={{ color: COLORS.muted }}>terminó {teamDecepcion.finalPos}º (esperaban {teamDecepcion.team.expectation.label})</div>
                 </div>
               </div>

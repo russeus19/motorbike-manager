@@ -1,4 +1,5 @@
 import { AlertTriangle, X } from "lucide-react";
+import { teamDisplayName } from "../utils/teamNaming.js";
 import { StatBar } from "./UIPrimitives.jsx";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
@@ -32,7 +33,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
           <div className="flex items-center gap-3 min-w-0">
             <TeamLogo team={team} size={72} className="rounded-xl" />
             <div className="min-w-0">
-              <h3 className="text-2xl font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>{team.name}</h3>
+              <h3 className="text-2xl font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(team)}</h3>
               <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}{team.manufacturer ? ` · ${team.manufacturer}` : ""}</div>
             </div>
           </div>
@@ -71,9 +72,9 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
             <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Pilotos</div>
             <div className="space-y-2">
               {team.riders.map((r) => (
-                <div key={r.id} onClick={() => onOpenRiderProfile(r, team.name, categoryKey)}
+                <div key={r.id} onClick={() => onOpenRiderProfile(r, teamDisplayName(team), categoryKey)}
                   role="button" tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter") onOpenRiderProfile(r, team.name, categoryKey); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") onOpenRiderProfile(r, teamDisplayName(team), categoryKey); }}
                   className="w-full flex items-center gap-3 text-left rounded-md p-2.5 cursor-pointer"
                   style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <RiderPhoto rider={r} size={44} className="rounded-lg" />

@@ -6,7 +6,7 @@ import { ensureSponsors } from "../utils/sponsors.js";
 
 const SLOT_LABEL = { main: "Patrocinador principal", secondary: "Patrocinador secundario" };
 
-export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, onChoose, accent }) {
+export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, searching, onChoose, onSearch, onCancelSearch, onCancelContract, accent }) {
   return (
     <div className="rounded-md p-2.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
       <div className="text-xs font-semibold mb-1.5" style={{ color: COLORS.muted }}>{SLOT_LABEL[kind]}</div>
@@ -23,9 +23,14 @@ export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, onChoose
           {sponsor.scorelessStreak >= 2 && (
             <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
               <AlertTriangle size={11} />
-              {sponsor.scorelessStreak} carreras seguidas sin puntuar — el contrato corre riesgo de rescisión anticipada.
+              {sponsor.scorelessStreak} carreras seguidas por debajo de lo esperado — el contrato corre riesgo de rescisión anticipada.
             </div>
           )}
+          <button onClick={() => onCancelContract(kind)}
+            className="w-full text-xs px-2.5 py-1.5 rounded mt-2"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.danger }}>
+            Rescindir contrato (coste: €{Math.round(sponsor.payoutPerGp * sponsor.yearsLeft * 1.5).toLocaleString()})
+          </button>
         </>
       ) : offers && offers.length ? (
         <>
@@ -46,8 +51,23 @@ export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, onChoose
           <div className="text-xs" style={{ color: COLORS.muted }}>Sin patrocinador este hueco por ahora.</div>
           {prospectingStreak >= 2 && (
             <div className="text-xs mt-1" style={{ color: COLORS.gold }}>
-              {prospectingStreak} carreras seguidas puntuando — está empezando a atraer interés.
+              {prospectingStreak} carreras seguidas superando lo esperado — está empezando a atraer interés.
             </div>
+          )}
+          {searching ? (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-xs" style={{ color: COLORS.gold }}>Buscando patrocinador activamente...</span>
+              <button onClick={() => onCancelSearch(kind)} className="text-xs px-2 py-1 rounded"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => onSearch(kind)}
+              className="w-full text-xs px-2.5 py-1.5 rounded mt-2"
+              style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+              Búsqueda activa de patrocinador
+            </button>
           )}
         </>
       )}
@@ -61,13 +81,16 @@ export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, onChoose
  * utils/sponsors.js) — sube si el equipo va bien y su prestigio crece,
  * baja o se pierde el hueco si el rendimiento decae. Un patrocinador
  * puede además romper el contrato a mitad de temporada tras varias
- * carreras seguidas sin puntuar. Las ofertas para rellenar un hueco
- * vacío se generan a fin de temporada; elegir una es la única decisión
- * de patrocinio que toma el jugador directamente.
+ * carreras seguidas por debajo de la expectativa de posición del
+ * equipo (no de si puntúa o no — un privateer cuya expectativa ya es
+ * quedar fuera de puntos no se penaliza por eso). Las ofertas para
+ * rellenar un hueco vacío se generan a fin de temporada, o antes si el
+ * equipo supera su expectativa de forma consistente; elegir una es la
+ * única decisión de patrocinio que toma el jugador directamente.
  */
-export function SponsorsPanel({ playerTeam, onChooseSponsorOffer, accent }) {
+export function SponsorsPanel({ playerTeam, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, accent }) {
   const [expanded, setExpanded] = useState(false);
-  const { sponsors, pendingSponsorOffers, sponsorProspecting } = ensureSponsors(playerTeam);
+  const { sponsors, pendingSponsorOffers, sponsorProspecting, sponsorSearching } = ensureSponsors(playerTeam);
   const totalPerGp = (sponsors.main?.payoutPerGp || 0) + (sponsors.secondary?.payoutPerGp || 0);
   const pendingCount = (pendingSponsorOffers?.main ? 1 : 0) + (pendingSponsorOffers?.secondary ? 1 : 0);
 
@@ -90,11 +113,11 @@ export function SponsorsPanel({ playerTeam, onChooseSponsorOffer, accent }) {
       {expanded && (
         <>
           <p className="text-xs mb-3" style={{ color: COLORS.muted }}>
-            El pago y el nivel de cada patrocinador dependen del prestigio del equipo y de tus pilotos. Un mal tramo de temporada (varias carreras seguidas sin puntuar) puede romper un contrato antes de tiempo.
+            El pago y el nivel de cada patrocinador dependen del prestigio del equipo y de tus pilotos. Un mal tramo de temporada (varias carreras seguidas por debajo de tu expectativa de posición) puede romper un contrato antes de tiempo; superarla de forma consistente puede atraer nuevos patrocinadores. Si un hueco lleva tiempo vacío y no hay visos de que llegue solo, puedes salir a buscarlo tú — la oferta será más floja que una que llegue de forma natural.
           </p>
           <div className="space-y-2">
-            <SponsorSlot kind="main" sponsor={sponsors.main} offers={pendingSponsorOffers?.main} prospectingStreak={sponsorProspecting?.main || 0} onChoose={onChooseSponsorOffer} accent={accent} />
-            <SponsorSlot kind="secondary" sponsor={sponsors.secondary} offers={pendingSponsorOffers?.secondary} prospectingStreak={sponsorProspecting?.secondary || 0} onChoose={onChooseSponsorOffer} accent={accent} />
+            <SponsorSlot kind="main" sponsor={sponsors.main} offers={pendingSponsorOffers?.main} prospectingStreak={sponsorProspecting?.main || 0} searching={sponsorSearching?.main} onChoose={onChooseSponsorOffer} onSearch={onSearchSponsor} onCancelSearch={onCancelSearchSponsor} onCancelContract={onCancelSponsorContract} accent={accent} />
+            <SponsorSlot kind="secondary" sponsor={sponsors.secondary} offers={pendingSponsorOffers?.secondary} prospectingStreak={sponsorProspecting?.secondary || 0} searching={sponsorSearching?.secondary} onChoose={onChooseSponsorOffer} onSearch={onSearchSponsor} onCancelSearch={onCancelSearchSponsor} onCancelContract={onCancelSponsorContract} accent={accent} />
           </div>
         </>
       )}

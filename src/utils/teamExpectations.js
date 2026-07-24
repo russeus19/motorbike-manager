@@ -1,6 +1,7 @@
 import { bikeAvg, ensureRD } from "./bikeDevelopment.js";
 import { clamp } from "./random.js";
 import { overallRating } from "./riders.js";
+import { teamDisplayName } from "./teamNaming.js";
 
 /**
  * Expectations engine — the shared foundation used by season evaluation,
@@ -219,7 +220,7 @@ export function findSeasonAwards({ teams, riderStandings, teamStandings }) {
   let riderUp = null, riderDown = null, teamUp = null, teamDown = null;
 
   const ridersById = {};
-  (teams || []).forEach((t) => t.riders.forEach((r) => { ridersById[r.id] = { rider: r, teamName: t.name }; }));
+  (teams || []).forEach((t) => t.riders.forEach((r) => { ridersById[r.id] = { rider: r, teamName: teamDisplayName(t) }; }));
 
   const riderRows = Object.entries(riderStandings || {}).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
   riderRows.forEach((row, i) => {

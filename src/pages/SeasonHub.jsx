@@ -6,8 +6,10 @@ import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
+import { teamDisplayName } from "../utils/teamNaming.js";
 import { StaffPanel } from "../components/StaffPanel.jsx";
 import { SponsorsPanel } from "../components/SponsorsPanel.jsx";
+import { EconomyPanel } from "../components/EconomyPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, SeasonArchivePanel, StandingsPanel } from "../components/Standings.jsx";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
@@ -27,7 +29,7 @@ import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
   const isSbkCalendarCategory = category === "superbikes" || category === "supersport";
   const isRestWeek = isSbkCalendarCategory && !isSuperbikesRaceWeek(round);
@@ -106,7 +108,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
         <div className="flex items-center gap-3">
           {seasonTab === "inicio" && <TeamLogo team={playerTeam} size={48} className="rounded-lg" />}
           <div>
-            <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{playerTeam.name}</span></div>
+            <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{teamDisplayName(playerTeam)}</span></div>
           </div>
         </div>
         {/* Bell + Presupuesto: desktop/tablet only here, same row as the identity block. On mobile these move into the compact row below the circuit name instead. */}
@@ -172,7 +174,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
                       <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
-                      <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
+                      <RiderNameButton rider={r} onClick={() => openProfile(r, teamDisplayName(playerTeam), category)} />
                       <OverallBadge value={overallRating(r)} accent={accent} />
                     </span>
                     <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
@@ -205,7 +207,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                     <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-semibold flex items-center gap-1.5">
-                        <RiderNameButton rider={sub} onClick={() => openProfile(sub, playerTeam.name, category)} />
+                        <RiderNameButton rider={sub} onClick={() => openProfile(sub, teamDisplayName(playerTeam), category)} />
                         <OverallBadge value={overallRating(sub)} accent={accent} />
                       </span>
                       <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[sub.id]?.points ?? 0} pts</span>
@@ -265,7 +267,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-semibold flex items-center gap-1.5">
                     <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
-                    <RiderNameButton rider={r} onClick={() => openProfile(r, playerTeam.name, category)} />
+                    <RiderNameButton rider={r} onClick={() => openProfile(r, teamDisplayName(playerTeam), category)} />
                     <OverallBadge value={overallRating(r)} accent={accent} />
                   </span>
                   <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
@@ -298,7 +300,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                   <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <RiderNameButton rider={sub} onClick={() => openProfile(sub, playerTeam.name, category)} />
+                      <RiderNameButton rider={sub} onClick={() => openProfile(sub, teamDisplayName(playerTeam), category)} />
                       <OverallBadge value={overallRating(sub)} accent={accent} />
                     </span>
                     <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[sub.id]?.points ?? 0} pts</span>
@@ -337,7 +339,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             <div className="flex items-center gap-3">
               <TeamLogo team={playerTeam} size={64} className="rounded-lg" />
               <div className="flex-1">
-                <div className="text-lg font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{playerTeam.name}</div>
+                <div className="text-lg font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
                 <div className="text-xs" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · {playerTeam.tier}{playerTeam.manufacturer ? ` · ${playerTeam.manufacturer}` : ""}</div>
                 {playerTeam.expectation && (
                   <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Expectativa: <span className="font-mono font-bold" style={{ color: accent }}>{playerTeam.expectation.label}</span></div>
@@ -351,7 +353,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </div>
           </Panel>
           <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
-          <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} accent={accent} />
+          <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} />
+          <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} onSearchSponsor={onSearchSponsor} onCancelSearchSponsor={onCancelSearchSponsor} onCancelSponsorContract={onCancelSponsorContract} accent={accent} />
           <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
           <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
           <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} />

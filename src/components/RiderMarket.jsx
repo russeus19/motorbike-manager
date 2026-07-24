@@ -6,6 +6,7 @@ import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { countryIdFromEmoji } from "../data/countryFlags.js";
 import { isFreeAgentEligibleForCategory, lastTeamName, overallRating } from "../utils/riders.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 
 export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
   const [expanded, setExpanded] = useState(false);
@@ -84,8 +85,8 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
 
   function teamEntries(t, categoryKey) {
     return [
-      ...t.riders.map((r) => ({ rider: r, teamName: t.name, categoryKey })),
-      ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: t.name, categoryKey })),
+      ...t.riders.map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey })),
+      ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey })),
     ];
   }
 

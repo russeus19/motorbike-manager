@@ -1,10 +1,11 @@
-import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
-import { prizeForPosition, teamRunningCost } from "./economy.js";
+import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityDowngrade, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
+import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./economy.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
 import { applySponsorRaceResult, resolveAiSponsorOffers, sponsorGpIncome } from "./sponsors.js";
 import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
 import { aiManageWarehouse, consumeWarehouseForResult, initWarehouse, resolveWarehouseProduction } from "./warehouseEngine.js";
+import { teamDisplayName } from "./teamNaming.js";
 
 export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRef, notifQueue) {
   const teamResults = raceResults.filter((r) => r.teamId === team.id);
@@ -26,20 +27,23 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   if (!ctx.isPlayer) {
     const prize = teamResults.reduce((s, r) => s + prizeForPosition(r.position, r.crashed, ctx.scale, raceResults.length), 0);
     const runningCost = teamRunningCost(ctx.scale, team.tier);
+    const salaryCost = teamSalaryCost(team, categoryKey);
     const sponsorIncome = sponsorGpIncome(team, teamResults.reduce((s, r) => s + (r.points || 0), 0));
-    const teamScoredThisRace = teamResults.some((r) => r.points > 0);
-    const sponsorResult = applySponsorRaceResult(team, teamScoredThisRace, categoryKey, ctx.scale);
+    const teamFinishedPositions = teamResults.filter((r) => !r.crashed).map((r) => r.position);
+    const teamBestPosition = teamFinishedPositions.length ? Math.min(...teamFinishedPositions) : null;
+    const sponsorResult = applySponsorRaceResult(team, teamBestPosition, categoryKey, ctx.scale);
     teamForSponsors = resolveAiSponsorOffers(sponsorResult.team);
-    sponsorResult.brokenSlots.forEach(({ name }) => {
-      notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${name} rescinde su contrato de patrocinio con ${team.name} tras varias carreras seguidas sin puntuar.` });
+    const sponsorBreakCompensation = sponsorResult.brokenSlots.reduce((s, b) => s + (b.compensation || 0), 0);
+    sponsorResult.brokenSlots.forEach(({ name, compensation }) => {
+      notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${name} rescinde su contrato de patrocinio con ${teamDisplayName(team)} tras varias carreras muy por debajo de lo esperado, con una compensación de €${(compensation || 0).toLocaleString()}.` });
     });
     sponsorResult.newOfferSlots.forEach((kind) => {
       const signed = teamForSponsors.sponsors[kind];
       if (signed) {
-        notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${signed.name} ficha como nuevo patrocinador ${kind === "main" ? "principal" : "secundario"} de ${team.name} tras su buena racha de resultados.` });
+        notifQueue.push({ type: "patrocinio", category: categoryKey, text: `${signed.name} ficha como nuevo patrocinador ${kind === "main" ? "principal" : "secundario"} de ${teamDisplayName(team)} tras su buena racha de resultados.` });
       }
     });
-    runningBudget = Math.max(0, runningBudget + prize + sponsorIncome - runningCost);
+    runningBudget = Math.max(0, runningBudget + prize + sponsorIncome + sponsorBreakCompensation - runningCost - salaryCost);
   }
 
   let afterAI = { ...teamForSponsors, budget: runningBudget };
@@ -64,17 +68,17 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     if (ownResult) {
       next = bumpCareerStats(next, categoryKey, ownResult.position, ownResult.crashed, ownResult.points);
       if (ownResult.crashed && ownResult.dnfCause === "mechanical") {
-        notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${team.name}) se retira por avería mecánica.` });
+        notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${teamDisplayName(team)}) se retira por avería mecánica.` });
       }
       if (ownResult.crashed && ownResult.dnfCause === "electrical") {
-        notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${team.name}) se retira por avería electrónica.` });
+        notifQueue.push({ type: "dev", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} (${teamDisplayName(team)}) se retira por avería electrónica.` });
       }
       if (ownResult.injuryResult) {
         const inj = ownResult.injuryResult;
         next = { ...next, injury: inj };
         notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} sufre una caída y se diagnostica ${inj.name.toLowerCase()} (lesión ${inj.severityLabel}).` });
         if (inj.sidelined) {
-          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} se perderá ${inj.gpTotal} Gran${inj.gpTotal === 1 ? "" : "es"} Premio${inj.gpTotal === 1 ? "" : "s"} con ${team.name}.` });
+          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} se perderá ${inj.gpTotal} Gran${inj.gpTotal === 1 ? "" : "es"} Premio${inj.gpTotal === 1 ? "" : "s"} con ${teamDisplayName(team)}.` });
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
@@ -83,9 +87,9 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
               budgetAfterSubs = Math.max(0, budgetAfterSubs - substituteHireCost(sub, ctx.scale));
-              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${team.name} hasta su recuperación.` });
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${teamDisplayName(team)} hasta su recuperación.` });
             } else {
-              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${team.name} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${teamDisplayName(team)} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
             }
           }
         } else {
@@ -98,7 +102,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
       const wasDeferred = !!next.injury.deferSubstituteDecision;
       const gpRemaining = next.injury.gpRemaining - 1;
       if (gpRemaining <= 0) {
-        notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} recibe el alta médica y vuelve a competir con ${team.name}.` });
+        notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} recibe el alta médica y vuelve a competir con ${teamDisplayName(team)}.` });
         if (substitutes[next.id]) {
           poolRef.pool = [...poolRef.pool, substitutes[next.id]];
           delete substitutes[next.id];
@@ -121,9 +125,9 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
               budgetAfterSubs = Math.max(0, budgetAfterSubs - substituteHireCost(sub, ctx.scale));
-              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${team.name} hasta su recuperación.` });
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} sustituirá a ${next.name} en ${teamDisplayName(team)} hasta su recuperación.` });
             } else {
-              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${team.name} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(next), text: `${teamDisplayName(team)} no encuentra sustituto elegible para ${next.name} y correrá con un solo piloto.` });
             }
           }
         }
@@ -153,7 +157,8 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   const afterPackages = aiDecidePendingPackages(afterProjects, notifQueue, categoryKey, ctx.scale);
   const afterFacilities = advanceFacilityUpgrades(afterPackages).team;
   const afterRD = aiConsiderProject(afterFacilities, ctx);
-  const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterRD, ctx.scale);
+  const afterDistressCheck = aiConsiderFacilityDowngrade(afterRD, ctx.scale, notifQueue, categoryKey);
+  const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterDistressCheck, ctx.scale);
   return { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) };
 }
 

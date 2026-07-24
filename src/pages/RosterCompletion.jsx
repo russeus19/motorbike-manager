@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronRight, Users } from "lucide-react";
 import { FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 
 /**
  * "Completar plantilla" — the mandatory gate that replaced any kind of
@@ -27,7 +28,7 @@ export function RosterCompletionScreen({ playerTeam, freeAgents, category, accen
         <Users size={20} style={{ color: accent }} />
         <span className="text-xs tracking-[0.2em] uppercase" style={{ color: COLORS.muted }}>Completar plantilla</span>
       </div>
-      <h2 className="text-3xl font-bold mb-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>{playerTeam.name}</h2>
+      <h2 className="text-3xl font-bold mb-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</h2>
 
       <div className="mb-4 rounded-md p-3 flex items-start gap-2 text-sm" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}` }}>
         <AlertTriangle size={16} style={{ color: COLORS.danger, flexShrink: 0, marginTop: 2 }} />

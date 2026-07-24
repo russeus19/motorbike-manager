@@ -8,6 +8,7 @@ import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { badgeEmoji, computeMarketValue, computeReleaseAtSeasonEndCost, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating } from "../utils/riders.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 import { nextSeasonCommittedRiderCount } from "../utils/marketNegotiations.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
 import { clamp } from "../utils/random.js";
@@ -381,7 +382,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               <button onClick={() => onSignFreeAgent(rider)} disabled={signCost > budget}
                 className="w-full mb-3 text-xs px-3 py-2 rounded disabled:opacity-40 font-semibold"
                 style={{ background: accent, color: "#12151A" }}>
-                Fichar por {playerTeam.name} — €{signCost.toLocaleString()}
+                Fichar por {teamDisplayName(playerTeam)} — €{signCost.toLocaleString()}
               </button>
             )}
 

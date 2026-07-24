@@ -1,4 +1,5 @@
 import { WAREHOUSE_BASE_COST, WAREHOUSE_LABELS, WAREHOUSE_MIN_TO_RACE, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
+import { teamDisplayName } from "./teamNaming.js";
 
 export function initWarehouse() {
   const wh = {};
@@ -103,7 +104,7 @@ export function aiManageWarehouse(team, scale, notifQueue, categoryKey) {
           if (budget >= urgentCost) {
             warehouse = urgentWarehouseProduction(warehouse, part);
             budget -= urgentCost;
-            notifQueue.push({ type: "market", category: categoryKey, text: `${team.name} recurre a fabricación urgente de ${WAREHOUSE_LABELS[part]} por falta de stock.` });
+            notifQueue.push({ type: "market", category: categoryKey, text: `${teamDisplayName(team)} recurre a fabricación urgente de ${WAREHOUSE_LABELS[part]} por falta de stock.` });
           }
         }
       }

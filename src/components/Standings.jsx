@@ -3,6 +3,7 @@ import { Archive, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, TrendingUp,
 import { Panel, RiderNameButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
+import { teamDisplayName } from "../utils/teamNaming.js";
 
 export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
   const [tab, setTab] = useState(category);
@@ -26,7 +27,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
   const riderRowsAll = Object.entries(rs).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
   const riderRows = showAll ? riderRowsAll : riderRowsAll.slice(0, 8);
   const teamRows = Object.entries(ts)
-    .map(([id, pts]) => ({ id, name: teamById[id]?.name || id, points: pts }))
+    .map(([id, pts]) => ({ id, name: teamById[id] ? teamDisplayName(teamById[id]) : id, points: pts }))
     .sort((a, b) => b.points - a.points);
 
   const constructorMap = {};
@@ -148,7 +149,7 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
   const teamRows = teamsList.map((t) => {
     const ids = [...t.riders.map((r) => r.id), ...Object.values(t.substitutes || {}).map((r) => r.id)];
     return {
-      id: t.id, name: t.name,
+      id: t.id, name: teamDisplayName(t),
       points: ts[t.id] || 0,
       wins: ids.reduce((s, id) => s + (rw[id] || 0), 0),
       podiums: ids.reduce((s, id) => s + (rp[id] || 0), 0),

@@ -52,8 +52,10 @@ import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
-import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome } from "./utils/sponsors.js";
-import { prizeForPosition, teamRunningCost } from "./utils/economy.js";
+import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
+import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./utils/economy.js";
+import { WAREHOUSE_LABELS } from "./data/warehouseParts.js";
+import { teamDisplayName } from "./utils/teamNaming.js";
 import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
@@ -82,7 +84,10 @@ export default function MotorbikeManager() {
   // before a game object exists.
   const [draftManagerName, setDraftManagerName] = useState("");
   const [draftCategory, setDraftCategory] = useState("motogp");
-  const [teams, setTeams] = useState(() => instantiateTeams("motogp"));
+  const [teams, setTeams] = useState(() => {
+    const scale = CATEGORY_DATA.motogp.scale;
+    return validateAndRepairTeams(instantiateTeams("motogp"), scale).teams.map((t) => seedInitialSponsors(t, "motogp", scale));
+  });
 
   const [gameMode, setGameMode] = useState(null); // 'quick' | 'career'
   const [activeSlot, setActiveSlot] = useState(null);
@@ -130,6 +135,9 @@ export default function MotorbikeManager() {
   const sprintPodiums = game?.sprintPodiums ?? {};
   const teamStandings = game?.teamStandings ?? {};
   const lastResult = game?.lastResult ?? null;
+  const lastEconomySummary = game?.lastEconomySummary ?? null;
+  const seasonEconomyTotals = game?.seasonEconomyTotals ?? null;
+  const economyLog = game?.economyLog ?? [];
   const gpHistory = game?.gpHistory ?? [];
   const marketRumors = game?.marketRumors ?? [];
   const marketNegotiations = game?.marketNegotiations ?? [];
@@ -171,6 +179,20 @@ export default function MotorbikeManager() {
   const setRound = makeFieldSetter("round");
   const setSeasonNumber = makeFieldSetter("seasonNumber");
   const setBudget = makeFieldSetter("budget");
+
+  // Every discretionary money movement (an upgrade, a signing, a
+  // reduction refund…) goes through here instead of a bare setBudget —
+  // same budget change as before, plus one entry appended to
+  // `economyLog`, which is what the Economía panel's ledger view
+  // actually reads. Capped to the last 100 entries so a very long
+  // career doesn't grow this without bound.
+  function logMoneyMovement(label, amount) {
+    setGame((g) => (g ? {
+      ...g,
+      budget: (g.budget || 0) + amount,
+      economyLog: [...(g.economyLog || []).slice(-99), { round: g.round, seasonNumber: g.seasonNumber, label, amount }],
+    } : g));
+  }
   const setRiderStandings = makeFieldSetter("riderStandings");
   const setRiderWins = makeFieldSetter("riderWins");
   const setRiderPodiums = makeFieldSetter("riderPodiums");
@@ -182,6 +204,7 @@ export default function MotorbikeManager() {
   const setSeasonEvents = makeFieldSetter("seasonEvents");
   const setMarketNegotiations = makeFieldSetter("marketNegotiations");
   const setMarketRumors = makeFieldSetter("marketRumors");
+  const setSeasonEconomyTotals = makeFieldSetter("seasonEconomyTotals");
   const setCareerOffers = makeFieldSetter("careerOffers");
   const setMarketSummary = makeFieldSetter("marketSummary");
   const setNotifications = makeFieldSetter("notifications");
@@ -211,16 +234,16 @@ export default function MotorbikeManager() {
     const id = profileTarget.rider.id;
     if (playerTeam) {
       const own = findInTeamRoster(playerTeam, id);
-      if (own) return { rider: own, teamName: playerTeam.name, categoryKey: category, team: playerTeam };
+      if (own) return { rider: own, teamName: teamDisplayName(playerTeam), categoryKey: category, team: playerTeam };
     }
     for (const t of rivalTeams) {
       const found = findInTeamRoster(t, id);
-      if (found) return { rider: found, teamName: t.name, categoryKey: category, team: t };
+      if (found) return { rider: found, teamName: teamDisplayName(t), categoryKey: category, team: t };
     }
     for (const [key, catState] of Object.entries(otherCategories)) {
       for (const t of catState.teams) {
         const found = findInTeamRoster(t, id);
-        if (found) return { rider: found, teamName: t.name, categoryKey: key, team: t };
+        if (found) return { rider: found, teamName: teamDisplayName(t), categoryKey: key, team: t };
       }
     }
     const fa = freeAgents.find((r) => r.id === id);
@@ -262,10 +285,10 @@ export default function MotorbikeManager() {
   function findRiderInCategory(catKey, id) {
     if (catKey === category) {
       const own = playerTeam ? findInTeamRoster(playerTeam, id) : null;
-      if (own) return { rider: own, teamName: playerTeam.name };
+      if (own) return { rider: own, teamName: teamDisplayName(playerTeam) };
       for (const t of rivalTeams) {
         const found = findInTeamRoster(t, id);
-        if (found) return { rider: found, teamName: t.name };
+        if (found) return { rider: found, teamName: teamDisplayName(t) };
       }
       return null;
     }
@@ -273,7 +296,7 @@ export default function MotorbikeManager() {
     if (!catState) return null;
     for (const t of catState.teams) {
       const found = findInTeamRoster(t, id);
-      if (found) return { rider: found, teamName: t.name };
+      if (found) return { rider: found, teamName: teamDisplayName(t) };
     }
     return null;
   }
@@ -449,7 +472,7 @@ export default function MotorbikeManager() {
 
   function submitCareerName() {
     if (!draftManagerName.trim()) return;
-    const moto3Teams = validateAndRepairTeams(instantiateTeams("moto3"), CATEGORY_DATA.moto3.scale).teams;
+    const moto3Teams = validateAndRepairTeams(instantiateTeams("moto3"), CATEGORY_DATA.moto3.scale).teams.map((t) => seedInitialSponsors(t, "moto3", CATEGORY_DATA.moto3.scale));
     const ranked = [...moto3Teams].sort((a, b) => bikeAvg(a.bike) - bikeAvg(b.bike));
     const worst = ranked.slice(0, 6);
     const shuffled = [...worst].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -466,8 +489,8 @@ export default function MotorbikeManager() {
     const chosenTeam = seedInitialSponsors(chosenTeamExp, "moto3", CATEGORY_DATA.moto3.scale);
     const rivals = rivalsExp.map((t) => seedInitialSponsors(t, "moto3", CATEGORY_DATA.moto3.scale));
     const rsFixed = {};
-    chosenTeam.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosenTeam.name, points: 0 }; });
-    rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+    chosenTeam.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(chosenTeam), points: 0 }; });
+    rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
     const ts = { player: 0 };
     rivals.forEach((t) => { ts[t.id] = 0; });
 
@@ -476,7 +499,7 @@ export default function MotorbikeManager() {
     otherKeys.forEach((k) => {
       const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
         .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
-      const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
+      const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: teamDisplayName(team), points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
     });
@@ -597,8 +620,8 @@ export default function MotorbikeManager() {
       setCareerOffers([]);
       // Rebuild standings fresh for the new season with the swapped roster
       const rsFixed = {};
-      offer.team.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: offer.team.name, points: 0 }; });
-      newRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+      offer.team.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(offer.team), points: 0 }; });
+      newRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
       const ts = { player: 0 };
       newRivals.forEach((t) => { ts[t.id] = 0; });
       setRiderStandings(rsFixed);
@@ -620,7 +643,7 @@ export default function MotorbikeManager() {
     const newRivals = newCatState.teams.filter((t) => t.id !== offer.team.id);
 
     const oldCatTeams = [...rivalTeams, { ...playerTeam, id: playerTeam.id === "player" ? `${category}-former-player` : playerTeam.id }];
-    const oldRs = {}; oldCatTeams.forEach((t) => t.riders.forEach((r) => { oldRs[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+    const oldRs = {}; oldCatTeams.forEach((t) => t.riders.forEach((r) => { oldRs[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
     const oldTs = {}; oldCatTeams.forEach((t) => { oldTs[t.id] = 0; });
 
     const nextOtherCats = { ...otherCategories };
@@ -628,8 +651,8 @@ export default function MotorbikeManager() {
     nextOtherCats[category] = { teams: oldCatTeams, riderStandings: oldRs, teamStandings: oldTs, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: seasonNumber + 1 };
 
     const rsFixed = {};
-    newPlayerTeamRaw.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: newPlayerTeamRaw.name, points: 0 }; });
-    newRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+    newPlayerTeamRaw.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(newPlayerTeamRaw), points: 0 }; });
+    newRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
     const ts = { player: 0 };
     newRivals.forEach((t) => { ts[t.id] = 0; });
 
@@ -695,7 +718,8 @@ export default function MotorbikeManager() {
 
   function pickCategory(catKey) {
     setDraftCategory(catKey);
-    setTeams(validateAndRepairTeams(instantiateTeams(catKey), CATEGORY_DATA[catKey].scale).teams);
+    const scale = CATEGORY_DATA[catKey].scale;
+    setTeams(validateAndRepairTeams(instantiateTeams(catKey), scale).teams.map((t) => seedInitialSponsors(t, catKey, scale)));
   }
 
   function chooseTeam(idx) {
@@ -707,8 +731,8 @@ export default function MotorbikeManager() {
     const chosen = seedInitialSponsors(chosenExp, draftCategory, CATEGORY_DATA[draftCategory].scale);
     const rivals = rivalsExp.map((t) => seedInitialSponsors(t, draftCategory, CATEGORY_DATA[draftCategory].scale));
     const rsFixed = {};
-    chosen.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: chosen.name, points: 0 }; });
-    rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+    chosen.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(chosen), points: 0 }; });
+    rivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
     const ts = { player: 0 };
     rivals.forEach((t) => { ts[t.id] = 0; });
 
@@ -717,7 +741,7 @@ export default function MotorbikeManager() {
     otherKeys.forEach((k) => {
       const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
         .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
-      const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: team.name, points: 0 }; }));
+      const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: teamDisplayName(team), points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
     });
@@ -779,7 +803,7 @@ export default function MotorbikeManager() {
   function startProject(area, kind) {
     const spec = canStartProject(playerTeam, area, kind, budget, scale);
     if (!spec) return;
-    setBudget((b) => b - spec.money);
+    logMoneyMovement(`Proyecto de I+D (${area})`, -spec.money);
     setPlayerTeam((t) => startProjectOnTeam(t, area, kind, spec));
   }
 
@@ -796,14 +820,14 @@ export default function MotorbikeManager() {
   function startFactoryUpgrade() {
     const spec = canStartFacilityUpgrade(playerTeam, "factory", budget, scale);
     if (!spec) return;
-    setBudget((b) => b - spec.money);
+    logMoneyMovement("Ampliación de Fábrica", -spec.money);
     setPlayerTeam((t) => startFacilityUpgrade(t, "factory", spec));
   }
 
   function startStaffUpgrade() {
     const spec = canStartFacilityUpgrade(playerTeam, "staff", budget, scale);
     if (!spec) return;
-    setBudget((b) => b - spec.money);
+    logMoneyMovement("Ampliación de Staff", -spec.money);
     setPlayerTeam((t) => startFacilityUpgrade(t, "staff", spec));
   }
 
@@ -812,14 +836,14 @@ export default function MotorbikeManager() {
   function startFactoryDowngrade() {
     const spec = canStartFacilityDowngrade(playerTeam, "factory", scale);
     if (!spec) return;
-    setBudget((b) => b + spec.refund);
+    logMoneyMovement("Reducción de Fábrica", spec.refund);
     setPlayerTeam((t) => applyFacilityDowngrade(t, "factory", spec));
   }
 
   function startStaffDowngrade() {
     const spec = canStartFacilityDowngrade(playerTeam, "staff", scale);
     if (!spec) return;
-    setBudget((b) => b + spec.refund);
+    logMoneyMovement("Reducción de Staff", spec.refund);
     setPlayerTeam((t) => applyFacilityDowngrade(t, "staff", spec));
   }
 
@@ -832,11 +856,34 @@ export default function MotorbikeManager() {
     setPlayerTeam((t) => signSponsorOffer(t, kind, offer));
   }
 
+  // The player's own decision to go looking for a sponsor instead of
+  // waiting for one to notice them — a real option for a team whose
+  // results just aren't going to attract organic interest on their own.
+  function searchForSponsor(kind) {
+    if (!playerTeam) return;
+    setPlayerTeam((t) => startSponsorSearch(t, kind));
+  }
+
+  function cancelSearchForSponsor(kind) {
+    if (!playerTeam) return;
+    setPlayerTeam((t) => cancelSponsorSearch(t, kind));
+  }
+
+  // The player's own decision to walk away from a signed sponsor early
+  // — a real cost (logMoneyMovement), not a free do-over.
+  function cancelSponsorContractNow(kind) {
+    if (!playerTeam) return;
+    const result = cancelSponsorContract(playerTeam, kind);
+    if (!result) return;
+    logMoneyMovement(`Rescisión de patrocinio: ${playerTeam.sponsors[kind].name}`, -result.cancellationFee);
+    setPlayerTeam(() => result.team);
+  }
+
   function startWarehouseProduction(part) {
     if (!playerTeam) return;
     const cost = warehouseCost(part, scale, false, playerTeam.factory?.level);
     if (cost > budget) return;
-    setBudget((b) => b - cost);
+    logMoneyMovement(`Fabricación: ${WAREHOUSE_LABELS[part] || part}`, -cost);
     setPlayerTeam((t) => ({ ...t, warehouse: queueWarehouseProduction(t.warehouse, part) }));
   }
 
@@ -844,7 +891,7 @@ export default function MotorbikeManager() {
     if (!playerTeam) return;
     const cost = warehouseCost(part, scale, true, playerTeam.factory?.level);
     if (cost > budget) return;
-    setBudget((b) => b - cost);
+    logMoneyMovement(`Fabricación urgente: ${WAREHOUSE_LABELS[part] || part}`, -cost);
     setPlayerTeam((t) => ({ ...t, warehouse: urgentWarehouseProduction(t.warehouse, part) }));
   }
 
@@ -853,7 +900,7 @@ export default function MotorbikeManager() {
     if (!rider) return;
     const cost = fireRiderCost(rider);
     if (cost > budget) return;
-    setBudget((b) => b - cost);
+    logMoneyMovement(`Despido de ${rider.name}`, -cost);
     setPlayerTeam((t) => ({ ...t, riders: t.riders.filter((r) => r.id !== riderId) }));
     setFreeAgents((prev) => [...prev, { ...rider, contractYears: 0, isNewTeamThisSeason: false }]);
     setProfileTarget(null);
@@ -868,7 +915,7 @@ export default function MotorbikeManager() {
     if (!isFreeAgentEligibleForCategory(rider, category)) return;
     const cost = Math.round(overallRating(rider) * 5000);
     if (cost > budget) return;
-    setBudget((b) => b - cost);
+    logMoneyMovement(`Fichaje de ${rider.name} (agente libre)`, -cost);
     setPlayerTeam((t) => ({ ...t, riders: [...t.riders, { ...rider, contractYears: 2, isNewTeamThisSeason: true }] }));
     setFreeAgents((prev) => prev.filter((r) => r.id !== rider.id));
     setProfileTarget(null);
@@ -920,7 +967,7 @@ export default function MotorbikeManager() {
     const needsComp = needsTeamCompensation(rider, fromTeam?.id ?? null, "player");
     const negotiation = createNegotiation({
       kind: isRenewal ? "renewal" : "signing", rider, categoryKey, fromTeam,
-      toTeamId: "player", toTeamName: playerTeam.name,
+      toTeamId: "player", toTeamName: teamDisplayName(playerTeam),
       teamOfferAmount: needsComp ? teamOfferAmount : null,
       riderTerms, round, seasonNumber,
     });
@@ -1056,7 +1103,7 @@ export default function MotorbikeManager() {
       if (alreadyNegotiating) return g;
       const negotiation = createNegotiation({
         kind: "signing", rider, categoryKey: g.category, fromTeam: null,
-        toTeamId: "player", toTeamName: g.playerTeam.name,
+        toTeamId: "player", toTeamName: teamDisplayName(g.playerTeam),
         teamOfferAmount: null, riderTerms, round: g.round, seasonNumber: g.seasonNumber,
       });
       return resolveRosterNegotiationsNow(g, [...(g.marketNegotiations || []), negotiation]);
@@ -1097,7 +1144,7 @@ export default function MotorbikeManager() {
     if (!released && nextSeasonPlayerRiderCount() >= 2) return;
     const cost = computeReleaseAtSeasonEndCost(rider, scale);
     if (released && cost > budget) return;
-    setBudget((b) => (released ? b - cost : b + cost));
+    logMoneyMovement(released ? `Rescisión de contrato: ${rider.name}` : `Anulación de rescisión: ${rider.name}`, released ? -cost : cost);
     setPlayerTeam((t) => {
       const nextRiders = t.riders.map((r) => (r.id === riderId ? { ...r, releasedAtSeasonEnd: released } : r));
       return { ...t, riders: nextRiders };
@@ -1721,18 +1768,41 @@ export default function MotorbikeManager() {
     // over the season.
     const playerPointsThisRace = playerResults.reduce((s, r) => s + (r.points || 0), 0);
     const sponsorIncome = sponsorGpIncome(playerTeamAfterRenewals, playerPointsThisRace);
-    const playerScoredThisRace = playerResults.some((r) => r.points > 0);
-    const { team: playerTeamAfterSponsors, brokenSlots: brokenSponsorSlots, newOfferSlots: newSponsorOfferSlots } = applySponsorRaceResult(playerTeamAfterRenewals, playerScoredThisRace, category, scale);
-    brokenSponsorSlots.forEach(({ name }) => {
-      notifQueue.push({ type: "patrocinio", text: `${name} rescinde su contrato de patrocinio tras varias carreras seguidas sin puntuar`, category: CATEGORY_DATA[category].label });
+    const finishedPositions = playerResults.filter((r) => !r.crashed).map((r) => r.position);
+    const playerBestPosition = finishedPositions.length ? Math.min(...finishedPositions) : null;
+    const { team: playerTeamAfterSponsors, brokenSlots: brokenSponsorSlots, newOfferSlots: newSponsorOfferSlots, searchOfferSlots } = applySponsorRaceResult(playerTeamAfterRenewals, playerBestPosition, category, scale);
+    brokenSponsorSlots.forEach(({ name, compensation }) => {
+      notifQueue.push({ type: "patrocinio", text: `${name} rescinde su contrato de patrocinio tras varias carreras muy por debajo de lo esperado, con una compensación de €${(compensation || 0).toLocaleString()}.`, category: CATEGORY_DATA[category].label });
     });
     newSponsorOfferSlots.forEach((kind) => {
       notifQueue.push({ type: "patrocinio", text: `Tu buena racha de resultados ha atraído el interés de nuevos patrocinadores para tu hueco ${kind === "main" ? "principal" : "secundario"} — elige uno en Escudería → Patrocinadores.`, category: CATEGORY_DATA[category].label });
+    });
+    searchOfferSlots.forEach((kind) => {
+      notifQueue.push({ type: "patrocinio", text: `Tu búsqueda activa ha dado fruto: tienes una oferta esperando para tu hueco ${kind === "main" ? "principal" : "secundario"} en Escudería → Patrocinadores.`, category: CATEGORY_DATA[category].label });
     });
 
     const playedClassification = classificationByCategory[category] || [];
     const liveLaps = playedClassification[0]?.laps ?? (CIRCUIT_PROFILES[round].records?.[category]?.laps ?? 22);
     const liveSim = buildLiveRaceSimulation(playedClassification, liveLaps, playerTeamAfterSponsors.riders.map((r) => r.id));
+
+    const salaryCost = teamSalaryCost(playerTeamAfterSponsors, category);
+    const sponsorBreakCompensation = brokenSponsorSlots.reduce((s, b) => s + (b.compensation || 0), 0);
+    const netThisGp = prize + sponsorIncome + sponsorBreakCompensation - runningCost - salaryCost;
+    const sponsorFlat = sponsorGpIncome(playerTeamAfterRenewals, 0);
+    const lastEconomySummary = {
+      circuitName, round,
+      income: { prize, sponsorFlat, sponsorBonus: sponsorIncome - sponsorFlat, sponsorTotal: sponsorIncome },
+      expenses: { runningCost, salaries: salaryCost },
+      net: netThisGp,
+    };
+    const prevTotals = game?.seasonEconomyTotals || { prize: 0, sponsors: 0, runningCost: 0, salaries: 0, net: 0 };
+    const seasonEconomyTotals = {
+      prize: prevTotals.prize + prize,
+      sponsors: prevTotals.sponsors + sponsorIncome,
+      runningCost: prevTotals.runningCost + runningCost,
+      salaries: prevTotals.salaries + salaryCost,
+      net: prevTotals.net + netThisGp,
+    };
 
     setGame((g) => (g ? {
       ...g,
@@ -1741,7 +1811,10 @@ export default function MotorbikeManager() {
       riderWins: riderWinsNext,
       riderPodiums: riderPodiumsNext,
       teamStandings: teamStandingsNext,
-      budget: g.budget + prize + sponsorIncome - runningCost,
+      budget: g.budget + netThisGp,
+      lastEconomySummary,
+      seasonEconomyTotals,
+      economyLog: [...(g.economyLog || []).slice(-99), { round, seasonNumber: g.seasonNumber, label: `GP: ${circuitName}`, amount: netThisGp }],
       playerTeam: playerTeamAfterSponsors,
       rivalTeams: rivalsAfterRenewals,
       otherCategories: nextOtherCategoriesAfterRenewals,
@@ -1933,7 +2006,7 @@ export default function MotorbikeManager() {
     };
     setPlayerTeam(updatedTeam);
     setFreeAgents((prev) => prev.filter((r) => r.id !== chosenRider.id));
-    setBudget((b) => b - cost);
+    logMoneyMovement(`Sustituto: ${chosenRider.name}`, -cost);
     setPendingSubstitution(null);
     if (fromTransition) {
       goToSeasonPreseasonOrSubstitute(updatedTeam);
@@ -2283,14 +2356,14 @@ export default function MotorbikeManager() {
     }
 
     const rsFixed = {};
-    finalRosterValidated.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: ctxPlayerTeam.name, points: 0 }; });
-    evolvedRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+    finalRosterValidated.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(ctxPlayerTeam), points: 0 }; });
+    evolvedRivals.forEach((t) => t.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
     const ts = { player: 0 };
     evolvedRivals.forEach((t) => { ts[t.id] = 0; });
 
     const finalOther = {};
     Object.entries(nextOther).forEach(([key, catState]) => {
-      const rs = {}; catState.teams.forEach((t) => t.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: t.name, points: 0 }; }));
+      const rs = {}; catState.teams.forEach((t) => t.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: teamDisplayName(t), points: 0 }; }));
       const tts = {}; catState.teams.forEach((t) => { tts[t.id] = 0; });
       finalOther[key] = { ...catState, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {} };
     });
@@ -2304,7 +2377,7 @@ export default function MotorbikeManager() {
           const label = last.badge === "campeon" ? "se proclama Campeón del Mundo"
             : last.badge === "subcampeon" ? "termina subcampeón del Mundo"
             : "termina tercero en el Mundial";
-          seasonNotifs.push({ type: "race", category: catKey, riderId: photoIdFor(r), text: `${r.name} (${t.name}) ${label} de ${CATEGORY_DATA[catKey].label}, temporada ${seasonNum}.` });
+          seasonNotifs.push({ type: "race", category: catKey, riderId: photoIdFor(r), text: `${r.name} (${teamDisplayName(t)}) ${label} de ${CATEGORY_DATA[catKey].label}, temporada ${seasonNum}.` });
         }
       }));
     }
@@ -2322,7 +2395,7 @@ export default function MotorbikeManager() {
     setRivalTeams(evolvedRivals);
     setOtherCategories(finalOther);
     setFreeAgents(finalFreeAgents);
-    setBudget((b) => b - playerSigningSpend);
+    logMoneyMovement("Fichajes de mercado (fin de temporada)", -playerSigningSpend);
     setRiderStandings(rsFixed);
     setRiderWins({});
     setRiderPodiums({});
@@ -2334,6 +2407,7 @@ export default function MotorbikeManager() {
     setMarketNegotiations([]);
     setMarketRumors([]);
     setRound(0);
+    setSeasonEconomyTotals({ prize: 0, sponsors: 0, runningCost: 0, salaries: 0, net: 0 });
     setSeasonNumber((s) => s + 1);
     setPhase("market-summary");
   }
@@ -2386,7 +2460,7 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: startWeekend }}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, lastEconomySummary, seasonEconomyTotals, economyLog, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: startWeekend }}
           notifCount={(isSbkCalendarCategory(category) ? SBK_CALENDAR_CATEGORIES : CATEGORY_ORDER.filter((ck) => !isSbkCalendarCategory(ck))).reduce((sum, ck) => sum + countUnread(notifications[ck]), 0)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
@@ -2399,6 +2473,9 @@ export default function MotorbikeManager() {
           onStartFactoryDowngrade={startFactoryDowngrade}
           onStartStaffDowngrade={startStaffDowngrade}
           onChooseSponsorOffer={chooseSponsorOffer}
+          onSearchSponsor={searchForSponsor}
+          onCancelSearchSponsor={cancelSearchForSponsor}
+          onCancelSponsorContract={cancelSponsorContractNow}
         />
       )}
       {phase === "qualifying" && pendingQualifying && playerTeam && (

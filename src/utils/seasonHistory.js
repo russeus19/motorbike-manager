@@ -3,6 +3,7 @@ import { bikeAvg } from "./bikeDevelopment.js";
 import { evolveRiderPrestigeForSeason } from "./prestige.js";
 import { clamp } from "./random.js";
 import { overallRating } from "./riders.js";
+import { teamDisplayName } from "./teamNaming.js";
 
 /** Standalone version of the ranking buildHistoryEntryIfRaced does
  * internally, usable for a single rider against any standings object —
@@ -61,7 +62,7 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
   return teams.map((t) => {
     const [r1, r2] = t.riders;
     const riders = t.riders.map((r) => {
-      const withHistory = buildHistoryEntryIfRaced(r, t.name, standingsForCategory, posById, categoryKey, seasonNum);
+      const withHistory = buildHistoryEntryIfRaced(r, teamDisplayName(t), standingsForCategory, posById, categoryKey, seasonNum);
       const lastEntry = withHistory.history?.[withHistory.history.length - 1];
       // A cross-category signing already has its real season captured in
       // _pendingHistoryEntry (built against their ORIGINAL category's
@@ -81,7 +82,7 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
     });
     const substitutes = {};
     Object.entries(t.substitutes || {}).forEach(([ownerId, sub]) => {
-      substitutes[ownerId] = buildHistoryEntryIfRaced(sub, t.name, standingsForCategory, posById, categoryKey, seasonNum);
+      substitutes[ownerId] = buildHistoryEntryIfRaced(sub, teamDisplayName(t), standingsForCategory, posById, categoryKey, seasonNum);
     });
     return { ...t, riders, substitutes };
   });
