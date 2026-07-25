@@ -154,7 +154,7 @@ export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, 
       0.005, 0.16
     );
     const crashed = Math.random() < dnfChance;
-    const skill = (isWet ? wetRiderSkill(r, circuit) : riderSkill(r, circuit)) * moraleSkillMultiplier(r);
+    const skill = (isWet ? wetRiderSkill(r, circuit, false, true) : riderSkill(r, circuit, false, true)) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {
@@ -219,7 +219,7 @@ export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, 
    the dominant factor (skill and machinery still weigh far more). */
 
 
-export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gridPositionById = null, pointsTable = POINTS, dnfScale = 1) {
+export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gridPositionById = null, pointsTable = POINTS, dnfScale = 1, isSprint = false) {
   let bestPreRoll = -Infinity;
   let poleRiderId = null;
 
@@ -231,7 +231,7 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
       0.02 * dnfScale, 0.45
     );
     const crashed = Math.random() < dnfChance;
-    const skill = (isWet ? wetRiderSkill(r, circuit) : riderSkill(r, circuit)) * moraleSkillMultiplier(r);
+    const skill = (isWet ? wetRiderSkill(r, circuit, isSprint) : riderSkill(r, circuit, isSprint)) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {
@@ -303,13 +303,13 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
 }
 
 
-export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale) {
-  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale);
+export function simulateRound(playerTeam, rivalTeams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale, isSprint = false) {
+  return simulateEntries(buildEntries([playerTeam, ...rivalTeams]), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale, isSprint);
 }
 
 
-export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale) {
-  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale);
+export function simulateFullGridRound(teams, circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale, isSprint = false) {
+  return simulateEntries(buildEntries(teams), circuit, isWet, roundsLeftInSeason, gridPositionById, pointsTable, dnfScale, isSprint);
 }
 
 /* Increment career wins/podiums for a given category based on a race result */
@@ -322,12 +322,18 @@ export function bumpCareerStats(rider, categoryKey, position, crashed, points, i
     const careerSprintWins = position === 1 ? { ...rider.careerSprintWins, [categoryKey]: (rider.careerSprintWins?.[categoryKey] || 0) + 1 } : rider.careerSprintWins;
     return { ...rider, careerSprintPodiums, careerSprintWins };
   }
+  // Every real (non-sprint) race counts here, win or crash alike — this
+  // is "how many times have they actually lined up", the number the
+  // Trayectoria tab needs to show wins/podiums against for them to mean
+  // anything (3 wins out of 4 races reads very differently from 3 out
+  // of 40).
+  const careerRaces = { ...rider.careerRaces, [categoryKey]: (rider.careerRaces?.[categoryKey] || 0) + 1 };
   const recentResults = [...(rider.recentResults || []), { position, points: points ?? 0, crashed: !!crashed }].slice(-3);
-  if (crashed) return { ...rider, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
-  if (position > 3) return { ...rider, recentResults };
+  if (crashed) return { ...rider, careerRaces, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
+  if (position > 3) return { ...rider, careerRaces, recentResults };
   const careerPodiums = { ...rider.careerPodiums, [categoryKey]: (rider.careerPodiums?.[categoryKey] || 0) + 1 };
   const careerWins = position === 1 ? { ...rider.careerWins, [categoryKey]: (rider.careerWins?.[categoryKey] || 0) + 1 } : rider.careerWins;
-  return { ...rider, careerPodiums, careerWins, recentResults };
+  return { ...rider, careerRaces, careerPodiums, careerWins, recentResults };
 }
 
 /* Record each rider's final championship position (and title badge, if any)

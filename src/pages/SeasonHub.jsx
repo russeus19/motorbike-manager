@@ -57,6 +57,18 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
     playerTeam, marketNegotiations,
     lowStockLabel: lowStockParts.length ? lowStockParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ") : null,
   });
+  // Same target → tab mapping handleAlertClick already uses below — the
+  // bottom nav's "something needs attention here" dot is just that same
+  // routing, read the other way around. Nothing new to track: it
+  // disappears on its own the moment the underlying alert does (package
+  // reviewed, contract renewed, offer decided...), same as the alerts
+  // themselves already do.
+  const navBadgeTabs = [...new Set(priorityAlerts.map((a) => (a.target === "warehouse" || a.target === "package" ? "escuderia" : "pilotos")))];
+  // El aviso de "contrato por vencer" vive ahora en Pilotos, justo
+  // encima de Mis pilotos — es la pantalla a la que ya te llevaba al
+  // tocarlo, así que directamente se muestra ahí en vez de en Inicio.
+  const rosterAlerts = priorityAlerts.filter((a) => a.target === "roster");
+  const inicioAlerts = priorityAlerts.filter((a) => a.target !== "roster");
 
   function handleAlertClick(alert) {
     if (alert.target === "package") {
@@ -147,9 +159,9 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
       {seasonTab === "inicio" && (
         <>
-          {priorityAlerts.length > 0 && (
+          {inicioAlerts.length > 0 && (
             <div className="space-y-2 mb-4">
-              {priorityAlerts.map((a) => (
+              {inicioAlerts.map((a) => (
                 <PriorityAlertBanner key={a.id} iconKey={a.iconKey} text={a.text} onClick={() => handleAlertClick(a)} />
               ))}
             </div>
@@ -252,6 +264,13 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
       {seasonTab === "pilotos" && (
         <div className="space-y-4">
+          {rosterAlerts.length > 0 && (
+            <div className="space-y-2">
+              {rosterAlerts.map((a) => (
+                <PriorityAlertBanner key={a.id} iconKey={a.iconKey} text={a.text} onClick={() => handleAlertClick(a)} />
+              ))}
+            </div>
+          )}
           <div id="pilotos-mis-pilotos">
           <Panel
             title="Mis pilotos"
@@ -398,7 +417,18 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
         </div>
       )}
 
-      <BottomNavBar active={seasonTab} onChange={setSeasonTab} accent={accent} />
+      <BottomNavBar
+        active={seasonTab}
+        onChange={(key) => {
+          if (key === "inicio" && seasonTab === "inicio") {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            return;
+          }
+          setSeasonTab(key);
+        }}
+        accent={accent}
+        badgeTabs={navBadgeTabs}
+      />
     </div>
   );
 }

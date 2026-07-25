@@ -216,6 +216,22 @@ const RIDER_TIER_EXPECTED_RANK = {
  * candidate (e.g. missing expectation data), rather than forcing a
  * misleading pick.
  */
+/** Did this team finish the season at or better than its own worst-case
+ * expected position? Same finalPos computation findSeasonAwards already
+ * uses (sort teamStandings, index+1), just exposed as its own reusable
+ * yes/no instead of only feeding the revelación/decepción picks — the
+ * sponsor renewal-interest logic (utils/sponsors.js) needs exactly this
+ * same "did they meet or beat their bar" signal, not a new one. Returns
+ * false (never true) if the team has no expectation on record — no
+ * expectation, no basis to call it met. */
+export function teamMetOrExceededExpectation(team, teams, teamStandings) {
+  if (!team?.expectation) return false;
+  const teamRows = Object.entries(teamStandings || {}).map(([id, pts]) => ({ id, points: pts })).sort((a, b) => b.points - a.points);
+  const finalPos = teamRows.findIndex((row) => row.id === team.id) + 1;
+  if (finalPos <= 0) return false; // team not found in these standings at all
+  return finalPos <= team.expectation.max;
+}
+
 export function findSeasonAwards({ teams, riderStandings, teamStandings }) {
   let riderUp = null, riderDown = null, teamUp = null, teamDown = null;
 

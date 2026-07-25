@@ -59,7 +59,7 @@ import { staticTeamDataFor, teamDisplayName } from "./utils/teamNaming.js";
 import { applyPoolHistory, buildSeasonHistoryEntry, recordSeasonHistory, shouldRetire } from "./utils/seasonHistory.js";
 import { buildSeasonArchiveEntry } from "./utils/seasonArchive.js";
 import { buildLiveRaceSimulation } from "./utils/liveRace.js";
-import { assignSeasonExpectations } from "./utils/teamExpectations.js";
+import { assignSeasonExpectations, teamMetOrExceededExpectation } from "./utils/teamExpectations.js";
 import { releaseSubstitutesToPool, resolveSeasonMarketAcrossCategories } from "./utils/transferMarket.js";
 import { consumeWarehouseForResult, initWarehouse, queueWarehouseProduction, urgentWarehouseProduction, warehouseCost } from "./utils/warehouseEngine.js";
 
@@ -1187,7 +1187,7 @@ export default function MotorbikeManager() {
 
   function simulateSprintForTeams(teams, circuitProfile, isWet, gridPositionById, categoryKey, notifQueue, pointsTable = SPRINT_POINTS, dnfScale = 0.6, isSprintStyle = true, roundsLeftOverride = null) {
     const roundsLeft = roundsLeftOverride ?? (CIRCUITS.length - round);
-    const { results } = simulateFullGridRound(teams, circuitProfile, isWet, roundsLeft, gridPositionById, pointsTable, dnfScale);
+    const { results } = simulateFullGridRound(teams, circuitProfile, isWet, roundsLeft, gridPositionById, pointsTable, dnfScale, isSprintStyle);
     const resultsByTeam = {};
     results.forEach((r) => { (resultsByTeam[r.teamId] ||= []).push(r); });
 
@@ -2187,9 +2187,9 @@ export default function MotorbikeManager() {
     // offers to choose from later (surfaced once the new season is
     // live); every AI team resolves its own immediately, no different
     // from how AI teams handle every other end-of-season decision.
-    const playerAfterSponsorSeasonEnd = advanceSponsorContractsForSeasonEnd(combinedPlayedCategory[0], ctxCategory, scale);
+    const playerAfterSponsorSeasonEnd = advanceSponsorContractsForSeasonEnd(combinedPlayedCategory[0], ctxCategory, scale, teamMetOrExceededExpectation(combinedPlayedCategory[0], combinedPlayedCategory, ctxTeamStandings));
     let evolvedRivals = combinedPlayedCategory.slice(1)
-      .map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, ctxCategory, scale)));
+      .map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, ctxCategory, scale, teamMetOrExceededExpectation(t, combinedPlayedCategory, ctxTeamStandings))));
 
     // --- Evolve + record history for BOTH background categories ---
     const nextOther = {};
@@ -2204,10 +2204,11 @@ export default function MotorbikeManager() {
         const { riders } = evolveRoster(t.riders, ctx);
         return { ...t, riders };
       });
-      const historied = applyTeamPrestigeEvolution(
+      const evolvedForCat = applyTeamPrestigeEvolution(
         recordSeasonHistory(evolvedTeams, catState.riderStandings, key, catState.seasonNumber),
         catState.teamStandings, key
-      ).map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, key, catScale)));
+      );
+      const historied = evolvedForCat.map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, key, catScale, teamMetOrExceededExpectation(t, evolvedForCat, catState.teamStandings))));
       nextOther[key] = { teams: historied, seasonNumber: catState.seasonNumber + 1 };
     });
 

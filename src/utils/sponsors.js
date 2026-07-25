@@ -286,7 +286,14 @@ export function seedInitialSponsors(team, categoryKey, scale) {
       const name = typeof raw === "string" ? raw : raw.name;
       const shortTerm = typeof raw === "object" && raw.shortTerm;
       const { tier, payoutPerGp, bonusPerPoint } = estimateCurrentSponsorPayout(team, categoryKey, scale, kind);
-      sponsors[kind] = { id: `${kind}_seed_${team.id}`, name, tier, payoutPerGp, bonusPerPoint, yearsLeft: shortTerm ? 1 : randInt(1, 3), scorelessStreak: 0 };
+      // Every deal starts at 2 years by default — Red Bull specifically
+      // runs 5, since in reality it tends to stick with a team far
+      // longer than a typical sponsor does. A deal already flagged
+      // `shortTerm` (a real-life sponsor known to be new/temporary,
+      // like Trackhouse's Superfile) still overrides both of these
+      // down to 1, so it comes up for renewal right away regardless.
+      const initialYears = shortTerm ? 1 : name === "Red Bull" ? 5 : 2;
+      sponsors[kind] = { id: `${kind}_seed_${team.id}`, name, tier, payoutPerGp, bonusPerPoint, yearsLeft: initialYears, scorelessStreak: 0 };
     });
   }
   return { ...team, sponsors, pendingSponsorOffers: { main: null, secondary: null } };
@@ -371,22 +378,44 @@ export function cancelSponsorContract(team, kind) {
  * offers queued in `pendingSponsorOffers`, ready for the player to pick
  * from (or for `resolveAiSponsorOffers` to auto-resolve for every other
  * team). Never touches a slot that still has years left on its deal. */
-export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale) {
+export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale, metExpectation) {
   const withSponsors = ensureSponsors(team);
   const sponsors = { ...withSponsors.sponsors };
   const pendingSponsorOffers = { ...withSponsors.pendingSponsorOffers };
   ["main", "secondary"].forEach((kind) => {
     const s = sponsors[kind];
+    let justExpired = null;
     if (s) {
       const yearsLeft = s.yearsLeft - 1;
       if (yearsLeft > 0) {
         sponsors[kind] = { ...s, yearsLeft };
         return;
       }
+      justExpired = s;
       sponsors[kind] = null; // contract ran out
     }
     // Empty slot (just expired, or never filled) — queue fresh offers.
-    pendingSponsorOffers[kind] = generateSponsorOffers({ ...withSponsors, sponsors }, categoryKey, scale, kind);
+    const freshOffers = generateSponsorOffers({ ...withSponsors, sponsors }, categoryKey, scale, kind);
+    // A sponsor whose own deal just ran out doesn't necessarily walk
+    // away — if the team met or beat its own expectation this season
+    // (the sponsor got what it signed up for, or better), it puts in
+    // its own renewal alongside every other candidate, same as a happy
+    // real-world sponsor would rather continue a working relationship
+    // than shop around. A small amount of variance on the payout
+    // (±10%) keeps it from being a literal copy-paste of last deal.
+    if (justExpired && metExpectation) {
+      const renewalOffer = {
+        id: `${kind}_renewal_${team.id}_${Date.now()}_${randInt(0, 99999)}`,
+        name: justExpired.name,
+        tier: justExpired.tier,
+        payoutPerGp: Math.max(1, Math.round(justExpired.payoutPerGp * (0.9 + Math.random() * 0.2))),
+        bonusPerPoint: justExpired.bonusPerPoint,
+        years: randInt(1, 3),
+      };
+      pendingSponsorOffers[kind] = [renewalOffer, ...freshOffers];
+    } else {
+      pendingSponsorOffers[kind] = freshOffers;
+    }
   });
   return { ...withSponsors, sponsors, pendingSponsorOffers };
 }

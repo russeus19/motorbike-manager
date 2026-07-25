@@ -28,16 +28,18 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
-      <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-2xl border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,0.45)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           <div className="flex items-center gap-3 min-w-0">
-            <TeamLogo team={team} size={72} className="rounded-xl" />
+            <div className="flex items-center justify-center rounded-xl flex-shrink-0 overflow-hidden" style={{ width: 72, height: 72, background: COLORS.panel2, border: `2px solid ${accent}` }}>
+              <TeamLogo team={team} size={54} />
+            </div>
             <div className="min-w-0">
               <h3 className="text-2xl font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(team)}</h3>
               <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}{team.manufacturer ? ` · ${team.manufacturer}` : ""}</div>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 transition-transform active:scale-90" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
 
         <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
@@ -50,19 +52,19 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
             Prestigio: <span className="font-mono font-bold" style={{ color: accent }}>{Number.isFinite(team.prestige) ? `${team.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
           </div>
           <div className="grid grid-cols-4 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
-            <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Presupuesto</div>
               <div className="font-mono text-sm" style={{ color: (team.budget || 0) < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(team.budget || 0).toLocaleString()}</div>
             </div>
-            <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Desarrollo medio</div>
               <div className="font-mono text-sm" style={{ color: COLORS.text }}>{devAvg}</div>
             </div>
-            <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Fábrica</div>
               <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {factory.level}</div>
             </div>
-            <div className="rounded-md p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="uppercase">Staff</div>
               <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {staff.level}</div>
             </div>
@@ -75,7 +77,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
                 <div key={r.id} onClick={() => onOpenRiderProfile(r, teamDisplayName(team), categoryKey)}
                   role="button" tabIndex={0}
                   onKeyDown={(e) => { if (e.key === "Enter") onOpenRiderProfile(r, teamDisplayName(team), categoryKey); }}
-                  className="w-full flex items-center gap-3 text-left rounded-md p-2.5 cursor-pointer"
+                  className="w-full flex items-center gap-3 text-left rounded-xl p-2.5 cursor-pointer transition-transform duration-150 active:scale-[0.98] hover:scale-[1.008]"
                   style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <RiderPhoto rider={r} size={44} className="rounded-lg" />
                   <div className="flex-1 min-w-0">
@@ -112,7 +114,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
                   const stock = team.warehouse[part]?.stock ?? 0;
                   const stockColor = stock <= 1 ? COLORS.danger : stock <= 2 ? COLORS.gold : "#3F9142";
                   return (
-                    <div key={part} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                    <div key={part} className="rounded-xl p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                       <div className="text-[10px] uppercase" style={{ color: COLORS.muted }}>{WAREHOUSE_LABELS[part]}</div>
                       <div className="font-mono text-sm" style={{ color: stockColor }}>{stock}</div>
                     </div>

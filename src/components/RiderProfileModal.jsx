@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Medal, X } from "lucide-react";
+import { AlertTriangle, Flag, Medal, Trophy, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { RiderNumber } from "./RiderNumber.jsx";
@@ -165,7 +165,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
-      <div className="w-full max-w-lg rounded-lg border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg rounded-2xl border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,0.45)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0 relative overflow-hidden" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           {rider.number != null && (
             <div className="absolute inset-0 flex items-center justify-end pr-14 pointer-events-none" style={{ opacity: 0.1 }}>
@@ -174,7 +174,9 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           )}
           <div className="flex items-center gap-3 min-w-0 relative">
             <div className="flex flex-col items-center gap-0 flex-shrink-0">
-              <RiderPhoto rider={rider} size={88} className="rounded-xl" />
+              <div className="flex items-center justify-center rounded-xl overflow-hidden" style={{ width: 88, height: 88, border: `2px solid ${accent}` }}>
+                <RiderPhoto rider={rider} size={88} />
+              </div>
               <RiderNumber rider={rider} size={56} className="-mt-1" plain categoryKey={categoryKey} />
             </div>
             <div className="min-w-0">
@@ -184,13 +186,13 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{teamName || "Sin equipo"} {categoryKey ? `· ${CATEGORY_DATA[categoryKey]?.label}` : ""} · {rider.age} años {rider.personality ? `· ${rider.personality}` : ""}</div>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 relative" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
+          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 relative transition-transform active:scale-90" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
         </div>
 
         <div className="flex gap-1.5 px-5 pt-3 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
           {[["personal", "Datos personales"], ["contrato", "Contrato"], ["trayectoria", "Trayectoria"]].map(([key, label]) => (
             <button key={key} onClick={() => setProfileTab(key)}
-              className="text-xs px-3 py-2 rounded-t-md font-semibold"
+              className="text-xs px-3 py-2 rounded-t-lg font-semibold transition-colors"
               style={{
                 background: profileTab === key ? COLORS.panel2 : "transparent",
                 color: profileTab === key ? accent : COLORS.muted,
@@ -202,7 +204,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
           ))}
         </div>
 
-        <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
+        <div className="p-5 pt-4" style={{ height: "56vh", overflowY: "auto" }}>
 
         {profileTab === "personal" && (
           <>
@@ -436,40 +438,74 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
         {profileTab === "trayectoria" && (
           <>
-            <div className="grid grid-cols-4 gap-2 my-4">
-              {CATEGORY_ORDER.map((ck) => (
-                <div key={ck} className="rounded-md p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                  <div className="text-xs uppercase" style={{ color: COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
-                  <div className="font-mono text-sm">{rider.careerWins?.[ck] || 0}V · {rider.careerPodiums?.[ck] || 0}P</div>
-                </div>
-              ))}
-            </div>
+            <div className="space-y-2 my-4">
+              {CATEGORY_ORDER.map((ck) => {
+                const races = rider.careerRaces?.[ck] || 0;
+                const podiums = rider.careerPodiums?.[ck] || 0;
+                const wins = rider.careerWins?.[ck] || 0;
+                const active = races > 0;
+                return (
+                  <div key={ck} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, opacity: active ? 1 : 0.55 }}>
+                    <div className="font-semibold text-sm truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: active ? COLORS.text : COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
+                    <div className="flex items-center gap-5 flex-shrink-0">
+                      <TrajectoryStat icon={Flag} value={races} label="Carreras" />
+                      <TrajectoryStat icon={Medal} value={podiums} label="Podios" />
+                      <TrajectoryStat icon={Trophy} value={wins} label="Victorias" accent={wins > 0 ? COLORS.gold : undefined} />
+                    </div>
+                  </div>
+                );
+              })}
 
-            {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
-              <div className="rounded-md p-2 text-center mb-4" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                <div className="text-xs uppercase" style={{ color: COLORS.muted }}>Sprint MotoGP</div>
-                <div className="font-mono text-sm">{rider.careerSprintWins?.motogp || 0}V · {rider.careerSprintPodiums?.motogp || 0}P</div>
-              </div>
-            )}
+              {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
+                <div className="rounded-xl px-4 py-3 flex items-center justify-between gap-3 ml-3" style={{ background: "transparent", border: `1px dashed ${COLORS.rule}` }}>
+                  <div className="text-xs truncate" style={{ color: COLORS.muted }}>↳ Sprints MotoGP</div>
+                  <div className="flex items-center gap-5 flex-shrink-0">
+                    <TrajectoryStat icon={Medal} value={rider.careerSprintPodiums?.motogp || 0} label="Podios" />
+                    <TrajectoryStat icon={Trophy} value={rider.careerSprintWins?.motogp || 0} label="Victorias" accent={(rider.careerSprintWins?.motogp || 0) > 0 ? COLORS.gold : undefined} />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div>
               <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
                 <Medal size={13} /> Historial de temporadas
               </div>
               {history.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Aún no ha completado ninguna temporada en la partida.</p>}
-              <ul className="text-sm space-y-1">
-                {history.map((h, i) => (
-                  <li key={i} className="flex justify-between">
-                    <span>T{h.season} · {CATEGORY_DATA[h.category]?.label} · {h.teamName}</span>
-                    <span>{h.position}º · {h.points ?? 0} pts {badgeEmoji(h.badge)}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-1.5">
+                {history.map((h, i) => {
+                  const emoji = badgeEmoji(h.badge);
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm" style={{ background: COLORS.panel2, border: `1px solid ${h.badge ? COLORS.gold : COLORS.rule}` }}>
+                      <span className="truncate" style={{ color: COLORS.text }}>
+                        <span className="font-mono" style={{ color: COLORS.muted }}>T{h.season}</span> · {CATEGORY_DATA[h.category]?.label} · {h.teamName}
+                      </span>
+                      <span className="flex items-center gap-1.5 flex-shrink-0 font-mono" style={{ color: h.badge ? COLORS.gold : COLORS.muted }}>
+                        {h.position}º · {h.points ?? 0} pts {emoji && <span className="text-base leading-none">{emoji}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </>
         )}
 
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Small icon-over-number stat, used to lay out races/podiums/victorias
+ * side by side in the Trayectoria tab's per-category rows without
+ * cramming them into a single line of text. */
+function TrajectoryStat({ icon: Icon, value, label, accent }) {
+  return (
+    <div className="flex flex-col items-center" style={{ minWidth: 46 }}>
+      <div className="font-mono font-bold text-base leading-tight" style={{ color: accent || COLORS.text }}>{value}</div>
+      <div className="text-[9px] uppercase tracking-wide flex items-center gap-1 mt-0.5" style={{ color: COLORS.muted }}>
+        <Icon size={10} /> {label}
       </div>
     </div>
   );

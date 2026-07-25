@@ -76,10 +76,14 @@ export function AttrGrid({ rider, accent }) {
 
 export function Panel({ title, icon: Icon, accent, children, className = "", onHeaderClick, headerRight }) {
   return (
-    <div className={`rounded-lg border p-4 ${className}`} style={{ background: COLORS.panel, borderColor: COLORS.rule }}>
+    <div className={`rounded-2xl border p-4 ${className}`} style={{ background: COLORS.panel, borderColor: COLORS.rule, boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}>
       <div className={`flex items-center justify-between mb-3 ${onHeaderClick ? "cursor-pointer select-none" : ""}`} onClick={onHeaderClick}>
-        <div className="flex items-center gap-2">
-          {Icon && <Icon size={16} style={{ color: accent }} />}
+        <div className="flex items-center gap-2.5">
+          {Icon && (
+            <div className="flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 26, height: 26, background: `${accent}1F`, border: `1px solid ${accent}` }}>
+              <Icon size={13} style={{ color: accent }} />
+            </div>
+          )}
           <h3 className="text-xs tracking-widest uppercase font-semibold" style={{ color: COLORS.muted, fontFamily: "Rajdhani, sans-serif" }}>{title}</h3>
         </div>
         {headerRight}

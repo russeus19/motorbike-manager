@@ -174,22 +174,28 @@ export function initRiderPotentialFields(r) {
 
 /* Applies a rider's special-skill tags (see components/RiderProfileModal
    for how these display) as a flat additive bonus to their final skill
-   number — each active tag adds its own 4%, so a rider with two tags
-   active at once (rare: would need their favorite circuit AND rain at
-   the same time) gets +8%, not a compounded multiplier. `circuit` and
-   `isWet` are optional — a caller without circuit context simply can't
-   trigger the favoriteCircuit bonus, and one without isWet can't trigger
-   wetSpecialist, but neither breaks. */
-function tagBonusMultiplier(rider, circuit, isWet) {
+   number — each active tag adds its own 4%, so a rider with several
+   tags active at once (a sprint held in the rain at their favorite
+   circuit, say) stacks additively, not as a compounded multiplier.
+   Four tag types exist: favoriteCircuit (needs `circuit` and matches
+   its own `round`), wetSpecialist (needs `isWet`), sprintSpecialist
+   (needs `isSprint` — also true for WorldSBK's Superpole Race, which
+   is simulated the same way a sprint is), and qualifyingSpecialist
+   (needs `isQualifying`). Every context flag is optional — a caller
+   that can't supply one simply can't trigger that tag, but nothing
+   breaks either way. */
+function tagBonusMultiplier(rider, circuit, isWet, isSprint, isQualifying) {
   let mult = 1;
   (rider.tags || []).forEach((tag) => {
     if (tag.type === "favoriteCircuit" && circuit && circuit.round === tag.round) mult += 0.04;
     if (tag.type === "wetSpecialist" && isWet) mult += 0.04;
+    if (tag.type === "sprintSpecialist" && isSprint) mult += 0.04;
+    if (tag.type === "qualifyingSpecialist" && isQualifying) mult += 0.04;
   });
   return mult;
 }
 
-export function riderSkill(r, circuit = null) {
+export function riderSkill(r, circuit = null, isSprint = false, isQualifying = false) {
   const base = (
     r.tecnica * 0.20 +
     r.ritmo * 0.30 +
@@ -198,14 +204,14 @@ export function riderSkill(r, circuit = null) {
     r.adaptabilidad * 0.12 +
     r.fisico * 0.08
   );
-  return base * tagBonusMultiplier(r, circuit, false);
+  return base * tagBonusMultiplier(r, circuit, false, isSprint, isQualifying);
 }
 
 /* In the rain, adaptability and mental composure matter far more than raw
    pace or overtaking bravado. */
 
 
-export function wetRiderSkill(r, circuit = null) {
+export function wetRiderSkill(r, circuit = null, isSprint = false, isQualifying = false) {
   const base = (
     r.tecnica * 0.15 +
     r.ritmo * 0.18 +
@@ -214,7 +220,7 @@ export function wetRiderSkill(r, circuit = null) {
     r.adaptabilidad * 0.30 +
     r.fisico * 0.09
   );
-  return base * tagBonusMultiplier(r, circuit, true);
+  return base * tagBonusMultiplier(r, circuit, true, isSprint, isQualifying);
 }
 
 /* How well a bike's 5 categories match what this circuit rewards, versus

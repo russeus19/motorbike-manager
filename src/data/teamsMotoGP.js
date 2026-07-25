@@ -8,8 +8,13 @@ export const MOTOGP_TEAMS_DATA = [
           { type: "favoriteCircuit", round: 10, circuitLabel: "Sachsenring", label: "Maestro de Sachsenring" },
           { type: "favoriteCircuit", round: 13, circuitLabel: "Misano", label: "Maestro de Misano" },
           { type: "favoriteCircuit", round: 12, circuitLabel: "MotorLand Aragón", label: "Maestro de MotorLand Aragón" },
+          { type: "favoriteCircuit", round: 2, circuitLabel: "Circuito de las Américas", label: "Maestro del Circuito de las Américas" },
         ] },
-      { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 90, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63 },
+      { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 90, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63,
+        tags: [
+          { type: "favoriteCircuit", round: 6, circuitLabel: "Mugello", label: "Maestro de Mugello" },
+          { type: "qualifyingSpecialist", label: "Clasificador nato" },
+        ] },
     ],
   },
   {
@@ -32,8 +37,10 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Aprilia Racing", nameTemplate: "{sponsor} Aprilia Racing", logoId: "aprilia_racing", tier: "Fábrica", slots: 2, manufacturer: "Aprilia", color: "#5A2D82",
     bike: { aero: 92, chasis: 91, motor: 92, freno: 90, electronica: 92 }, budget: 5000000,
     riders: [
-      { name: "Jorge Martín", photoId: 7, nat: "🇪🇸", age: 28, potential: 66, tecnica: 93, ritmo: 96, adelantamientos: 92, mental: 83, adaptabilidad: 89, fisico: 87, prestige: 175 , number: 89 },
-      { name: "Marco Bezzecchi", photoId: 8, nat: "🇮🇹", age: 28, potential: 70, tecnica: 94, ritmo: 95, adelantamientos: 92, mental: 82, adaptabilidad: 90, fisico: 87, prestige: 179 , number: 72 },
+      { name: "Jorge Martín", photoId: 7, nat: "🇪🇸", age: 28, potential: 66, tecnica: 93, ritmo: 96, adelantamientos: 92, mental: 83, adaptabilidad: 89, fisico: 87, prestige: 175 , number: 89,
+        tags: [{ type: "sprintSpecialist", label: "Especialista en Sprint" }] },
+      { name: "Marco Bezzecchi", photoId: 8, nat: "🇮🇹", age: 28, potential: 70, tecnica: 94, ritmo: 95, adelantamientos: 92, mental: 82, adaptabilidad: 90, fisico: 87, prestige: 179 , number: 72,
+        tags: [{ type: "favoriteCircuit", round: 9, circuitLabel: "Assen", label: "Maestro de Assen" }] },
     ],
   },
   {
@@ -66,7 +73,8 @@ export const MOTOGP_TEAMS_DATA = [
     bike: { aero: 77, chasis: 77, motor: 78, freno: 76, electronica: 79 }, budget: 5000000,
     riders: [
       { name: "Pedro Acosta", photoId: 15, nat: "🇪🇸", age: 22, potential: 87, tecnica: 89, ritmo: 88, adelantamientos: 90, mental: 74, adaptabilidad: 82, fisico: 85, prestige: 170 , number: 37 },
-      { name: "Brad Binder", photoId: 16, nat: "🇿🇦", age: 30, potential: 52, tecnica: 77, ritmo: 75, adelantamientos: 80, mental: 71, adaptabilidad: 73, fisico: 80, prestige: 150 , number: 33 },
+      { name: "Brad Binder", photoId: 16, nat: "🇿🇦", age: 30, potential: 52, tecnica: 77, ritmo: 75, adelantamientos: 80, mental: 71, adaptabilidad: 73, fisico: 80, prestige: 150 , number: 33,
+        tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }] },
     ],
   },
   {

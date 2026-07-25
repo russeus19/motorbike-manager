@@ -9,7 +9,8 @@ export const SUPERBIKES_TEAMS_DATA = [
     bike: { aero: 77, chasis: 76, motor: 76, freno: 75, electronica: 76 }, budget: 3000000,
     riders: [
       { name: "Danilo Petrucci", photoId: 96, nat: "🇮🇹", age: 35, potential: 40, tecnica: 75, ritmo: 73, adelantamientos: 71, mental: 70, adaptabilidad: 68, fisico: 69 , number: 9 },
-      { name: "Miguel Oliveira", photoId: 97, nat: "🇵🇹", age: 31, potential: 58, tecnica: 78, ritmo: 77, adelantamientos: 75, mental: 73, adaptabilidad: 74, fisico: 73 , number: 88 },
+      { name: "Miguel Oliveira", photoId: 97, nat: "🇵🇹", age: 31, potential: 58, tecnica: 78, ritmo: 77, adelantamientos: 75, mental: 73, adaptabilidad: 74, fisico: 73 , number: 88,
+        tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }] },
     ] },
   { name: "Pata Maxus Yamaha", nameTemplate: "{sponsor} {secondary} Yamaha", logoId: "pata_maxus_yamaha_wsbk", tier: "Fábrica", slots: 2, manufacturer: "Yamaha", color: "#2d3faa",
     bike: { aero: 81, chasis: 80, motor: 80, freno: 79, electronica: 80 }, budget: 3000000,
