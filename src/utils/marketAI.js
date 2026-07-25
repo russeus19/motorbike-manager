@@ -271,7 +271,17 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // Salto de categoría: subir siempre resulta atractivo salvo que la
   // diferencia de prestigio sea excesiva; bajar solo tiene sentido si el
   // proyecto o el salario lo justifican.
-  const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1 };
+  // Bug fixed: sportbike was missing from this map entirely, so both
+  // catRank lookups silently fell back to the generic `?? 2` default —
+  // exactly the same rank as MotoGP/Moto2/Superbikes. That made a
+  // Sportbike rider being chased by Supersport (a well-earned
+  // promotion) score as catDelta = 1.5 - 2 = -0.5, a DOWNGRADE, which
+  // triggered the drop-penalty branch below instead of the "moving up"
+  // bonus. In practice this made Sportbike's promotion pipeline (and
+  // its market in general) nearly frozen: its own best riders kept
+  // rejecting offers a rider in their exact position should almost
+  // always accept.
+  const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5 };
   const catDelta = (catRank[categoryKey] ?? 2) - (catRank[fromCategoryKey] ?? 2);
   if (catDelta > 0) score += 0.22;
   else if (catDelta < 0) {

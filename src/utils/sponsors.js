@@ -121,6 +121,7 @@ const REAL_SPONSOR_TIER = {
   "Showa": "Internacional", "Nissin": "Internacional", "HJC": "Internacional",
   "Tissot": "Internacional", "UPS": "Internacional", "FedEx": "Internacional",
   "Revolut": "Internacional", "Gatorade": "Internacional", "Nestlé": "Internacional",
+  "Panattoni": "Internacional",
 
   // Nacional — solid, established brands, but mostly known within one
   // country or one industry
@@ -132,6 +133,7 @@ const REAL_SPONSOR_TIER = {
   "Ritter Sport": "Nacional", "Haribo": "Nacional", "Aquarius": "Nacional", "O2": "Nacional",
   "Subaru": "Nacional", "Iveco": "Nacional", "Arrow": "Nacional", "Gaerne": "Nacional",
   "TCX": "Nacional", "LS2": "Nacional", "Shad": "Nacional", "Ipone": "Nacional",
+  "Track & Trades": "Nacional",
   "Silkolene": "Nacional",
 
   // Regional — small, local, or niche-within-racing names; the rest of

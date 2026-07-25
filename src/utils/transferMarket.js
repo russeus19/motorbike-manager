@@ -308,7 +308,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const newRider = { ...cleanRider, contractYears: years, salary: signed.salary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
       stripRiderFromAllRosters(teamsByCategory, newRider.id, categoryKey, teamId);
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
-      const catRank = { motogp: 3, moto2: 2, moto3: 1 };
+      const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5 };
       const fromCat = _fromCategoryKey;
       let logType = "fichaje";
       let text;

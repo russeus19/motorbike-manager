@@ -622,6 +622,47 @@ export default function MotorbikeManager() {
         if (sspTeam) offers.push({ kind: "supersport", team: sspTeam, categoryKey: "supersport" });
       }
     }
+
+    // The reverse direction of the two blocks above: Sportbike is the
+    // one category that sits outside BOTH ladders' normal promotion
+    // path in this direction — its own ordinary route up is into
+    // Supersport (CATEGORY_DATA.supersport.lower), but a genuinely
+    // strong Sportbike season is also a plausible route into the
+    // *other* ladder entirely, same "occasional curated opportunity"
+    // idea as a Moto3 rider getting a surprise look from Superbikes.
+    // Moto3 is the more natural landing spot (closer in level), Moto2
+    // is the bigger reach — same gap/chance model as everywhere else,
+    // just evaluated against each target's own competition prestige.
+    if (category === "sportbike" && otherCategories.moto3) {
+      const gap = competitionPrestige(category) - competitionPrestige("moto3");
+      const posThreshold = gap <= 0 ? 6 : gap <= 20 ? 3 : 1;
+      const chance = gap <= 0 ? 0.5 : gap <= 20 ? 0.35 : 0.18;
+      if (myPos <= posThreshold && Math.random() < chance) {
+        const moto3Teams = otherCategories.moto3.teams;
+        const sorted = [...moto3Teams].sort((a, b) => bikeAvg(b.bike) - bikeAvg(a.bike));
+        const third = Math.max(1, Math.ceil(sorted.length / 3));
+        const bracket = myPos === 1 ? sorted.slice(0, third)
+          : myPos <= 3 ? sorted.slice(third, third * 2)
+          : sorted.slice(third * 2);
+        const moto3Team = (bracket.length ? bracket : sorted)[Math.floor(Math.random() * (bracket.length ? bracket.length : sorted.length))];
+        if (moto3Team) offers.push({ kind: "moto3", team: moto3Team, categoryKey: "moto3" });
+      }
+    }
+    if (category === "sportbike" && otherCategories.moto2) {
+      const gap = competitionPrestige(category) - competitionPrestige("moto2");
+      const posThreshold = gap <= 0 ? 6 : gap <= 20 ? 3 : 1;
+      const chance = gap <= 0 ? 0.5 : gap <= 20 ? 0.35 : 0.18;
+      if (myPos <= posThreshold && Math.random() < chance) {
+        const moto2Teams = otherCategories.moto2.teams;
+        const sorted = [...moto2Teams].sort((a, b) => bikeAvg(b.bike) - bikeAvg(a.bike));
+        const third = Math.max(1, Math.ceil(sorted.length / 3));
+        const bracket = myPos === 1 ? sorted.slice(0, third)
+          : myPos <= 3 ? sorted.slice(third, third * 2)
+          : sorted.slice(third * 2);
+        const moto2Team = (bracket.length ? bracket : sorted)[Math.floor(Math.random() * (bracket.length ? bracket.length : sorted.length))];
+        if (moto2Team) offers.push({ kind: "moto2", team: moto2Team, categoryKey: "moto2" });
+      }
+    }
     return offers;
   }
 

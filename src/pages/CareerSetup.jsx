@@ -77,7 +77,7 @@ export function CareerOffersScreen({ offers, category, onAccept, onDecline }) {
             team={o.team}
             onClick={() => onAccept(o)}
             delay={i * 60}
-            badge={o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : o.kind === "supersport" ? "Salto a WorldSSP" : CATEGORY_DATA[category].label}
+            badge={o.kind === "promotion" ? `Ascenso a ${CATEGORY_DATA[o.categoryKey]?.label}` : o.kind === "superbikes" ? "Salto a WorldSBK" : o.kind === "supersport" ? "Salto a WorldSSP" : o.kind === "moto3" ? "Salto a Moto3" : o.kind === "moto2" ? "Salto a Moto2" : CATEGORY_DATA[category].label}
           />
         ))}
       </div>

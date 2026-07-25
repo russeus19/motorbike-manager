@@ -111,4 +111,28 @@ export const INITIAL_SPONSORS_BY_CATEGORY = {
     "Motorsport Kofler": { main: null, secondary: "Isolith" },
     "Renzi Corse": { main: null, secondary: null },
   },
+  // WorldSPB (Sportbike) — temporada inaugural 2026, sin histórico previo
+  // del que partir. Solo estos 4 equipos tienen patrocinador principal
+  // confirmado a día de hoy; el resto arranca sin patrocinador y lo
+  // consigue jugando, como cualquier equipo nuevo.
+  sportbike: {
+    "Team Prodina Kawasaki XCI": { main: null, secondary: null },
+    "Track & Trades Wixx Racing": { main: "Track & Trades", secondary: null },
+    "MTM Kawasaki": { main: null, secondary: null },
+    "Revo–M2": { main: null, secondary: null },
+    "CM Triumph Factory Racing": { main: null, secondary: null },
+    "Team BrCorse": { main: null, secondary: null },
+    "PHR Performance Triumph": { main: null, secondary: null },
+    "Deza–Box 77 Racing Team": { main: null, secondary: null },
+    "VLR Racing Team Suzuki": { main: null, secondary: null },
+    "Kove Racing Team 109": { main: null, secondary: null },
+    "ProGP NitiRacing": { main: null, secondary: null },
+    "ARCO Yamaha MotoR University Team": { main: "ARCO", secondary: null },
+    "Panattoni BGR Smrz Racing": { main: "Panattoni", secondary: null },
+    "Pons Motosport Italika Racing": { main: null, secondary: null },
+    "MMR": { main: null, secondary: null },
+    "Yamaha AD78 FIMLA by MS Racing": { main: null, secondary: null },
+    "PATA AG Motorsport Italia": { main: "Pata", secondary: null },
+    "Miguel Oliveira Team": { main: null, secondary: null },
+  },
 };
