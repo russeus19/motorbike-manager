@@ -118,7 +118,7 @@ const MAIN_LADDER_ROUNDS = 22;
 const SBK_CALENDAR_ROUNDS = 12;
 
 export function seasonRoundCount(categoryKey) {
-  return (categoryKey === "superbikes" || categoryKey === "supersport") ? SBK_CALENDAR_ROUNDS : MAIN_LADDER_ROUNDS;
+  return (categoryKey === "superbikes" || categoryKey === "supersport" || categoryKey === "sportbike") ? SBK_CALENDAR_ROUNDS : MAIN_LADDER_ROUNDS;
 }
 
 /** This GP's share of every signed rider's annual salary — the one

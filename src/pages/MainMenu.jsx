@@ -114,7 +114,7 @@ export function HomeScreen({ onQuick, onCareer, onLoad, storageOk }) {
               <span style={{ color: COLORS.gold, fontStyle: "italic" }}>MANAGER</span>
             </h1>
             <p className="text-sm mt-5 leading-relaxed" style={{ color: COLORS.text, textShadow: "0 1px 10px rgba(0,0,0,0.7)" }}>
-              Gestiona tu equipo real de MotoGP, Moto2, Moto3, WorldSBK o WorldSSP.<br />
+              Gestiona tu equipo real de MotoGP, Moto2, Moto3, WorldSBK, WorldSSP o WorldSPB.<br />
               Ficha, asciende, desarrolla la moto.<br />
               Escribe tu historia en la pista.
             </p>
@@ -132,7 +132,7 @@ export function HomeScreen({ onQuick, onCareer, onLoad, storageOk }) {
 
         {/* STATS */}
         <div className="flex flex-wrap justify-center sm:justify-between gap-y-4 rounded-2xl mt-8 px-6 py-5" style={{ border: `1px solid ${COLORS.rule}`, background: "rgba(255,255,255,0.015)" }}>
-          <StatItem icon={Trophy} value="5" label="Categorías" />
+          <StatItem icon={Trophy} value="6" label="Categorías" />
           <StatItem icon={Map} value="22+" label="Circuitos" showDivider />
           <StatItem icon={Users} value="120+" label="Pilotos" showDivider />
           <StatItem icon={FlagTriangleRight} value="100%" label="Pasión" showDivider />

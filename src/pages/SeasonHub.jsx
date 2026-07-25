@@ -31,7 +31,7 @@ import { initWarehouse } from "../utils/warehouseEngine.js";
 
 export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
-  const isSbkCalendarCategory = category === "superbikes" || category === "supersport";
+  const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike";
   const isRestWeek = isSbkCalendarCategory && !isSuperbikesRaceWeek(round);
   // On a rest week there's no Superbikes/Supersport round this exact
   // week (both share the same 12-round calendar), but the player still

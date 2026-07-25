@@ -69,7 +69,7 @@ export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category
   const [expanded, setExpanded] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
 
-  const isSbkCalendar = category === "superbikes" || category === "supersport";
+  const isSbkCalendar = category === "superbikes" || category === "supersport" || category === "sportbike";
   const circuitsList = isSbkCalendar ? SUPERBIKES_CIRCUITS : CIRCUITS;
   const profilesList = isSbkCalendar ? SUPERBIKES_CIRCUIT_PROFILES : CIRCUIT_PROFILES;
   // For Superbikes and Supersport (same 12 rounds, same weekend), each

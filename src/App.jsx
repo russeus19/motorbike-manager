@@ -13,6 +13,7 @@ import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "./data/circuit
 import { competitionPrestige } from "./data/categoryPrestigeConfig.js";
 import { SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "./data/superbikesCalendar.js";
 import { isSupersportRaceWeek } from "./data/supersportCalendar.js";
+import { isSportbikeRaceWeek } from "./data/sportbikeCalendar.js";
 import { COLORS } from "./data/colors.js";
 
 // Superbikes and Supersport both run on the exact same 12-round calendar
@@ -22,7 +23,9 @@ import { COLORS } from "./data/colors.js";
 // isn't managing. Centralizing the membership check here means every
 // "is this one of the two side calendars" branch below reads the same
 // list instead of two separate string comparisons that could drift.
-const SBK_CALENDAR_CATEGORIES = ["superbikes", "supersport"];
+// WorldSPB shares this exact same weekend/calendar (see
+// data/superbikesCalendar.js), so it belongs in this list too.
+const SBK_CALENDAR_CATEGORIES = ["superbikes", "supersport", "sportbike"];
 const isSbkCalendarCategory = (key) => SBK_CALENDAR_CATEGORIES.includes(key);
 import { CareerNameScreen, CareerOffersScreen, CareerPickerScreen } from "./pages/CareerSetup.jsx";
 import { SubstituteScreen } from "./pages/InjurySubstitute.jsx";
@@ -575,12 +578,12 @@ export default function MotorbikeManager() {
     // terms: how big a reach this would be from their current category
     // (via the competition-prestige gap), how well this season went, and
     // a random roll so it stays a special, occasional opportunity rather
-    // than automatic. Supersport is excluded here on purpose — it's
-    // Superbikes' real feeder category now (CATEGORY_DATA.superbikes.lower),
-    // so a Supersport rider's route upward is the ordinary top-3
-    // "promotion" offer above, exactly like Moto2 into MotoGP, not this
-    // random side door.
-    if (category !== "superbikes" && category !== "supersport" && otherCategories.superbikes) {
+    // than automatic. Supersport (and now Sportbike, its own feeder)
+    // is excluded here on purpose — it's Superbikes' real feeder
+    // category now (CATEGORY_DATA.superbikes.lower), so a Supersport
+    // rider's route upward is the ordinary top-3 "promotion" offer
+    // above, exactly like Moto2 into MotoGP, not this random side door.
+    if (category !== "superbikes" && category !== "supersport" && category !== "sportbike" && otherCategories.superbikes) {
       const gap = competitionPrestige(category) - competitionPrestige("superbikes");
       const posThreshold = gap <= 0 ? 6 : gap <= 20 ? 3 : 1;
       const chance = gap <= 0 ? 0.5 : gap <= 20 ? 0.35 : 0.18;
@@ -1394,6 +1397,7 @@ export default function MotorbikeManager() {
     Object.entries(otherCategories).forEach(([key, catState]) => {
       if (key === "superbikes" && !isSuperbikesRaceWeek(round)) return; // no session this week — team stays untouched
       if (key === "supersport" && !isSupersportRaceWeek(round)) return; // no session this week — team stays untouched
+      if (key === "sportbike" && !isSportbikeRaceWeek(round)) return; // no session this week — team stays untouched
       const catCircuit = isSbkCalendarCategory(key) ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
       const catRoundsLeft = isSbkCalendarCategory(key) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
       const entries = buildEntries(catState.teams).map((r) => ({ ...r, categoryKeyForNotif: key }));
@@ -1678,6 +1682,10 @@ export default function MotorbikeManager() {
         nextOtherCategories[key] = catState;
         return;
       }
+      if (key === "sportbike" && !isSportbikeRaceWeek(round)) {
+        nextOtherCategories[key] = catState;
+        return;
+      }
       const catCircuit = isSbkCalendarCategory(key) ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
       const catRoundsLeft = isSbkCalendarCategory(key) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
       let raceTeams = catState.teams;
@@ -1707,7 +1715,7 @@ export default function MotorbikeManager() {
       // middle Superpole Race, so it only gets the Race 1 leg here —
       // Race 2 is the ordinary simulateFullGridRound call right after
       // this block, same as it is for every other category.
-      if (key === "superbikes" || key === "supersport") {
+      if (key === "superbikes" || key === "supersport" || key === "sportbike") {
         const race1Outcome = simulateSprintForTeams(catState.teams, catCircuit, isWet, gridByCategory[key], key, notifQueue, POINTS, 1, false, catRoundsLeft);
         raceTeams = race1Outcome.teams;
         race1Outcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
