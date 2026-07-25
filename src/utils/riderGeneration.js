@@ -69,25 +69,64 @@ export function rollRookiePotential() {
 }
 
 
-export function makeRookie(scale) {
+// Every category has its own fixed, unique scale value (see
+// data/categories.js), so it can be reverse-looked-up from `scale`
+// alone without needing every single caller of makeRookie (there are
+// several, scattered across careerValidation.js and transferMarket.js)
+// to also start threading a categoryKey through. Falls back to Moto3
+// — the original, always-correct assumption for the one caller that
+// really is Moto3-only — if a scale doesn't match anything, which
+// should never actually happen in practice.
+function categoryKeyFromScale(scale) {
+  const match = Object.entries(CATEGORY_DATA).find(([, data]) => Math.abs(data.scale - scale) < 0.001);
+  return match ? match[0] : "moto3";
+}
+
+// A rookie's raw attributes were always tuned against Moto3 rookies
+// specifically — perfectly fine when the ONLY caller was a Moto3-only
+// roster fill, but wrong now that this same fallback also covers a
+// vacancy nobody wanted in MotoGP, Moto2, Superbikes or Supersport: a
+// genuine emergency call-up into MotoGP is a far stronger prospect on
+// raw talent than a genuine Moto3 debutant, even though both are still
+// "a rookie", so the same fixed 40-62 (etc.) range can't be right for
+// both. Each attribute's range shifts upward as `scale` climbs from
+// Moto3's 0.32 toward MotoGP's 1 — Moto3 itself is completely
+// unaffected (shift is 0 there), everything above it gets a
+// proportionally bigger boost.
+const ROOKIE_BASE_RANGES = {
+  tecnica: [40, 62], ritmo: [38, 60], adelantamientos: [38, 60],
+  mental: [35, 55], adaptabilidad: [35, 55], fisico: [45, 65],
+};
+const ROOKIE_MAX_SHIFT = 26; // how much higher a MotoGP-tier rookie's baseline sits versus a Moto3-tier one
+
+function rookieAttrRoll(attr, scale) {
+  const [lo, hi] = ROOKIE_BASE_RANGES[attr];
+  const t = clamp((scale - 0.32) / (1 - 0.32), 0, 1); // 0 at Moto3's own scale, 1 at MotoGP's
+  const shift = Math.round(t * ROOKIE_MAX_SHIFT);
+  return randInt(lo + shift, hi + shift);
+}
+
+export function makeRookie(scale, categoryKey) {
+  const resolvedScale = scale ?? 0.32;
+  const resolvedCategoryKey = categoryKey || categoryKeyFromScale(resolvedScale);
   const nat = pickRookieNat();
   const base = {
     name: pickRookieName(nat),
     nat,
     age: randInt(16, 18),
     potential: rollRookiePotential(),
-    tecnica: randInt(40, 62),
-    ritmo: randInt(38, 60),
-    adelantamientos: randInt(38, 60),
-    mental: randInt(35, 55),
-    adaptabilidad: randInt(35, 55),
-    fisico: randInt(45, 65),
+    tecnica: rookieAttrRoll("tecnica", resolvedScale),
+    ritmo: rookieAttrRoll("ritmo", resolvedScale),
+    adelantamientos: rookieAttrRoll("adelantamientos", resolvedScale),
+    mental: rookieAttrRoll("mental", resolvedScale),
+    adaptabilidad: rookieAttrRoll("adaptabilidad", resolvedScale),
+    fisico: rookieAttrRoll("fisico", resolvedScale),
     seasonPoints: 0,
     number: assignUniqueNumber([]),
   };
   const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
-  const finalized = finalizeRiderEconomics(withPotential, scale ?? 0.32);
-  return { ...finalized, prestige: initialRiderPrestige(finalized, "moto3") };
+  const finalized = finalizeRiderEconomics(withPotential, resolvedScale);
+  return { ...finalized, prestige: initialRiderPrestige(finalized, resolvedCategoryKey) };
 }
 
 

@@ -520,20 +520,20 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   function removeFromEverywhere(riderId, categoryKey) {
     if (categoryKey === category) {
       const ownIdx = nextPlayerRiders.findIndex((r) => r.id === riderId);
-      if (ownIdx >= 0) return { rider: nextPlayerRiders.splice(ownIdx, 1)[0], fromTeamName: teamDisplayName(playerTeam) };
+      if (ownIdx >= 0) return { rider: nextPlayerRiders.splice(ownIdx, 1)[0], fromTeamName: teamDisplayName(playerTeam), fromTeamObj: playerTeam };
       for (const t of nextRivals) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
-        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t) };
+        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t), fromTeamObj: t };
       }
-      return { rider: null, fromTeamName: null };
+      return { rider: null, fromTeamName: null, fromTeamObj: null };
     }
     const catState = nextOther[categoryKey];
-    if (!catState) return { rider: null, fromTeamName: null };
+    if (!catState) return { rider: null, fromTeamName: null, fromTeamObj: null };
     for (const t of catState.teams) {
       const idx = t.riders.findIndex((r) => r.id === riderId);
-      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t) };
+      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t), fromTeamObj: t };
     }
-    return { rider: null, fromTeamName: null };
+    return { rider: null, fromTeamName: null, fromTeamObj: null };
   }
 
   function findTeamInCategory(teamId, categoryKey) {
@@ -549,7 +549,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       strandedNegotiationIds.push(neg.id);
       return;
     }
-    const { rider, fromTeamName } = removeFromEverywhere(neg.riderId, neg.categoryKey);
+    const { rider, fromTeamName, fromTeamObj } = removeFromEverywhere(neg.riderId, neg.categoryKey);
     if (!rider) {
       strandedNegotiationIds.push(neg.id);
       return;
@@ -602,7 +602,26 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       // in that same category — rivals for the played one, or the
       // matching background category's own teams otherwise.
       const destTeam = findTeamInCategory(neg.toTeamId, neg.categoryKey);
-      if (destTeam && destTeam.riders.length < 2) { destTeam.riders.push(signedRider); placed = true; }
+      if (destTeam && destTeam.riders.length < 2) {
+        destTeam.riders.push(signedRider);
+        placed = true;
+        // Only ever mutates AI-vs-AI budgets directly here — the
+        // player's own compensation spend (as buyer) is deducted
+        // separately at the season transition (App.jsx's
+        // playerSigningSpend), and their income as a seller (a rival
+        // poaching one of their own riders) is credited the same way
+        // (playerSellingIncome) — both go through the same explicit,
+        // logged money-movement path the rest of the player's economy
+        // uses, rather than a silent mutation here. fromTeamObj is
+        // null for a free-agent signing (nobody to pay — needsTeamCompensation
+        // already guarantees teamOfferAmount is only ever set when
+        // there's an actual selling team), so the credit side is
+        // naturally skipped in that case too.
+        if (neg.teamOfferAmount != null) {
+          destTeam.budget = (destTeam.budget || 0) - neg.teamOfferAmount;
+          if (fromTeamObj && fromTeamObj !== playerTeam) fromTeamObj.budget = (fromTeamObj.budget || 0) + neg.teamOfferAmount;
+        }
+      }
       else strandedRiders.push(finalizeStrandedHistory(signedRider, standingsByCategory, neg.categoryKey, neg.createdSeason));
     }
     // Only a negotiation that actually placed its rider on the

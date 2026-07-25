@@ -103,6 +103,16 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // ANY team, not just the player's. Used for the informational banner
   // below (kept for renewals too — "ya ha renovado" should still show).
   const signedNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && ["confirmed", "applied"].includes(n.status));
+  // A THIRD PARTY (a rival, or an AI-initiated offer on the player's own
+  // rider) can be mid-negotiation for this exact rider without it being
+  // "signed" yet — still very much live, and it's exactly what silently
+  // blocked a renewal attempt before this fix: the player would see the
+  // "Iniciar renovación" button, submit it, and nothing would happen,
+  // because createPlayerOffer already (correctly) refuses to compete
+  // with an in-progress non-renewal deal — it just never told anyone.
+  // Surfacing it here means the button (and the reason for it) is
+  // right the first time, instead of failing silently on submit.
+  const rivalNegotiation = (marketNegotiations || []).find((n) => n.riderId === rider.id && n.toTeamId !== "player" && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
   const isSignedWithPlayer = signedNegotiation?.toTeamId === "player";
   const isConfirmedForUs = isSignedWithPlayer;
   const isCounterOffer = ["team_countered", "rider_countered"].includes(existingNegotiation?.status);
@@ -118,8 +128,10 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // only an actual signing elsewhere (a real, specific commitment to a
   // different team) takes them fully off the market. The rider still
   // gets to weigh a genuinely better offer against the renewal they
-  // already signed, same as the real market.
-  const blocksNewOffer = signedNegotiation && (signedNegotiation.kind !== "renewal" || isSignedWithPlayer);
+  // already signed, same as the real market. An unresolved rival
+  // negotiation blocks it too, exactly like createPlayerOffer already
+  // enforces — now visibly, not just silently.
+  const blocksNewOffer = (signedNegotiation && (signedNegotiation.kind !== "renewal" || isSignedWithPlayer)) || !!rivalNegotiation;
   const offerEligible = !existingNegotiation && !blocksNewOffer && isFreeAgentEligibleForCategory(rider, category)
     && (isOwnRider ? !rider.releasedAtSeasonEnd : canStartNewOffer);
   // Once both of next season's seats are already committed through firm
@@ -304,6 +316,11 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
                 {signedNegotiation.kind === "renewal"
                   ? `Este piloto ya ha renovado con ${signedNegotiation.toTeamName} para la próxima temporada.`
                   : `Este piloto ya ha firmado con ${signedNegotiation.toTeamName} para la próxima temporada.`}
+              </div>
+            )}
+            {!signedNegotiation && rivalNegotiation && (
+              <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(224,142,69,0.12)", border: "1px solid #E08E45", color: "#E08E45" }}>
+                {rivalNegotiation.toTeamName} está negociando con este piloto ahora mismo — os avisaremos si el acuerdo se cierra. No podéis presentar vuestra propia oferta hasta que esa negociación se resuelva.
               </div>
             )}
             {existingNegotiation && !signedNegotiation && !isCounterOffer && (

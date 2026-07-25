@@ -973,14 +973,24 @@ export default function MotorbikeManager() {
     if (!playerTeam) return;
     const fromTeam = findTeamOwningRider(rider.id, categoryKey);
     const isRenewal = fromTeam?.id === "player";
-    if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) return;
+    if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `No podéis ofertar por ${rider.name}: ya tenéis las dos plazas de la próxima temporada cubiertas.` }]);
+      return;
+    }
     // A completed (or in-progress) renewal with their CURRENT team never
     // blocks a competing offer — the game already tells the player it
     // happened (see RiderProfileModal's "ya ha renovado" banner), but
     // the rider should still be free to weigh a genuinely better offer
     // from elsewhere against staying, exactly like in the real paddock.
+    // An unresolved deal with someone ELSE, though, does block it —
+    // RiderProfileModal already hides the button for this exact case,
+    // this is just the last line of defense so a submission can never
+    // silently vanish even if that check is ever bypassed.
     const alreadyNegotiating = marketNegotiations.some((n) => n.riderId === rider.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
-    if (alreadyNegotiating) return;
+    if (alreadyNegotiating) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `No se pudo presentar la oferta por ${rider.name}: otro equipo ya está negociando con este piloto.` }]);
+      return;
+    }
     const needsComp = needsTeamCompensation(rider, fromTeam?.id ?? null, "player");
     const negotiation = createNegotiation({
       kind: isRenewal ? "renewal" : "signing", rider, categoryKey, fromTeam,
@@ -2156,6 +2166,15 @@ export default function MotorbikeManager() {
     const playerSigningSpend = (marketNegotiations || [])
       .filter((n) => n.status === "confirmed" && n.toTeamId === "player" && n.teamOfferAmount != null)
       .reduce((s, n) => s + n.teamOfferAmount, 0);
+    // The symmetric case — a rival poaching one of the player's own
+    // contracted riders (maybeGenerateIncomingOffer) and paying
+    // compensation for it — had no matching income anywhere before:
+    // the player lost the rider but never actually received the fee a
+    // real sale would bring in. Same aggregate-then-log approach as
+    // the spend above, just the other direction.
+    const playerSellingIncome = (marketNegotiations || [])
+      .filter((n) => n.status === "confirmed" && n.fromTeamId === "player" && n.toTeamId !== "player" && n.teamOfferAmount != null)
+      .reduce((s, n) => s + n.teamOfferAmount, 0);
 
     // --- Evolve + record history for the PLAYED category (player + rivals) ---
     const allStandingValues = Object.values(riderStandings).map((v) => v.points);
@@ -2414,6 +2433,7 @@ export default function MotorbikeManager() {
     setOtherCategories(finalOther);
     setFreeAgents(finalFreeAgents);
     logMoneyMovement("Fichajes de mercado (fin de temporada)", -playerSigningSpend);
+    logMoneyMovement("Ventas de mercado (fin de temporada)", playerSellingIncome);
     setRiderStandings(rsFixed);
     setRiderWins({});
     setRiderPodiums({});

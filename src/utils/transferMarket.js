@@ -264,7 +264,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         const years = proposedContractYears(rider);
         const newRider = { ...rider, contractYears: years, salary: signedSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
         applyRiderToTeam(teamsByCategory, higher, teamId, newRider);
-        log[higher].push({ type: "ascenso", riderId: photoIdFor(newRider), text: `${newRider.name} asciende de ${CATEGORY_DATA[lower].label} a ${CATEGORY_DATA[higher].label} (${findTeam(teamsByCategory, higher, teamId).name})`, category: CATEGORY_DATA[higher].label });
+        log[higher].push({ type: "ascenso", riderId: photoIdFor(newRider), text: `${newRider.name} asciende de ${CATEGORY_DATA[lower].label} a ${CATEGORY_DATA[higher].label} (${teamDisplayName(findTeam(teamsByCategory, higher, teamId))})`, category: CATEGORY_DATA[higher].label });
         candidatePool.splice(signedIdx, 1);
         liveTeam = findTeam(teamsByCategory, higher, teamId);
       }
@@ -325,7 +325,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     } else {
       // Nobody in the whole pool wanted this seat — a fresh prospect
       // gets their shot instead, exactly like the old rookie fallback.
-      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale);
+      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey);
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, rookie);
       log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), text: `${rookie.name} debuta con ${teamDisplayName(team)} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
     }
