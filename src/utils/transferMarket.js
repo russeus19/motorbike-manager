@@ -129,13 +129,26 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     const [r1, r2] = t.riders;
     const kept = [];
     t.riders.forEach((r) => {
-      // Moto3's own age ceiling overrides even an active contract — once
-      // a rider turns 26, the category simply isn't an option anymore,
-      // contract or not, exactly like a real Moto3 team wouldn't keep
-      // someone past the category's real-world age cutoff.
-      if (ck === "moto3" && r.age > 25) {
+      // A category's own age ceiling overrides even an active contract
+      // — once a rider ages out of eligibility, the category simply
+      // isn't an option anymore, contract or not, exactly like a real
+      // team wouldn't keep someone past the real-world age cutoff.
+      // Bug fixed: this used to be hardcoded to `ck === "moto3"` only —
+      // correct back when Moto3 was the only category with an age cap,
+      // but Sportbike has one too (see isFreeAgentEligibleForCategory)
+      // and never got added here, so a Sportbike rider could simply
+      // stay on regardless of age forever. Driving this off the same
+      // eligibility function every other age check in this file
+      // already uses means it can't drift out of sync with a future
+      // category's own cap either.
+      // Moto2's own age cap (≤30) has only ever been a filter on new
+      // signings, never a forced-retirement rule for someone already
+      // on the roster — excluded here on purpose, so this fix doesn't
+      // silently start kicking out existing Moto2 riders over 30, a
+      // behavior change nobody asked for.
+      if (ck !== "moto2" && !isFreeAgentEligibleForCategory(r, ck)) {
         pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
-        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${teamDisplayName(t)} al superar la edad límite de Moto3`, category: CATEGORY_DATA[ck].label });
+        log[ck].push({ type: "salida", riderId: photoIdFor(r), text: `${r.name} deja ${teamDisplayName(t)} al superar la edad límite de ${CATEGORY_DATA[ck].label}`, category: CATEGORY_DATA[ck].label });
         return;
       }
       // Contract truth: still under contract, no market decision needed.
