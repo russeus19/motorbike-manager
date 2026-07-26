@@ -2358,11 +2358,20 @@ export default function MotorbikeManager() {
       nextFreeAgents.push(evolved);
     });
 
-    if (ctxCategory === "motogp") evolvedRivals = catTeams.motogp;
-    if (ctxCategory === "moto2") evolvedRivals = catTeams.moto2;
-    if (ctxCategory === "moto3") evolvedRivals = catTeams.moto3;
-    if (ctxCategory === "superbikes") evolvedRivals = catTeams.superbikes;
-    if (ctxCategory === "supersport") evolvedRivals = catTeams.supersport;
+    // This used to be five separate hardcoded `if (ctxCategory === "x")
+    // evolvedRivals = catTeams.x;` lines — one per category that
+    // existed at the time. Sportbike never got added to that list when
+    // it was introduced, so playing AS Sportbike meant evolvedRivals
+    // never picked up the season-end market's result: the market
+    // summary correctly announced every renewal/signing/promotion
+    // (built straight from marketLog, which resolveSeasonMarketAcrossCategories
+    // did populate correctly), but the actual rival rosters that got
+    // committed to state stayed frozen at their pre-market snapshot —
+    // "movements announced, nothing actually happens", exactly as
+    // reported. A single generic assignment, keyed off ctxCategory
+    // itself, can't drift out of sync with CATEGORY_ORDER like the old
+    // per-category list did.
+    evolvedRivals = catTeams[ctxCategory];
     CATEGORY_ORDER.forEach((ck) => {
       if (ck !== ctxCategory) nextOther[ck] = { ...nextOther[ck], teams: catTeams[ck] };
     });
