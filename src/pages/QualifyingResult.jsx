@@ -32,7 +32,7 @@ export function QualifyingScreen({ pendingQualifying, accent, category, onContin
       </div>
 
       <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {CATEGORY_ORDER.map((ck) => (
             <button key={ck} onClick={() => setTab(ck)}
               className="text-xs px-3 py-1.5 rounded font-semibold"

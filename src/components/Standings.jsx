@@ -53,7 +53,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {CATEGORY_ORDER.map((ck) => (
           <button key={ck} onClick={() => setTab(ck)}
             className="text-xs px-2 py-1 rounded font-semibold"
@@ -182,7 +182,7 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
 
   return (
     <Panel title="Clasificaciones" icon={Trophy} accent={accent}>
-      <div className="flex gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         {CATEGORY_ORDER.map((ck) => (
           <button key={ck} onClick={() => setTab(ck)}
             className="text-xs px-2 py-1 rounded font-semibold"
@@ -299,7 +299,7 @@ export function SeasonArchivePanel({ seasonArchive, accent, category }) {
         </button>
       </div>
 
-      <div className="flex gap-1.5 mb-2">
+      <div className="flex flex-wrap gap-1.5 mb-2">
         {CATEGORY_ORDER.map((ck) => (
           <button key={ck} onClick={() => setCatTab(ck)}
             className="text-xs px-2 py-1 rounded font-semibold"

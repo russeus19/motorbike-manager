@@ -86,7 +86,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
         />
       </div>
 
-      <div className="flex gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         {CATEGORY_ORDER.map((ck) => (
           <button key={ck} onClick={() => setAwardsTab(ck)}
             className="text-xs px-2 py-1 rounded font-semibold"

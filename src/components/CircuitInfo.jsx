@@ -151,7 +151,7 @@ function GpResultModal({ round, circuitName, isPlayed, entry, category, accent, 
           )}
           {isPlayed && entry && (
             <>
-              <div className="flex gap-2 mb-3">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {CATEGORY_ORDER.map((ck) => (
                   <button key={ck} onClick={() => setTab(ck)}
                     className="px-3 py-1.5 rounded text-xs font-semibold"
