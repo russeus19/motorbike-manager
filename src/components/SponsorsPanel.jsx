@@ -20,17 +20,25 @@ export function SponsorSlot({ kind, sponsor, offers, prospectingStreak, searchin
             Nivel {sponsor.tier} · Contrato: {sponsor.yearsLeft} temporada{sponsor.yearsLeft === 1 ? "" : "s"}
             {sponsor.bonusPerPoint > 0 && <> · +€{sponsor.bonusPerPoint.toLocaleString()} por punto</>}
           </div>
-          {sponsor.scorelessStreak >= 2 && (
-            <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
-              <AlertTriangle size={11} />
-              {sponsor.scorelessStreak} carreras seguidas por debajo de lo esperado — el contrato corre riesgo de rescisión anticipada.
+          {sponsor.permanent ? (
+            <div className="text-xs mt-2 flex items-center gap-1" style={{ color: COLORS.muted }}>
+              <Award size={11} /> Patrocinio permanente — {sponsor.name} respalda este proyecto y nunca lo abandonará ni podrá rescindirse.
             </div>
+          ) : (
+            <>
+              {sponsor.scorelessStreak >= 2 && (
+                <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
+                  <AlertTriangle size={11} />
+                  {sponsor.scorelessStreak} carreras seguidas por debajo de lo esperado — el contrato corre riesgo de rescisión anticipada.
+                </div>
+              )}
+              <button onClick={() => onCancelContract(kind)}
+                className="w-full text-xs px-2.5 py-1.5 rounded mt-2"
+                style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.danger }}>
+                Rescindir contrato (coste: €{Math.round(sponsor.payoutPerGp * sponsor.yearsLeft * 1.5).toLocaleString()})
+              </button>
+            </>
           )}
-          <button onClick={() => onCancelContract(kind)}
-            className="w-full text-xs px-2.5 py-1.5 rounded mt-2"
-            style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.danger }}>
-            Rescindir contrato (coste: €{Math.round(sponsor.payoutPerGp * sponsor.yearsLeft * 1.5).toLocaleString()})
-          </button>
         </>
       ) : offers && offers.length ? (
         <>

@@ -29,19 +29,56 @@ import { INITIAL_SPONSORS_BY_CATEGORY } from "../data/initialSponsors.js";
  *      wins, no negotiation drama needed there).
  */
 
-export const SPONSOR_TIERS = ["Regional", "Nacional", "Internacional", "Élite"];
+export const SPONSOR_TIERS = ["Local", "Regional", "Nacional", "Internacional", "Élite"];
 
 const TIER_PAYOUT_RANGE = {
+  Local: [5000, 12000],
   Regional: [12000, 25000],
   Nacional: [25000, 45000],
   Internacional: [45000, 75000],
   "Élite": [75000, 120000],
 };
 
-// A secondary sponsor is a smaller deal by nature — same tier ladder,
-// capped below the top tier, and paying less than a main sponsor of the
-// same tier would.
-const SECONDARY_MAX_TIER_INDEX = 2; // "Internacional" — never "Élite"
+// How high each competition's OWN sponsor ceiling reaches, independent
+// of how dominant a team is within it — the fix for a real problem:
+// `teamSponsorAppeal` normalizes against each category's OWN prestige
+// range, so a genuinely dominant Sportbike team could still land near
+// 1.0 "appeal" on its own terms and, without this cap, reach an Élite
+// offer exactly like a great MotoGP team would — unrealistic for a
+// brand-new entry-level class. MotoGP/Moto2/Superbikes/Moto3 keep the
+// full ladder (all four are full world championships with genuine
+// top-tier sponsors in real life — Moto3 already has Red Bull-backed
+// teams seeded in its own data, for instance). Supersport and
+// especially Sportbike are capped lower, matching how much smaller
+// their real-world sponsor rosters actually are.
+const CATEGORY_SPONSOR_TIER_CEILING = {
+  motogp: 4, superbikes: 4,
+  moto2: 3, moto3: 3, // Internacional — Red Bull's own presence in both is handled separately as a `permanent` sponsor, so it no longer needs to hold the whole category's general ceiling up at Élite
+  supersport: 3, // Internacional
+  sportbike: 1,  // Regional
+};
+function categoryTierCeiling(categoryKey) {
+  return CATEGORY_SPONSOR_TIER_CEILING[categoryKey] ?? SPONSOR_TIERS.length - 1;
+}
+// The floor mirrors the ceiling for the same reason: without it, adding
+// "Local" at index 0 would quietly drag every category's WORST-case
+// payout down too (SPONSOR_TIERS[0] used to always mean "Regional" —
+// now it means "Local" for everyone unless this says otherwise). Only
+// Sportbike's own floor is actually "Local"; everything else keeps
+// bottoming out at Regional exactly like before this tier was added.
+const CATEGORY_SPONSOR_TIER_FLOOR = { sportbike: 0 }; // Local
+function categoryTierFloor(categoryKey) {
+  return CATEGORY_SPONSOR_TIER_FLOOR[categoryKey] ?? 1; // Regional, the pre-existing default for everyone
+}
+
+// A secondary sponsor is a smaller deal by nature — always one full
+// rung below whatever the MAIN sponsor's own ceiling is for this
+// category (never a flat "Internacional, always" cap: that only ever
+// mattered for the top categories anyway, and let a Supersport or
+// Sportbike secondary sponsor reach exactly as high as that
+// category's own main sponsor could, losing the "always somewhat
+// smaller" distinction right where the ladder is already thin), plus
+// paying less even at the same nominal tier label.
 const SECONDARY_PAYOUT_FACTOR = 0.55;
 
 // Every other euro figure in this file scales with the category's
@@ -139,6 +176,25 @@ const REAL_SPONSOR_TIER = {
   // Regional — small, local, or niche-within-racing names; the rest of
   // the pool defaults here (see REAL_SPONSOR_NAMES) if not listed above
   "Cerba": "Regional",
+
+  // Local — fictional small/regional-scale sponsors, purpose-built for
+  // the Local tier (Sportbike's own ceiling, and the worst-case floor
+  // for every other category too) so a Local offer has real, plausible
+  // candidates of its own instead of always borrowing from Regional.
+  "IronPeak Bank": "Local", "Northline Finance": "Local", "Titan Mortgage Group": "Local",
+  "Blackstone Realty": "Local", "PrimeLand Estates": "Local", "Atlas Property Solutions": "Local",
+  "RapidTrack Logistics": "Local", "Arrow Freight Systems": "Local", "SteelRoute Express": "Local",
+  "Velocity Cargo": "Local", "Apex Garage": "Local", "IronWorks Auto Service": "Local",
+  "Redline Performance": "Local", "Torque Motors Garage": "Local", "Falcon Tyres": "Local",
+  "GearMax Tools": "Local", "SteelCraft Equipment": "Local", "PowerBolt Hardware": "Local",
+  "FuelCore Energy Drink": "Local", "Mountain Spring Water": "Local", "Glacier Ice Tea": "Local",
+  "Frost Lemon Soda": "Local", "Grill Brothers": "Local", "Pit Stop Burgers": "Local",
+  "Roadhouse Chicken": "Local", "Brick Oven Pizza": "Local", "LumberJack BBQ": "Local",
+  "Forge Security": "Local", "Guardian Insurance": "Local", "Summit Telecom": "Local",
+  "Thunder Ridge Motors": "Local", "Blue Harbor Bank": "Local", "Victory Express": "Local",
+  "Iron Shield Insurance": "Local", "GoldStone Properties": "Local", "Titan Fuel Solutions": "Local",
+  "CrossRoad Logistics": "Local", "WolfPack Auto Care": "Local", "Urban Forge Construction": "Local",
+  "Pioneer Capital Group": "Local",
 };
 
 // The pool itself is now the union of every name seeded on a real team
@@ -146,27 +202,51 @@ const REAL_SPONSOR_TIER = {
 // so a brand can be added straight into the tier table (as its own
 // candidate for random renewal offers) without needing to first exist
 // as some real team's current sponsor.
-const SPONSOR_POOL_NAMES = [...new Set([...REAL_SPONSOR_NAMES, ...Object.keys(REAL_SPONSOR_TIER)])];
+// Red Bull is deliberately excluded from the pool of names a NEW offer
+// can draw from — it only ever exists as the permanent, pre-seeded
+// sponsor of the specific teams it already backs (see `permanent` in
+// seedInitialSponsors), never as something another team could win,
+// negotiate for, or replace it with once lost.
+const SPONSOR_POOL_NAMES = [...new Set([...REAL_SPONSOR_NAMES, ...Object.keys(REAL_SPONSOR_TIER)])].filter((n) => n !== "Red Bull");
 
-const TIER_RANK = { Regional: 0, Nacional: 1, Internacional: 2, "Élite": 3 };
+const TIER_RANK = { Local: 0, Regional: 1, Nacional: 2, Internacional: 3, "Élite": 4 };
 
 function tierOf(name) {
   return REAL_SPONSOR_TIER[name] || "Regional";
 }
 
-function randomSponsorName(usedNames, tier) {
+function randomSponsorName(usedNames, tier, excludeNames = []) {
   // Match the sponsor's own scale to the offer's tier as closely as
   // possible — not "this tier or bigger", which would let a giant like
   // Lenovo turn up as a Regional deal for a struggling backmarker.
   // Falls back to the tier(s) immediately below (nothing smaller makes
   // it more plausible to widen upward) only if that exact tier's pool
-  // is empty once already-used names are excluded.
+  // is empty once already-used names are excluded — except starting
+  // from "Local" specifically, which climbs UP to Regional instead if
+  // it's ever exhausted, since there's nothing smaller to fall to.
+  // `excludeNames` additionally rules out any sponsor already actively
+  // backing a DIFFERENT team in this same category (Aruba.it can't
+  // sponsor two separate Superbikes teams at once) — checked at every
+  // step, but never allowed to make an offer impossible: if honoring
+  // it would leave nothing at all, it's dropped rather than handing
+  // back a broken/empty offer.
+  const notExcluded = (n) => !excludeNames.includes(n);
   const rank = TIER_RANK[tier] ?? 0;
   for (let r = rank; r >= 0; r--) {
     const tierName = Object.keys(TIER_RANK).find((t) => TIER_RANK[t] === r);
     const eligible = SPONSOR_POOL_NAMES.filter((n) => tierOf(n) === tierName);
-    const pool = eligible.filter((n) => !usedNames.includes(n));
-    if (pool.length) return pool[randInt(0, pool.length - 1)];
+    const poolStrict = eligible.filter((n) => !usedNames.includes(n) && notExcluded(n));
+    if (poolStrict.length) return poolStrict[randInt(0, poolStrict.length - 1)];
+    const poolNoExclude = eligible.filter((n) => !usedNames.includes(n));
+    if (poolNoExclude.length) return poolNoExclude[randInt(0, poolNoExclude.length - 1)];
+    if (eligible.length) return eligible[randInt(0, eligible.length - 1)];
+  }
+  if (rank === 0) {
+    const eligible = SPONSOR_POOL_NAMES.filter((n) => tierOf(n) === "Regional");
+    const poolStrict = eligible.filter((n) => !usedNames.includes(n) && notExcluded(n));
+    if (poolStrict.length) return poolStrict[randInt(0, poolStrict.length - 1)];
+    const poolNoExclude = eligible.filter((n) => !usedNames.includes(n));
+    if (poolNoExclude.length) return poolNoExclude[randInt(0, poolNoExclude.length - 1)];
     if (eligible.length) return eligible[randInt(0, eligible.length - 1)];
   }
   const anyPool = SPONSOR_POOL_NAMES.filter((n) => !usedNames.includes(n));
@@ -243,8 +323,9 @@ export function estimateCurrentSponsorPayout(team, categoryKey, scale, kind = "m
   const expectationScore = clamp((team.expectation?.score ?? 50) / 100, 0, 1);
   const worthiness = clamp(appeal * 0.5 + expectationScore * 0.5, 0, 1);
 
-  const overallMin = TIER_PAYOUT_RANGE[SPONSOR_TIERS[0]][0];
-  const cap = kind === "secondary" ? SECONDARY_MAX_TIER_INDEX : SPONSOR_TIERS.length - 1;
+  const categoryCap = categoryTierCeiling(categoryKey);
+  const overallMin = TIER_PAYOUT_RANGE[SPONSOR_TIERS[categoryTierFloor(categoryKey)]][0];
+  const cap = kind === "secondary" ? Math.max(0, categoryCap - 1) : categoryCap;
   const overallMax = TIER_PAYOUT_RANGE[SPONSOR_TIERS[cap]][1];
   const factor = kind === "secondary" ? SECONDARY_PAYOUT_FACTOR : 1;
 
@@ -287,7 +368,30 @@ export function seedInitialSponsors(team, categoryKey, scale) {
       if (!raw) return;
       const name = typeof raw === "string" ? raw : raw.name;
       const shortTerm = typeof raw === "object" && raw.shortTerm;
-      const { tier, payoutPerGp, bonusPerPoint } = estimateCurrentSponsorPayout(team, categoryKey, scale, kind);
+      // Red Bull's real relationship with a team it backs isn't a
+      // swappable sponsorship deal — it's effectively a co-owner of the
+      // project alongside KTM. `permanent: true` marks this slot as
+      // never expiring, never breakable (by either side), and never up
+      // for a fresh competing offer — see cancelSponsorContract,
+      // advanceSponsorContractsForSeasonEnd, and applySponsorRaceResult's
+      // break-clause check, which all respect this flag.
+      const permanent = name === "Red Bull" && kind === "main";
+      let tier, payoutPerGp, bonusPerPoint;
+      if (permanent) {
+        // Red Bull's own real tier (Élite) is ground truth, independent
+        // of whatever this category's general ceiling is set to for
+        // FUTURE/hypothetical new offers (which exists to keep those
+        // realistic — Moto2/Moto3 cap new offers at Internacional, for
+        // instance — not to retroactively downgrade a real-world
+        // sponsorship that's already an established fact).
+        tier = "Élite";
+        const [lo, hi] = TIER_PAYOUT_RANGE[tier];
+        const appeal = teamSponsorAppeal(team, categoryKey);
+        payoutPerGp = Math.round((lo + (hi - lo) * appeal) * sponsorScale(scale));
+        bonusPerPoint = Math.round(payoutPerGp * POINTS_BONUS_RATE);
+      } else {
+        ({ tier, payoutPerGp, bonusPerPoint } = estimateCurrentSponsorPayout(team, categoryKey, scale, kind));
+      }
       // Every deal starts at 2 years by default — Red Bull specifically
       // runs 5, since in reality it tends to stick with a team far
       // longer than a typical sponsor does. A deal already flagged
@@ -295,16 +399,18 @@ export function seedInitialSponsors(team, categoryKey, scale) {
       // like Trackhouse's Superfile) still overrides both of these
       // down to 1, so it comes up for renewal right away regardless.
       const initialYears = shortTerm ? 1 : name === "Red Bull" ? 5 : 2;
-      sponsors[kind] = { id: `${kind}_seed_${team.id}`, name, tier, payoutPerGp, bonusPerPoint, yearsLeft: initialYears, scorelessStreak: 0 };
+      sponsors[kind] = { id: `${kind}_seed_${team.id}`, name, tier, payoutPerGp, bonusPerPoint, yearsLeft: initialYears, scorelessStreak: 0, permanent };
     });
   }
   return { ...team, sponsors, pendingSponsorOffers: { main: null, secondary: null } };
 }
 
 
-function eligibleTierIndices(appeal, kind) {
-  const centerIdx = clamp(Math.round(appeal * (SPONSOR_TIERS.length - 1)), 0, SPONSOR_TIERS.length - 1);
-  const cap = kind === "secondary" ? SECONDARY_MAX_TIER_INDEX : SPONSOR_TIERS.length - 1;
+function eligibleTierIndices(appeal, kind, categoryKey) {
+  const categoryCap = categoryTierCeiling(categoryKey);
+  const cap = kind === "secondary" ? Math.max(0, categoryCap - 1) : categoryCap;
+  const categoryFloor = categoryTierFloor(categoryKey);
+  const centerIdx = clamp(Math.round(categoryFloor + appeal * (cap - categoryFloor)), categoryFloor, cap);
   // The centered window (one tier below, at, and above) is meant to mix
   // a safe pick with a reach — but for a genuinely elite team, "one
   // tier below" can still land on something as low as Nacional just
@@ -314,8 +420,12 @@ function eligibleTierIndices(appeal, kind) {
   // reach: a real top-tier team (Ducati Lenovo Team-level) should never
   // see a Regional or Nacional offer as its "safe" option. The window
   // can still stretch UP past its center as a reach goal — this only
-  // clamps how far DOWN it's allowed to go.
-  const floorIdx = appeal >= 0.75 ? 2 : appeal >= 0.45 ? 1 : 0;
+  // clamps how far DOWN it's allowed to go. Both thresholds are relative
+  // to THIS category's own cap now, not an absolute global index — a
+  // dominant team's floor in a category capped at Regional (Sportbike)
+  // should land near the bottom of ITS OWN available range, not at an
+  // absolute "Internacional" that category can't even reach.
+  const floorIdx = clamp(appeal >= 0.75 ? cap - 1 : appeal >= 0.45 ? cap - 2 : categoryFloor, categoryFloor, cap);
   const set = new Set();
   [centerIdx - 1, centerIdx, centerIdx + 1].forEach((i) => {
     if (i >= floorIdx && i <= cap) set.add(i);
@@ -329,9 +439,9 @@ function eligibleTierIndices(appeal, kind) {
  * above as a reach option and one below as a safe option). `scale`
  * keeps the euro amounts sensible per category, exactly like every
  * other cost/income figure in the game. */
-export function generateSponsorOffers(team, categoryKey, scale, kind) {
+export function generateSponsorOffers(team, categoryKey, scale, kind, excludeNames = []) {
   const appeal = teamSponsorAppeal(team, categoryKey);
-  const tierIdxs = eligibleTierIndices(appeal, kind);
+  const tierIdxs = eligibleTierIndices(appeal, kind, categoryKey);
   const usedNames = [];
   const offers = tierIdxs.map((idx) => {
     const tier = SPONSOR_TIERS[idx];
@@ -340,7 +450,7 @@ export function generateSponsorOffers(team, categoryKey, scale, kind) {
     const payoutPerGp = Math.round(randInt(lo, hi) * factor * sponsorScale(scale));
     const bonusPerPoint = Math.round(payoutPerGp * POINTS_BONUS_RATE);
     const years = randInt(1, 3);
-    const name = randomSponsorName(usedNames, tier);
+    const name = randomSponsorName(usedNames, tier, excludeNames);
     usedNames.push(name);
     return { id: `${kind}_${Date.now()}_${idx}_${randInt(0, 99999)}`, name, tier, payoutPerGp, bonusPerPoint, years };
   });
@@ -370,9 +480,25 @@ export function cancelSponsorContract(team, kind) {
   const withSponsors = ensureSponsors(team);
   const current = withSponsors.sponsors[kind];
   if (!current) return null;
+  // Red Bull's bond with a team it backs isn't a deal either side can
+  // walk away from — see the `permanent` flag set in seedInitialSponsors.
+  if (current.permanent) return null;
   const cancellationFee = Math.round(current.payoutPerGp * current.yearsLeft * 1.5);
   const sponsors = { ...withSponsors.sponsors, [kind]: null };
   return { team: { ...withSponsors, sponsors }, cancellationFee };
+}
+
+/** Every sponsor name currently backing ANY team in this category
+ * (main + secondary), used as the exclusion list that keeps the same
+ * sponsor from ending up on two different teams at once — Aruba.it
+ * can't sponsor two separate Superbikes teams simultaneously. */
+export function collectActiveSponsorNames(teams) {
+  const names = [];
+  (teams || []).forEach((t) => {
+    if (t.sponsors?.main?.name) names.push(t.sponsors.main.name);
+    if (t.sponsors?.secondary?.name) names.push(t.sponsors.secondary.name);
+  });
+  return names;
 }
 
 /** Season-end pass: age every active contract down a year. Anything
@@ -380,7 +506,7 @@ export function cancelSponsorContract(team, kind) {
  * offers queued in `pendingSponsorOffers`, ready for the player to pick
  * from (or for `resolveAiSponsorOffers` to auto-resolve for every other
  * team). Never touches a slot that still has years left on its deal. */
-export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale, metExpectation) {
+export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale, metExpectation, excludeNames = []) {
   const withSponsors = ensureSponsors(team);
   const sponsors = { ...withSponsors.sponsors };
   const pendingSponsorOffers = { ...withSponsors.pendingSponsorOffers };
@@ -388,6 +514,10 @@ export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale, me
     const s = sponsors[kind];
     let justExpired = null;
     if (s) {
+      // A permanent sponsor (Red Bull) never ages down, never expires,
+      // never comes up for renewal — the years-left counter stays
+      // frozen forever, exactly like the relationship itself.
+      if (s.permanent) return;
       const yearsLeft = s.yearsLeft - 1;
       if (yearsLeft > 0) {
         sponsors[kind] = { ...s, yearsLeft };
@@ -397,7 +527,7 @@ export function advanceSponsorContractsForSeasonEnd(team, categoryKey, scale, me
       sponsors[kind] = null; // contract ran out
     }
     // Empty slot (just expired, or never filled) — queue fresh offers.
-    const freshOffers = generateSponsorOffers({ ...withSponsors, sponsors }, categoryKey, scale, kind);
+    const freshOffers = generateSponsorOffers({ ...withSponsors, sponsors }, categoryKey, scale, kind, excludeNames);
     // A sponsor whose own deal just ran out doesn't necessarily walk
     // away — if the team met or beat its own expectation this season
     // (the sponsor got what it signed up for, or better), it puts in
@@ -465,9 +595,9 @@ export function sponsorGpIncome(team, teamPointsThisRace = 0) {
    row starts to matter, and the risk climbs the longer it goes on.
    Resets the instant the team races back up to its own standard, so
    one bad weekend doesn't haunt a contract for the rest of the year. */
-const BREAK_CLAUSE_GRACE_STREAK = 6; // no risk at all before this many below-expectation races in a row
-const BREAK_CLAUSE_CHANCE_PER_STREAK = 0.015;
-const BREAK_CLAUSE_CHANCE_CAP = 0.1;
+const BREAK_CLAUSE_GRACE_STREAK = 10; // no risk at all before this many below-expectation races in a row
+const BREAK_CLAUSE_CHANCE_PER_STREAK = 0.006;
+const BREAK_CLAUSE_CHANCE_CAP = 0.04;
 // A sponsor walking away from a signed deal mid-season doesn't leave
 // empty-handed for the team — same idea as a real breach-of-contract
 // settlement, just paid the other direction from when the PLAYER
@@ -502,16 +632,16 @@ const OPPORTUNITY_CHANCE_CAP = 0.3;
 const ACTIVE_SEARCH_CHANCE_PER_GP = 0.22;
 const ACTIVE_SEARCH_PAYOUT_FACTOR = 0.6;
 
-function generateActiveSearchOffer(team, categoryKey, scale, kind) {
+function generateActiveSearchOffer(team, categoryKey, scale, kind, excludeNames = []) {
   const appeal = teamSponsorAppeal(team, categoryKey);
-  const tierIdxs = eligibleTierIndices(appeal, kind);
+  const tierIdxs = eligibleTierIndices(appeal, kind, categoryKey);
   const tier = SPONSOR_TIERS[tierIdxs[0]]; // the worst tier THIS team's own appeal can reach
   const [lo, hi] = TIER_PAYOUT_RANGE[tier];
   const factor = (kind === "secondary" ? SECONDARY_PAYOUT_FACTOR : 1) * ACTIVE_SEARCH_PAYOUT_FACTOR;
   const payoutPerGp = Math.round(randInt(lo, hi) * factor * sponsorScale(scale));
   const bonusPerPoint = Math.round(payoutPerGp * POINTS_BONUS_RATE);
   const years = randInt(1, 2); // shorter, more cautious commitment than an organic deal
-  const name = randomSponsorName([], tier);
+  const name = randomSponsorName([], tier, excludeNames);
   return { id: `${kind}_search_${Date.now()}_${randInt(0, 99999)}`, name, tier, payoutPerGp, bonusPerPoint, years };
 }
 
@@ -537,7 +667,7 @@ function expectationOutcome(team, bestPosition) {
   return 0;
 }
 
-export function applySponsorRaceResult(team, bestPosition, categoryKey, scale) {
+export function applySponsorRaceResult(team, bestPosition, categoryKey, scale, excludeNames = []) {
   const withSponsors = ensureSponsors(team);
   const sponsors = { ...withSponsors.sponsors };
   const pendingSponsorOffers = { ...(withSponsors.pendingSponsorOffers || { main: null, secondary: null }) };
@@ -552,6 +682,9 @@ export function applySponsorRaceResult(team, bestPosition, categoryKey, scale) {
   ["main", "secondary"].forEach((kind) => {
     const s = sponsors[kind];
     if (s) {
+      // Red Bull never builds break-clause risk, no matter how bad the
+      // results get — see the `permanent` flag set in seedInitialSponsors.
+      if (s.permanent) return;
       const streak = outcome === -1 ? (s.scorelessStreak || 0) + 1 : (outcome === 1 ? 0 : (s.scorelessStreak || 0));
       if (streak >= BREAK_CLAUSE_GRACE_STREAK) {
         const chance = clamp((streak - (BREAK_CLAUSE_GRACE_STREAK - 1)) * BREAK_CLAUSE_CHANCE_PER_STREAK, 0, BREAK_CLAUSE_CHANCE_CAP);
@@ -577,7 +710,7 @@ export function applySponsorRaceResult(team, bestPosition, categoryKey, scale) {
     // if the team went looking, a hit here still ends the search,
     // whether or not this exact race also went well.
     if (searching[kind] && categoryKey && Math.random() < ACTIVE_SEARCH_CHANCE_PER_GP) {
-      pendingSponsorOffers[kind] = [generateActiveSearchOffer(team, categoryKey, scale, kind)];
+      pendingSponsorOffers[kind] = [generateActiveSearchOffer(team, categoryKey, scale, kind, excludeNames)];
       searching[kind] = false;
       searchOfferSlots.push(kind);
       return;
@@ -588,7 +721,7 @@ export function applySponsorRaceResult(team, bestPosition, categoryKey, scale) {
     if (goodStreak >= OPPORTUNITY_GRACE_STREAK) {
       const chance = clamp((goodStreak - (OPPORTUNITY_GRACE_STREAK - 1)) * OPPORTUNITY_CHANCE_PER_STREAK, 0, OPPORTUNITY_CHANCE_CAP);
       if (categoryKey && Math.random() < chance) {
-        pendingSponsorOffers[kind] = generateSponsorOffers(team, categoryKey, scale, kind);
+        pendingSponsorOffers[kind] = generateSponsorOffers(team, categoryKey, scale, kind, excludeNames);
         prospecting[kind] = 0;
         newOfferSlots.push(kind);
       }

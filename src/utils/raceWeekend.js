@@ -31,7 +31,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
     const sponsorIncome = sponsorGpIncome(team, teamResults.reduce((s, r) => s + (r.points || 0), 0));
     const teamFinishedPositions = teamResults.filter((r) => !r.crashed).map((r) => r.position);
     const teamBestPosition = teamFinishedPositions.length ? Math.min(...teamFinishedPositions) : null;
-    const sponsorResult = applySponsorRaceResult(team, teamBestPosition, categoryKey, ctx.scale);
+    const sponsorResult = applySponsorRaceResult(team, teamBestPosition, categoryKey, ctx.scale, ctx.excludeSponsorNames || []);
     teamForSponsors = resolveAiSponsorOffers(sponsorResult.team);
     const sponsorBreakCompensation = sponsorResult.brokenSlots.reduce((s, b) => s + (b.compensation || 0), 0);
     sponsorResult.brokenSlots.forEach(({ name, compensation }) => {

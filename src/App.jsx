@@ -27,6 +27,32 @@ import { COLORS } from "./data/colors.js";
 // data/superbikesCalendar.js), so it belongs in this list too.
 const SBK_CALENDAR_CATEGORIES = ["superbikes", "supersport", "sportbike"];
 const isSbkCalendarCategory = (key) => SBK_CALENDAR_CATEGORIES.includes(key);
+
+/** Runs advanceSponsorContractsForSeasonEnd across a whole category's
+ * teams ONE AT A TIME instead of all at once from the same frozen
+ * snapshot — otherwise two teams whose sponsor both expire the same
+ * season could each independently draw the exact same brand-new name
+ * (neither aware the other was about to sign it too), since a single
+ * shared "who's currently sponsored" snapshot only reflects contracts
+ * that were ALREADY active going in, not ones being resolved in the
+ * very same pass. Processing sequentially and folding each team's
+ * freshly-resolved sponsors into the next team's exclusion list closes
+ * that gap: by the time team #5 draws a name, it correctly knows about
+ * whatever teams #1-4 just signed this same transition, not just what
+ * was true before it started. `resolveTeam(team, index)` lets the
+ * caller decide per-team whether to auto-resolve (AI) or leave pending
+ * (the player, who picks their own). */
+function advanceSponsorsSequentially(teams, categoryKey, scale, expectationTeams, expectationStandings, resolveTeam) {
+  const resolved = [];
+  teams.forEach((t, i) => {
+    const notYetProcessed = teams.slice(i + 1);
+    const excludeNames = collectActiveSponsorNames([...resolved, ...notYetProcessed]);
+    const met = teamMetOrExceededExpectation(t, expectationTeams, expectationStandings);
+    const advanced = advanceSponsorContractsForSeasonEnd(t, categoryKey, scale, met, excludeNames);
+    resolved.push(resolveTeam ? resolveTeam(advanced, i) : advanced);
+  });
+  return resolved;
+}
 import { CareerNameScreen, CareerOffersScreen, CareerPickerScreen } from "./pages/CareerSetup.jsx";
 import { SubstituteScreen } from "./pages/InjurySubstitute.jsx";
 import { SlotPickScreen } from "./pages/LoadGame.jsx";
@@ -55,7 +81,7 @@ import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
-import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
+import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, collectActiveSponsorNames, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
 import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./utils/economy.js";
 import { WAREHOUSE_LABELS } from "./data/warehouseParts.js";
 import { staticTeamDataFor, teamDisplayName } from "./utils/teamNaming.js";
@@ -1365,9 +1391,14 @@ export default function MotorbikeManager() {
       catRows.forEach((r, i) => { catPosMap[r.id] = i + 1; });
       const catScale = CATEGORY_DATA[key].scale;
 
-      const teamsNext = raceTeams.map((t) => processTeamAfterRace(t, catResults, key, {
-        isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
-      }, poolRef, notifQueue));
+      const teamsNext = [];
+      raceTeams.forEach((t, i) => {
+        const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
+        teamsNext.push(processTeamAfterRace(t, catResults, key, {
+          isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
+          excludeSponsorNames,
+        }, poolRef, notifQueue));
+      });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
 
       nextOther[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP, sprintWins: sW, sprintPodiums: sP };
@@ -1674,9 +1705,14 @@ export default function MotorbikeManager() {
     const posMap = {};
     rows.forEach((r, i) => { posMap[r.id] = i + 1; });
 
-    const rivalsProcessed = rivalTeams.map((t) => processTeamAfterRace(t, results, category, {
-      isPlayer: false, position: posMap[t.id] || rivalTeams.length + 1, totalTeams: rivalTeams.length + 1, roundIndex: round, totalRounds: CIRCUITS.length, scale,
-    }, poolRef, notifQueue));
+    const rivalsProcessed = [];
+    rivalTeams.forEach((t, i) => {
+      const excludeSponsorNames = collectActiveSponsorNames([playerTeam, ...rivalsProcessed, ...rivalTeams.slice(i + 1)]);
+      rivalsProcessed.push(processTeamAfterRace(t, results, category, {
+        isPlayer: false, position: posMap[t.id] || rivalTeams.length + 1, totalTeams: rivalTeams.length + 1, roundIndex: round, totalRounds: CIRCUITS.length, scale,
+        excludeSponsorNames,
+      }, poolRef, notifQueue));
+    });
 
     const riderStandingsNext = { ...riderStandings };
     results.forEach((r) => { riderStandingsNext[r.id] = { name: r.name, teamName: r.teamName, points: (riderStandingsNext[r.id]?.points || 0) + r.points }; });
@@ -1789,9 +1825,14 @@ export default function MotorbikeManager() {
       catRows.forEach((r, i) => { catPosMap[r.id] = i + 1; });
       const catScale = CATEGORY_DATA[key].scale;
 
-      const teamsNext = raceTeams.map((t) => processTeamAfterRace(t, catResults, key, {
-        isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
-      }, poolRef, notifQueue));
+      const teamsNext = [];
+      raceTeams.forEach((t, i) => {
+        const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
+        teamsNext.push(processTeamAfterRace(t, catResults, key, {
+          isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
+          excludeSponsorNames,
+        }, poolRef, notifQueue));
+      });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
 
       nextOtherCategories[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP, sprintWins: sW, sprintPodiums: sP };
@@ -1846,7 +1887,7 @@ export default function MotorbikeManager() {
     const sponsorIncome = sponsorGpIncome(playerTeamAfterRenewals, playerPointsThisRace);
     const finishedPositions = playerResults.filter((r) => !r.crashed).map((r) => r.position);
     const playerBestPosition = finishedPositions.length ? Math.min(...finishedPositions) : null;
-    const { team: playerTeamAfterSponsors, brokenSlots: brokenSponsorSlots, newOfferSlots: newSponsorOfferSlots, searchOfferSlots } = applySponsorRaceResult(playerTeamAfterRenewals, playerBestPosition, category, scale);
+    const { team: playerTeamAfterSponsors, brokenSlots: brokenSponsorSlots, newOfferSlots: newSponsorOfferSlots, searchOfferSlots } = applySponsorRaceResult(playerTeamAfterRenewals, playerBestPosition, category, scale, collectActiveSponsorNames(rivalsAfterRenewals));
     brokenSponsorSlots.forEach(({ name, compensation }) => {
       notifQueue.push({ type: "patrocinio", text: `${name} rescinde su contrato de patrocinio tras varias carreras muy por debajo de lo esperado, con una compensación de €${(compensation || 0).toLocaleString()}.`, category: CATEGORY_DATA[category].label });
     });
@@ -2255,9 +2296,11 @@ export default function MotorbikeManager() {
     // offers to choose from later (surfaced once the new season is
     // live); every AI team resolves its own immediately, no different
     // from how AI teams handle every other end-of-season decision.
-    const playerAfterSponsorSeasonEnd = advanceSponsorContractsForSeasonEnd(combinedPlayedCategory[0], ctxCategory, scale, teamMetOrExceededExpectation(combinedPlayedCategory[0], combinedPlayedCategory, ctxTeamStandings));
-    let evolvedRivals = combinedPlayedCategory.slice(1)
-      .map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, ctxCategory, scale, teamMetOrExceededExpectation(t, combinedPlayedCategory, ctxTeamStandings))));
+    const [playerAfterSponsorSeasonEnd, ...evolvedRivalsSeq] = advanceSponsorsSequentially(
+      combinedPlayedCategory, ctxCategory, scale, combinedPlayedCategory, ctxTeamStandings,
+      (t, idx) => (idx === 0 ? t : resolveAiSponsorOffers(t))
+    );
+    let evolvedRivals = evolvedRivalsSeq;
 
     // --- Evolve + record history for BOTH background categories ---
     const nextOther = {};
@@ -2276,7 +2319,7 @@ export default function MotorbikeManager() {
         recordSeasonHistory(evolvedTeams, catState.riderStandings, key, catState.seasonNumber),
         catState.teamStandings, key
       );
-      const historied = evolvedForCat.map((t) => resolveAiSponsorOffers(advanceSponsorContractsForSeasonEnd(t, key, catScale, teamMetOrExceededExpectation(t, evolvedForCat, catState.teamStandings))));
+      const historied = advanceSponsorsSequentially(evolvedForCat, key, catScale, evolvedForCat, catState.teamStandings, (t) => resolveAiSponsorOffers(t));
       nextOther[key] = { teams: historied, seasonNumber: catState.seasonNumber + 1 };
     });
 
