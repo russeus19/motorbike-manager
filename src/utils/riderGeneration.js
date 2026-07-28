@@ -2,6 +2,7 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { BIKE_AREA_KEYS } from "../data/bikeAreas.js";
 import { FREE_AGENT_LEGENDS_DATA } from "../data/freeAgentLegends.js";
 import { pickRookieNat, pickRookieName } from "../data/rookieNames.js";
+import { getRegenFaceRegion, REGEN_FACES_PER_REGION } from "../data/regenFaceRegions.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { nextId } from "./idGenerator.js";
 import { clamp, randInt } from "./random.js";
@@ -123,6 +124,14 @@ export function makeRookie(scale, categoryKey) {
     fisico: rookieAttrRoll("fisico", resolvedScale),
     seasonPoints: 0,
     number: assignUniqueNumber([]),
+    // Rolled once, right here, and never touched again — from this
+    // point on it's just a normal field on the rider object, saved and
+    // loaded with everything else about them, so the same face sticks
+    // with this specific regen for their entire career in this save.
+    // The region keeps the face's ethnicity honest for their flag
+    // instead of, say, a Japanese rookie ending up with a clearly
+    // European face — see data/regenFaceRegions.js for the mapping.
+    photoId: `regen/${getRegenFaceRegion(nat)}/${randInt(1, REGEN_FACES_PER_REGION)}`,
   };
   const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
   const finalized = finalizeRiderEconomics(withPotential, resolvedScale);
