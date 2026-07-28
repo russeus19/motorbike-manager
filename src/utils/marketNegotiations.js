@@ -237,11 +237,11 @@ export function scoreRiderOfferAcceptance(rider, toTeam, terms, ctx) {
 
   const total = clamp(salaryScore * 0.35 + durationScore * 0.15 + bonusScore + bikeQualityScore * 0.25 + prestigeAppealScore * 0.2 + moraleBonus * 0.1 + ageFactor + promotionBonus + leverage, -1, 1);
 
-  if (total >= 0.15) return { accept: true, counterTerms: null };
+  if (total >= 0.15) return { accept: true, counterTerms: null, score: total };
   if (total >= -0.2) {
-    return { accept: false, counterTerms: { ...terms, salary: Math.round(terms.salary * 1.2) } };
+    return { accept: false, counterTerms: { ...terms, salary: Math.round(terms.salary * 1.2) }, score: total };
   }
-  return { accept: false, counterTerms: null };
+  return { accept: false, counterTerms: null, score: total };
 }
 
 /**
@@ -338,7 +338,12 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     }
     if (!rider) return;
 
-    const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === rider.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
+    // A rider already being courted by someone ELSE no longer rules
+    // this buyer out — that's a real bidding war now, resolved by
+    // resolvePendingNegotiations comparing every active offer once the
+    // rider gets to decide. Only the SAME buyer trying to open a
+    // second, redundant negotiation for the same rider is refused.
+    const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === rider.id && n.toTeamId === buyer.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
     if (alreadyNegotiating) return;
 
     const marketValue = computeMarketValue(rider, scale);
@@ -394,7 +399,12 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
     const [r1, r2] = t.riders;
     t.riders.forEach((r) => {
       if ((r.contractYears ?? 0) !== 1) return;
-      const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === r.id && !["failed", "withdrawn"].includes(n.status));
+      // Same reasoning as the signing path above — a rival poaching
+      // attempt on this rider no longer stops their OWN team from
+      // trying to renew them too; that renewal IS the team's counter-bid
+      // in the bidding war, resolved the same way as any other. Only a
+      // redundant second renewal attempt from this same team is refused.
+      const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === r.id && n.toTeamId === t.id && !["failed", "withdrawn"].includes(n.status));
       if (alreadyNegotiating) return;
 
       const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
@@ -437,11 +447,15 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
 export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, marketNegotiations) {
   const heat = marketHeat(round, totalRounds);
   if (!rivalTeams.length || Math.random() > heat * 0.85) return null;
+  const suitor = pick(rivalTeams);
+  // A rider already being chased by a DIFFERENT rival no longer rules
+  // them out for this one too — a real bidding war now, resolved by
+  // resolvePendingNegotiations. Only refuses this exact same suitor
+  // trying to open a second, redundant negotiation for this rider.
   const candidates = playerTeam.riders.filter((r) => (r.contractYears ?? 0) > 0 && !(r.injury && r.injury.sidelined)
-    && !(marketNegotiations || []).some((n) => n.riderId === r.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status)));
+    && !(marketNegotiations || []).some((n) => n.riderId === r.id && n.toTeamId === suitor.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status)));
   if (!candidates.length) return null;
   const rider = pick(candidates);
-  const suitor = pick(rivalTeams);
   const marketValue = computeMarketValue(rider, scale);
   const needsComp = needsTeamCompensation(rider, playerTeam.id, suitor.id);
   const teamOfferAmount = needsComp ? Math.round(marketValue * (0.9 + Math.random() * 0.4)) : null;
@@ -668,7 +682,18 @@ export function applyReleasedAtSeasonEnd(playerTeam) {
 export function applyRenewalsToTeam(team, renewals) {
   if (!renewals.length) return team;
   const riders = team.riders.map((r) => {
-    const renewal = renewals.find((rn) => rn.riderId === r.id && rn.teamId === team.id);
+    // Match by id first (the normal, expected case) — but fall back to
+    // matching by name if that somehow fails. A renewal negotiation's
+    // riderId is captured once, weeks earlier, when the offer was first
+    // made; if anything between then and now ever rebuilt this rider as
+    // a fresh object instead of reusing the same one (losing the
+    // original id in the process), the renewal would otherwise silently
+    // do nothing — the negotiation record itself would still show as
+    // confirmed (nothing there depends on this match), but the actual
+    // roster would never see the extra contract years, exactly the
+    // "Contrato tab says renewed, but years never went up" symptom this
+    // is meant to close off.
+    const renewal = renewals.find((rn) => rn.teamId === team.id && (rn.riderId === r.id || rn.riderName === r.name));
     if (!renewal) return r;
     return { ...r, contractYears: (r.contractYears ?? 0) + renewal.years, salary: renewal.salary, releasedAtSeasonEnd: false };
   });
@@ -832,18 +857,30 @@ function aiEvaluateRiderCounter(rider, buyerTeam, counterTerms, scale, roundsUse
 export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
   const notifications = [];
   const justConfirmedRenewals = [];
-  const updated = (negotiations || []).map((neg) => {
+  const list = negotiations || [];
+  // Every rider who's ALREADY confirmed/applied elsewhere this same
+  // pass (or in an earlier one) — any other still-open negotiation for
+  // that same rider is dead on arrival, no matter how far along it was.
+  const alreadyTakenRiderIds = new Set(
+    list.filter((n) => ["confirmed", "applied"].includes(n.status)).map((n) => n.riderId)
+  );
+
+  const firstPass = list.map((neg) => {
     if (neg.resolveAtRound > round) return neg;
     if (["confirmed", "failed", "withdrawn", "applied"].includes(neg.status)) return neg;
 
     const { findTeam, findRider, riderStandings, scale } = resolveCtx;
     const rider = findRider(neg.riderId, neg.categoryKey);
     if (!rider) return { ...neg, status: "failed", log: [...neg.log, { round, text: "El piloto ya no está disponible." }] };
+    if (alreadyTakenRiderIds.has(neg.riderId)) {
+      return { ...neg, status: "failed", log: [...neg.log, { round, text: `${neg.riderName} ya ha firmado con otro equipo.` }] };
+    }
 
     let status = neg.status;
     let teamOfferAmount = neg.teamOfferAmount;
     let riderTerms = neg.riderTerms;
     let resolveAtRound = neg.resolveAtRound;
+    let riderDecisionScore = null;
     const logAdd = [];
     const historyAdd = [];
     const roundsUsed = (neg.history || []).length;
@@ -911,19 +948,15 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
         : null;
       const result = scoreRiderOfferAcceptance(rider, toTeam, riderTerms, { scale, isPromotion: false, currentTeamBikeAvg, negotiation: neg });
       if (result.accept) {
-        if (neg.kind === "renewal") {
-          status = "applied";
-          justConfirmedRenewals.push({ riderId: neg.riderId, categoryKey: neg.categoryKey, teamId: neg.toTeamId, years: riderTerms.years, salary: riderTerms.salary });
-          negotiationLog(`(${neg.id}) renovación aceptada — aplicada de inmediato al contrato`);
-        } else {
-          status = "confirmed";
-        }
-        logAdd.push({ round, text: `${neg.riderName} acepta el contrato.` });
-        historyAdd.push({ round, actor: "rider", type: "accept", riderTerms });
-        negotiationLog(`(${neg.id}) piloto acepta — fichaje completado`);
-        notifications.push(involvesPlayer
-          ? (neg.kind === "renewal" ? `${neg.riderName} renueva su contrato con ${neg.toTeamName}.` : `Acuerdo completo alcanzado: ${neg.riderName} firma por ${neg.toTeamName} para la próxima temporada.`)
-          : `${neg.riderName} firmará por ${neg.toTeamName} la próxima temporada.`);
+        // Don't confirm yet — a rival negotiation for this SAME rider
+        // might reach this exact point in this exact same round too.
+        // "rider_deciding" is a holding status: the second pass below
+        // gathers every negotiation that got here this round, per
+        // rider, and only then picks whichever one the rider actually
+        // prefers — a real bidding war instead of first-come-first-served.
+        status = "rider_deciding";
+        riderDecisionScore = result.score;
+        negotiationLog(`(${neg.id}) piloto dispuesto a aceptar (puntuación ${result.score.toFixed(2)}) — a la espera de comparar con otras ofertas activas`);
       } else if (result.counterTerms) {
         riderTerms = result.counterTerms;
         status = "rider_countered";
@@ -946,17 +979,15 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
       const result = buyerTeam ? aiEvaluateRiderCounter(rider, buyerTeam, riderTerms, scale, roundsUsed) : { decision: "accept" };
       negotiationLog(`(${neg.id}) IA compradora evalúa contraoferta del piloto (€${riderTerms?.salary}) -> ${result.decision}`);
       if (result.decision === "accept") {
-        if (neg.kind === "renewal") {
-          status = "applied";
-          justConfirmedRenewals.push({ riderId: neg.riderId, categoryKey: neg.categoryKey, teamId: neg.toTeamId, years: riderTerms.years, salary: riderTerms.salary });
-        } else {
-          status = "confirmed";
-        }
+        // Same "don't confirm yet" reasoning as above — the buyer
+        // agreeing to the rider's terms doesn't mean the rider can't
+        // still prefer a DIFFERENT team's offer that's also ready this
+        // same round.
+        status = "rider_deciding";
+        const scored = scoreRiderOfferAcceptance(rider, buyerTeam, riderTerms, { scale, isPromotion: false, currentTeamBikeAvg: null, negotiation: neg });
+        riderDecisionScore = scored.score;
         logAdd.push({ round, text: `${neg.toTeamName} acepta las condiciones de ${neg.riderName}.` });
         historyAdd.push({ round, actor: "buyer", type: "accept", riderTerms });
-        notifications.push(involvesPlayer
-          ? (neg.kind === "renewal" ? `${neg.riderName} renueva su contrato con ${neg.toTeamName}.` : `Acuerdo completo alcanzado: ${neg.riderName} firma por ${neg.toTeamName} para la próxima temporada.`)
-          : `${neg.riderName} firmará por ${neg.toTeamName} la próxima temporada.`);
       } else if (result.decision === "counter") {
         riderTerms = result.newTerms;
         status = "pending_rider";
@@ -972,10 +1003,45 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
       }
     }
 
-    return { ...neg, status, teamOfferAmount, riderTerms, resolveAtRound, log: [...neg.log, ...logAdd], history: [...(neg.history || []), ...historyAdd] };
+    return { ...neg, status, teamOfferAmount, riderTerms, resolveAtRound, riderDecisionScore, log: [...neg.log, ...logAdd], history: [...(neg.history || []), ...historyAdd] };
   });
 
-  return { negotiations: updated, notifications, justConfirmedRenewals };
+  // Second pass: every negotiation still sitting at "rider_deciding"
+  // just became a real candidate the rider is choosing between — group
+  // by rider, keep only the best-scoring one (the rider's own genuine
+  // preference, same scoring function used everywhere else), and fail
+  // the rest with a clear "signed elsewhere" reason instead of letting
+  // whichever one happened to be processed first win by default.
+  const byRider = {};
+  firstPass.forEach((neg) => {
+    if (neg.status === "rider_deciding") (byRider[neg.riderId] ||= []).push(neg);
+  });
+
+  const finalized = firstPass.map((neg) => {
+    if (neg.status !== "rider_deciding") return neg;
+    const competitors = byRider[neg.riderId];
+    const winner = competitors.reduce((best, n) => (n.riderDecisionScore > best.riderDecisionScore ? n : best), competitors[0]);
+    const isWinner = neg.id === winner.id;
+    const involvesPlayer = neg.toTeamId === "player" || neg.fromTeamId === "player";
+
+    if (!isWinner) {
+      negotiationLog(`(${neg.id}) piloto prefiere otra oferta (${winner.toTeamName}, puntuación ${winner.riderDecisionScore.toFixed(2)} vs ${neg.riderDecisionScore.toFixed(2)}) — negociación perdida`);
+      if (involvesPlayer) notifications.push(`${neg.riderName} ficha por ${winner.toTeamName} en vez de por vuestro equipo — había más de un equipo interesado.`);
+      return { ...neg, status: "failed", log: [...neg.log, { round, text: `${neg.riderName} elige otra oferta.` }] };
+    }
+
+    const finalStatus = neg.kind === "renewal" ? "applied" : "confirmed";
+    if (neg.kind === "renewal") {
+      justConfirmedRenewals.push({ riderId: neg.riderId, riderName: neg.riderName, categoryKey: neg.categoryKey, teamId: neg.toTeamId, years: neg.riderTerms.years, salary: neg.riderTerms.salary });
+    }
+    const hadRivals = competitors.length > 1;
+    notifications.push(involvesPlayer
+      ? (neg.kind === "renewal" ? `${neg.riderName} renueva su contrato con ${neg.toTeamName}.` : `Acuerdo completo alcanzado: ${neg.riderName} firma por ${neg.toTeamName} para la próxima temporada${hadRivals ? ", superando el interés de otro equipo" : ""}.`)
+      : `${neg.riderName} firmará por ${neg.toTeamName} la próxima temporada.`);
+    return { ...neg, status: finalStatus, log: [...neg.log, { round, text: `${neg.riderName} acepta el contrato.` }] };
+  });
+
+  return { negotiations: finalized, notifications, justConfirmedRenewals };
 }
 
 /** Buckets negotiations into the display groups the "Ofertas" panel

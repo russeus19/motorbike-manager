@@ -131,7 +131,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // already signed, same as the real market. An unresolved rival
   // negotiation blocks it too, exactly like createPlayerOffer already
   // enforces — now visibly, not just silently.
-  const blocksNewOffer = (signedNegotiation && (signedNegotiation.kind !== "renewal" || isSignedWithPlayer)) || !!rivalNegotiation;
+  const blocksNewOffer = signedNegotiation && (signedNegotiation.kind !== "renewal" || isSignedWithPlayer);
   const offerEligible = !existingNegotiation && !blocksNewOffer && isFreeAgentEligibleForCategory(rider, category)
     && (isOwnRider ? !rider.releasedAtSeasonEnd : canStartNewOffer);
   // Once both of next season's seats are already committed through firm
@@ -320,7 +320,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
             )}
             {!signedNegotiation && rivalNegotiation && (
               <div className="mb-3 rounded-md p-2.5 text-xs" style={{ background: "rgba(224,142,69,0.12)", border: "1px solid #E08E45", color: "#E08E45" }}>
-                {rivalNegotiation.toTeamName} está negociando con este piloto ahora mismo — os avisaremos si el acuerdo se cierra. No podéis presentar vuestra propia oferta hasta que esa negociación se resuelva.
+                {rivalNegotiation.toTeamName} también está negociando con este piloto ahora mismo. Si presentáis vuestra propia oferta, entráis en pugna directa por él — el piloto elegirá la que más le convenza, así que puede que no sea la vuestra.
               </div>
             )}
             {existingNegotiation && !signedNegotiation && !isCounterOffer && (

@@ -238,14 +238,21 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
 
     // Only genuine Top-10 finishers of the category below are ever
     // actively chased this way — everyone else is already covered
-    // naturally once they hit the shared pool in Fase 3.
+    // naturally once they hit the shared pool in Fase 3. A rider who
+    // JUST got a fresh signing this exact same transition (isNewTeamThisSeason
+    // — could be the player's own market signing, or an AI one) is
+    // excluded here on purpose: overriding a plain renewal with a
+    // higher category's call-up is deliberate real-world behavior (see
+    // the comment above), but instantly sweeping away someone who was
+    // just actively recruited this very transition undermines the
+    // decision that was just made, in a way a renewal doesn't.
     const candidatePool = [];
     rankedLowerIds.slice(0, 10).forEach((riderId) => {
       for (const t of teamsByCategory[lower]) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
         if (idx >= 0) {
           const r = t.riders[idx];
-          if (isFreeAgentEligibleForCategory(r, higher)) candidatePool.push({ rider: r, fromTeamId: t.id });
+          if (!r.isNewTeamThisSeason && isFreeAgentEligibleForCategory(r, higher)) candidatePool.push({ rider: r, fromTeamId: t.id });
           break;
         }
       }

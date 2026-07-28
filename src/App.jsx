@@ -705,6 +705,27 @@ export default function MotorbikeManager() {
       setPlayerTeam({ ...offer.team, id: "player" });
       setRivalTeams(newRivals);
       setCareerOffers([]);
+      // Bug fixed: this swap changes which team the id "player" points
+      // to (it used to mean the old team, now it means offer.team) but
+      // never touched marketNegotiations — any pending deal still
+      // tagged toTeamId/fromTeamId: "player" silently became a deal for
+      // the NEW team instead of the old one it actually belonged to
+      // (and vice versa for anything tagged with offer.team's old id),
+      // and at the next season transition that misattribution could
+      // charge the player compensation for a signing they never made.
+      // Remapping both ids everywhere they appear keeps every existing
+      // negotiation pointing at whoever it actually still belongs to.
+      const remapTeamId = (id) => (id === "player" ? newTeamId : id === newTeamId ? "player" : id);
+      setMarketNegotiations((prev) => (prev || []).map((n) => ({
+        ...n,
+        toTeamId: remapTeamId(n.toTeamId),
+        fromTeamId: remapTeamId(n.fromTeamId),
+      })));
+      // The new team's own budget replaces the old one's, exactly like
+      // the promotion branch below already does — you're now running
+      // THIS team's finances, not carrying over whatever the previous
+      // one happened to have.
+      setBudget(offer.team.budget || 1500000);
       // Rebuild standings fresh for the new season with the swapped roster
       const rsFixed = {};
       offer.team.riders.forEach((r) => { rsFixed[r.id] = { name: r.name, teamName: teamDisplayName(offer.team), points: 0 }; });
@@ -744,6 +765,24 @@ export default function MotorbikeManager() {
     newRivals.forEach((t) => { ts[t.id] = 0; });
 
     const newPlayerTeam = { ...newPlayerTeamRaw, id: "player" };
+    // Same fix as the lateral-offer branch above, adapted for a
+    // cross-category promotion: two separate identity swaps happen at
+    // once (the old team keeps its riders behind in the old category
+    // under a new id, the new team's old id becomes "player" in the
+    // new category), so each remap is scoped to its OWN category's
+    // negotiations rather than touching both at once.
+    const oldPlayerNewId = playerTeam.id === "player" ? `${category}-former-player` : playerTeam.id;
+    setMarketNegotiations((prev) => (prev || []).map((n) => {
+      if (n.categoryKey === category) {
+        const remap = (id) => (id === "player" ? oldPlayerNewId : id);
+        return { ...n, toTeamId: remap(n.toTeamId), fromTeamId: remap(n.fromTeamId) };
+      }
+      if (n.categoryKey === newCategory) {
+        const remap = (id) => (id === offer.team.id ? "player" : id);
+        return { ...n, toTeamId: remap(n.toTeamId), fromTeamId: remap(n.fromTeamId) };
+      }
+      return n;
+    }));
     setCategory(newCategory);
     setPlayerTeam(newPlayerTeam);
     setRivalTeams(newRivals);
@@ -1052,13 +1091,15 @@ export default function MotorbikeManager() {
     // happened (see RiderProfileModal's "ya ha renovado" banner), but
     // the rider should still be free to weigh a genuinely better offer
     // from elsewhere against staying, exactly like in the real paddock.
-    // An unresolved deal with someone ELSE, though, does block it —
-    // RiderProfileModal already hides the button for this exact case,
-    // this is just the last line of defense so a submission can never
-    // silently vanish even if that check is ever bypassed.
-    const alreadyNegotiating = marketNegotiations.some((n) => n.riderId === rider.id && n.kind !== "renewal" && !["failed", "withdrawn"].includes(n.status));
-    if (alreadyNegotiating) {
-      pushNotifications([{ type: "market", category: categoryKey, text: `No se pudo presentar la oferta por ${rider.name}: otro equipo ya está negociando con este piloto.` }]);
+    // A rival team ALSO negotiating for this same rider no longer
+    // blocks it either — that's now a real bidding war, resolved by
+    // resolvePendingNegotiations comparing every active offer on the
+    // rider and letting them pick whichever one they actually prefer.
+    // The only thing still refused here is the player trying to run
+    // TWO of their own simultaneous negotiations for the same rider.
+    const alreadyNegotiatingWithPlayer = marketNegotiations.some((n) => n.riderId === rider.id && n.toTeamId === "player" && !["failed", "withdrawn"].includes(n.status));
+    if (alreadyNegotiatingWithPlayer) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `Ya tenéis una negociación abierta con ${rider.name}.` }]);
       return;
     }
     const needsComp = needsTeamCompensation(rider, fromTeam?.id ?? null, "player");
