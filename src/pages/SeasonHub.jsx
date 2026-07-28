@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, MapPin, Save, Star, Wrench } from "lucide-react";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
+import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
 import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
@@ -414,6 +415,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
             <LogOut size={18} /> Salir de la partida
           </button>
+          <PlayerCareerPanel seasonArchive={seasonArchive} accent={accent} onOpenRiderProfileById={onOpenRiderProfileById} />
         </div>
       )}
 

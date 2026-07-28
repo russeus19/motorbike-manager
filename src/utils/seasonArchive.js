@@ -12,7 +12,7 @@
  */
 
 import { teamDisplayName } from "./teamNaming.js";
-export function buildSeasonArchiveEntry(seasonNumber, categoriesData) {
+export function buildSeasonArchiveEntry(seasonNumber, categoriesData, playerContext = null) {
   const categories = {};
 
   Object.entries(categoriesData).forEach(([catKey, data]) => {
@@ -40,5 +40,60 @@ export function buildSeasonArchiveEntry(seasonNumber, categoriesData) {
     categories[catKey] = { riders, teams: teamRows, constructors };
   });
 
-  return { seasonNumber, categories };
+  return { seasonNumber, categories, playerContext };
+}
+
+/** Your own managerial career, season by season — built entirely from
+ * the archive's own already-recorded data (no separate tracking of
+ * "what did I do" needed): for each season, look up the one category
+ * `playerContext` says was yours, find your own team's row in it by
+ * name, and pull out your final position/points plus the two riders
+ * who raced under that same team name that season. */
+export function buildPlayerCareerHistory(seasonArchive) {
+  return (seasonArchive || [])
+    .filter((entry) => entry.playerContext)
+    .map((entry) => {
+      const { category, teamName } = entry.playerContext;
+      const catData = entry.categories[category];
+      if (!catData) return null;
+      const teamPosition = catData.teams.findIndex((t) => t.name === teamName) + 1;
+      const teamRow = catData.teams.find((t) => t.name === teamName);
+      const riders = catData.riders
+        .map((r, i) => ({ ...r, position: i + 1 }))
+        .filter((r) => r.teamName === teamName);
+      return {
+        seasonNumber: entry.seasonNumber,
+        category,
+        teamName,
+        teamPosition: teamPosition || null,
+        teamPoints: teamRow?.points ?? 0,
+        riders,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.seasonNumber - b.seasonNumber);
+}
+
+/** Follows one specific rider (by id, not name — names can repeat)
+ * forward through every LATER season in the archive, across every
+ * category, wherever they show up next. Lets the player click a rider
+ * from their very first season's roster and see the whole rest of that
+ * rider's career afterward, even long after they've left the team. */
+export function findRiderLaterSeasons(seasonArchive, riderId, afterSeasonNumber) {
+  const appearances = [];
+  (seasonArchive || []).forEach((entry) => {
+    if (entry.seasonNumber <= afterSeasonNumber) return;
+    Object.entries(entry.categories).forEach(([catKey, catData]) => {
+      const idx = catData.riders.findIndex((r) => r.id === riderId);
+      if (idx < 0) return;
+      appearances.push({
+        seasonNumber: entry.seasonNumber,
+        category: catKey,
+        teamName: catData.riders[idx].teamName,
+        position: idx + 1,
+        points: catData.riders[idx].points,
+      });
+    });
+  });
+  return appearances.sort((a, b) => a.seasonNumber - b.seasonNumber);
 }

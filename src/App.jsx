@@ -355,7 +355,18 @@ export default function MotorbikeManager() {
     const found = findRiderInCategory(categoryKey, riderId);
     if (found) { openProfile(found.rider, found.teamName, categoryKey); return; }
     const freeAgent = freeAgents.find((r) => r.id === riderId);
-    if (freeAgent) openProfile(freeAgent, "Agente libre", null);
+    if (freeAgent) { openProfile(freeAgent, "Agente libre", null); return; }
+    // Fallback for anyone clicking a rider from an OLD record (season
+    // history, a former teammate's later career...) — the categoryKey
+    // that made sense back then might not be where they are now (they
+    // could have been promoted, demoted, or moved sideways since), so
+    // this tries every other category before giving up rather than
+    // silently doing nothing.
+    for (const ck of CATEGORY_ORDER) {
+      if (ck === categoryKey) continue;
+      const foundElsewhere = findRiderInCategory(ck, riderId);
+      if (foundElsewhere) { openProfile(foundElsewhere.rider, foundElsewhere.teamName, ck); return; }
+    }
   }
 
   /* Opens a team's profile purely from an id + category — same idea for
@@ -2219,7 +2230,7 @@ export default function MotorbikeManager() {
     Object.entries(ctxOtherCategories).forEach(([k, v]) => {
       archiveCategoriesData[k] = { teams: v.teams, riderStandings: v.riderStandings, teamStandings: v.teamStandings };
     });
-    setSeasonArchive([...seasonArchive, buildSeasonArchiveEntry(seasonNumber, archiveCategoriesData)]);
+    setSeasonArchive([...seasonArchive, buildSeasonArchiveEntry(seasonNumber, archiveCategoriesData, { category: ctxCategory, teamId: "player", teamName: teamDisplayName(ctxPlayerTeam) })]);
 
     // Root-cause fix: a full snapshot of every rider that exists right
     // now, taken before anything moves. Compared at the very end of this
