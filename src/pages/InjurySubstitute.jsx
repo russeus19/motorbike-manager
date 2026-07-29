@@ -9,7 +9,7 @@ import { isFreeAgentEligibleForCategory, overallRating, substituteHireCost } fro
 export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, category, budget, scale, onConfirm, onSkip, openProfile }) {
   const accent = playerTeam.color;
   const injuredRider = playerTeam.riders.find((r) => r.id === pendingSubstitution.riderId);
-  const eligible = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, category));
+  const eligible = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, category) && !(r.injury && r.injury.sidelined && r.injury.gpRemaining > 0));
   const sorted = [...eligible].sort((a, b) => overallRating(b) - overallRating(a));
   const ageRuleApplies = category === "moto2" || category === "moto3";
 

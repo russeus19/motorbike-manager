@@ -20,8 +20,16 @@ export function buildSeasonArchiveEntry(seasonNumber, categoriesData, playerCont
     const teamById = {};
     teams.forEach((t) => { teamById[t.id] = t; });
 
+    const ridersById = {};
+    teams.forEach((t) => (t.riders || []).forEach((r) => { ridersById[r.id] = r; }));
+
     const riders = Object.entries(data.riderStandings || {})
-      .map(([id, v]) => ({ id, name: v.name, teamName: v.teamName, points: v.points }))
+      .map(([id, v]) => ({
+        id, name: v.name, teamName: v.teamName, points: v.points,
+        age: ridersById[id]?.age ?? null,
+        wins: data.riderWins?.[id] ?? 0,
+        podiums: data.riderPodiums?.[id] ?? 0,
+      }))
       .sort((a, b) => b.points - a.points);
 
     const teamRows = Object.entries(data.teamStandings || {})
@@ -96,4 +104,51 @@ export function findRiderLaterSeasons(seasonArchive, riderId, afterSeasonNumber)
     });
   });
   return appearances.sort((a, b) => a.seasonNumber - b.seasonNumber);
+}
+
+/** World-wide records across every rider and team the game has ever
+ * simulated — not just the player's own history. Built entirely from
+ * what buildSeasonArchiveEntry already records each season transition;
+ * nothing here needs its own separate tracking. Real limitation worth
+ * being upfront about: a genuine "longest win streak" needs to know
+ * the exact sequence of race-by-race results, not just each season's
+ * final tally, so that one isn't included here — everything below only
+ * uses per-season aggregates (position that season, wins that season,
+ * podiums that season, age that season), which the archive already has. */
+export function computeHallOfFame(seasonArchive) {
+  const riderTotals = {}; // id -> { name, wins, podiums, titles, categoryTitles: Set, bestAge: {min,max} on a title }
+  const teamTitles = {}; // name -> count
+
+  (seasonArchive || []).forEach((entry) => {
+    Object.entries(entry.categories).forEach(([catKey, catData]) => {
+      catData.riders.forEach((r, i) => {
+        const t = (riderTotals[r.id] ||= { id: r.id, name: r.name, wins: 0, podiums: 0, titles: 0, categoryTitles: {}, titleAges: [] });
+        t.wins += r.wins || 0;
+        t.podiums += r.podiums || 0;
+        if (i === 0) {
+          t.titles += 1;
+          t.categoryTitles[catKey] = (t.categoryTitles[catKey] || 0) + 1;
+          if (r.age != null) t.titleAges.push({ age: r.age, seasonNumber: entry.seasonNumber, category: catKey });
+        }
+      });
+      const champTeam = catData.teams[0];
+      if (champTeam) teamTitles[champTeam.name] = (teamTitles[champTeam.name] || 0) + 1;
+    });
+  });
+
+  const ridersList = Object.values(riderTotals);
+  const topByTitles = [...ridersList].sort((a, b) => b.titles - a.titles).filter((r) => r.titles > 0)[0] || null;
+  const topByWins = [...ridersList].sort((a, b) => b.wins - a.wins).filter((r) => r.wins > 0)[0] || null;
+  const topByPodiums = [...ridersList].sort((a, b) => b.podiums - a.podiums).filter((r) => r.podiums > 0)[0] || null;
+
+  const allTitleAges = ridersList.flatMap((r) => r.titleAges.map((a) => ({ ...a, name: r.name })));
+  const youngestChampion = allTitleAges.length ? allTitleAges.reduce((min, a) => (a.age < min.age ? a : min)) : null;
+  const oldestChampion = allTitleAges.length ? allTitleAges.reduce((max, a) => (a.age > max.age ? a : max)) : null;
+
+  const topTeam = Object.entries(teamTitles).sort((a, b) => b[1] - a[1])[0] || null;
+
+  return {
+    topByTitles, topByWins, topByPodiums, youngestChampion, oldestChampion,
+    topTeam: topTeam ? { name: topTeam[0], titles: topTeam[1] } : null,
+  };
 }

@@ -3,10 +3,11 @@ import { ArrowDown, ArrowLeftRight, ArrowUp, ChevronRight, DoorOpen, Flag, PenLi
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { MARKET_LOG_ORDER, MARKET_LOG_TITLES } from "../data/marketLogMeta.js";
+import { RiderPhoto } from "../components/RiderPhoto.jsx";
 
 const MARKET_LOG_LUCIDE = { ascenso: ArrowUp, descenso: ArrowDown, fichaje: PenLine, renovacion: RefreshCw, salida: DoorOpen, retiro: Flag };
 
-export function MarketSummaryScreen({ summary, onContinue }) {
+export function MarketSummaryScreen({ summary, onContinue, onOpenRiderProfileById }) {
   const [tab, setTab] = useState("motogp");
   const groups = summary[tab] || {};
   const totalForTab = (catGroups) => MARKET_LOG_ORDER.reduce((s, key) => s + (catGroups[key]?.length || 0), 0);
@@ -53,11 +54,23 @@ export function MarketSummaryScreen({ summary, onContinue }) {
                 </h3>
               </div>
               <ul className="space-y-2">
-                {groups[key].map((e, i) => (
-                  <li key={i} className="text-sm rounded-xl px-3 py-2" style={{ background: COLORS.panel2, color: COLORS.text }}>
-                    {e.text}
-                  </li>
-                ))}
+                {groups[key].map((e, i) => {
+                  const clickable = !!(e.personId && e.riderName && onOpenRiderProfileById && e.text.startsWith(e.riderName));
+                  const rest = clickable ? e.text.slice(e.riderName.length) : e.text;
+                  return (
+                    <li key={i} className="flex items-center gap-2.5 text-sm rounded-xl px-3 py-2" style={{ background: COLORS.panel2, color: COLORS.text }}>
+                      {e.riderId && <RiderPhoto riderId={e.riderId} size={32} shape="circle" className="flex-shrink-0" />}
+                      <span className="min-w-0">
+                        {clickable ? (
+                          <button onClick={() => onOpenRiderProfileById(e.personId, tab)} className="font-semibold hover:underline" style={{ color: COLORS.text }}>
+                            {e.riderName}
+                          </button>
+                        ) : null}
+                        {rest}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );

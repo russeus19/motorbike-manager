@@ -227,6 +227,54 @@ export function advanceTeamProjects(team) {
   return { team: { ...team, techBase, activeProjects: remaining, pendingPackages, pendingPrototypes }, arrivals };
 }
 
+// Season-transition catch-up: enough real-world weeks pass between one
+// season ending and the next starting that anything still "in
+// progress" purely because the calendar ran out — Investigación
+// (kind: "research", tested as a prototype next preseason rather than
+// installed mid-season) and Factory/Staff upgrades — has clearly had
+// time to finish for real by the time the new season begins. Rather
+// than leaving it stuck at whatever `remaining` it happened to be on
+// (or silently discarding it), this force-resolves it right now, using
+// the exact same outcome logic advanceTeamProjects/advanceFacilityUpgrades
+// already use when a project naturally reaches zero.
+//
+// Desarrollo (kind: "dev") is deliberately left untouched — it's meant
+// to be tested and installed on THIS season's bike while there are
+// still races left to prove it out, not fast-forwarded into existence
+// with no on-track validation behind it. An unfinished dev project
+// just keeps counting down into the new season exactly like it would
+// have anyway.
+export function completeAllPendingResearchAndFacilities(team) {
+  const { factory, staff, techBase: baseTechBase } = ensureRD(team);
+  const arrivals = [];
+  const techBase = { ...baseTechBase };
+  const pendingPrototypes = [...(team.pendingPrototypes || [])];
+  const remaining = [];
+
+  (team.activeProjects || []).forEach((p) => {
+    if (p.kind !== "research" || p.remaining <= 0) { remaining.push(p); return; }
+    const { gain: actualGain, tier } = resolveProjectOutcome(p.gain, p.failChance);
+    const downside = rollPackageDownside(p.area, actualGain, p, team);
+    pendingPrototypes.push({
+      id: `proto-${p.area}-${Date.now()}-${Math.round(Math.random() * 100000)}`,
+      area: p.area, trueGain: actualGain, tier,
+      downsideArea: downside ? downside.area : null, downsideAmount: downside ? downside.amount : 0,
+    });
+    arrivals.push({ area: p.area, kind: "research", success: tier === "completo", tier, gain: actualGain, pending: true, caughtUpAtSeasonEnd: true });
+  });
+
+  function completeFacility(facility, kind) {
+    if (!facility.upgrading) return facility;
+    const newLevel = clamp(facility.level + facility.upgrading.gain, 0, 99);
+    arrivals.push({ kind, gain: facility.upgrading.gain, newLevel, caughtUpAtSeasonEnd: true });
+    return { level: newLevel, upgrading: null };
+  }
+  const nextFactory = completeFacility(factory, "factory");
+  const nextStaff = completeFacility(staff, "staff");
+
+  return { team: { ...team, techBase, activeProjects: remaining, pendingPrototypes, factory: nextFactory, staff: nextStaff }, arrivals };
+}
+
 /**
  * Installs an accepted pending package — applies its gain (and downside,
  * if any) to the current bike, retires whatever was in that slot before

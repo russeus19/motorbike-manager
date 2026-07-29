@@ -66,7 +66,7 @@ import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { RosterCompletionScreen } from "./pages/RosterCompletion.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
-import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyFacilityDowngrade, applyPrototype, bikeAvg, canStartFacilityDowngrade, canStartFacilityUpgrade, canStartProject, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
+import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyFacilityDowngrade, applyPrototype, bikeAvg, canStartFacilityDowngrade, canStartFacilityUpgrade, canStartProject, completeAllPendingResearchAndFacilities, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
 import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
 import { emptyNotifications, mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
@@ -78,7 +78,7 @@ import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
-import { computeReleaseAtSeasonEndCost, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
+import { computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
 import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, collectActiveSponsorNames, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
@@ -1456,6 +1456,7 @@ export default function MotorbikeManager() {
       nextOther[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP, sprintWins: sW, sprintPodiums: sP };
     });
 
+    poolRef.pool = poolRef.pool.map(decrementFreeAgentInjury);
     setGame((g) => (g ? {
       ...g,
       otherCategories: nextOther,
@@ -1899,6 +1900,7 @@ export default function MotorbikeManager() {
       classificationByCategory[key] = buildClassificationDisplay(catResults, circuitProfile, fastestLapByCategory[key], key);
     });
 
+    poolRef.pool = poolRef.pool.map(decrementFreeAgentInjury);
     const marketTick = tickMarket(
       { marketRumors, marketNegotiations },
       {
@@ -1908,7 +1910,7 @@ export default function MotorbikeManager() {
         findTeam: findTeamById, findRider: findRiderById,
       }
     );
-    marketTick.notifications.forEach((text) => notifQueue.push({ type: "market", category, text }));
+    marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
 
     // Renewals are effective the moment both sides agree — never
     // deferred like a signing. Group whatever just got confirmed this
@@ -2166,6 +2168,11 @@ export default function MotorbikeManager() {
   function confirmSubstitute(chosenRider) {
     if (!pendingSubstitution) return;
     if (!isFreeAgentEligibleForCategory(chosenRider, category)) return;
+    // Same rule as the eligibility filter on the selection screen — a
+    // rider who's currently sidelined can't be signed as anyone's
+    // substitute; the last line of defense here in case that screen's
+    // own filter is ever bypassed.
+    if (chosenRider.injury && chosenRider.injury.sidelined && chosenRider.injury.gpRemaining > 0) return;
     const cost = substituteHireCost(chosenRider, scale);
     if (cost > budget) return;
     const { riderId, fromTransition } = pendingSubstitution;
@@ -2225,10 +2232,10 @@ export default function MotorbikeManager() {
     const ctxCategory = ctxOverride.category ?? category;
 
     const archiveCategoriesData = {
-      [ctxCategory]: { teams: [ctxPlayerTeam, ...ctxRivalTeams], riderStandings, teamStandings: ctxTeamStandings },
+      [ctxCategory]: { teams: [ctxPlayerTeam, ...ctxRivalTeams], riderStandings, teamStandings: ctxTeamStandings, riderWins, riderPodiums },
     };
     Object.entries(ctxOtherCategories).forEach(([k, v]) => {
-      archiveCategoriesData[k] = { teams: v.teams, riderStandings: v.riderStandings, teamStandings: v.teamStandings };
+      archiveCategoriesData[k] = { teams: v.teams, riderStandings: v.riderStandings, teamStandings: v.teamStandings, riderWins: v.riderWins, riderPodiums: v.riderPodiums };
     });
     setSeasonArchive([...seasonArchive, buildSeasonArchiveEntry(seasonNumber, archiveCategoriesData, { category: ctxCategory, teamId: "player", teamName: teamDisplayName(ctxPlayerTeam) })]);
 
@@ -2480,10 +2487,28 @@ export default function MotorbikeManager() {
     // discarded the player's own team-prestige evolution every single
     // season (rivals never had this problem, since evolvedRivals was
     // already sourced from combinedPlayedCategory). ---
-    const rolledPlayerTeam = rolloverBike(playerAfterSponsorSeasonEnd);
-    evolvedRivals = evolvedRivals.map((t) => rolloverBike(aiResolvePrototypes(t)));
+    const rolledPlayerTeamBase = rolloverBike(playerAfterSponsorSeasonEnd);
+    // Bug fixed (feature, really): Investigación (kind: "research")
+    // and Factory/Staff upgrades that were still counting down purely
+    // because the season ran out of Grands Prix used to just sit there
+    // unfinished into the new season, in limbo, instead of completing
+    // — there are clearly enough real-world weeks between one season
+    // ending and the next starting for that work to actually finish.
+    // Desarrollo (kind: "dev") is deliberately excluded — see
+    // completeAllPendingResearchAndFacilities's own comment for why.
+    const { team: rolledPlayerTeam, arrivals: playerCaughtUpArrivals } = completeAllPendingResearchAndFacilities(rolledPlayerTeamBase);
+    if (playerCaughtUpArrivals.length) {
+      const labels = { factory: "Fábrica", staff: "Staff", research: "Investigación" };
+      pushNotifications(playerCaughtUpArrivals.map((a) => ({
+        type: "dev", category: ctxCategory,
+        text: a.kind === "research"
+          ? `La investigación en ${a.area} se completa durante la pretemporada — el prototipo ya está listo para probar.`
+          : `La mejora de ${labels[a.kind]} se completa durante la pretemporada — nuevo nivel: ${a.newLevel}.`,
+      })));
+    }
+    evolvedRivals = evolvedRivals.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t))).team);
     Object.keys(nextOther).forEach((key) => {
-      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => rolloverBike(aiResolvePrototypes(t))) };
+      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t))).team) };
     });
 
     // --- Season-boundary validation: guarantees every team — the
@@ -2699,7 +2724,7 @@ export default function MotorbikeManager() {
         <CareerOffersScreen offers={careerOffers} category={category} onAccept={acceptCareerOffer} onDecline={declineCareerOffers} />
       )}
       {phase === "market-summary" && marketSummary && (
-        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonPreseasonOrSubstitute(playerTeam)} />
+        <MarketSummaryScreen summary={marketSummary} onContinue={() => goToSeasonPreseasonOrSubstitute(playerTeam)} onOpenRiderProfileById={openRiderProfileById} />
       )}
       {phase === "preseason" && preseasonState && playerTeam && (
         <PreseasonScreen

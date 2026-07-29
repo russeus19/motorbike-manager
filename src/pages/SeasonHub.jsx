@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, MapPin, Save, Star, Wrench } from "lucide-react";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
+import { HallOfFamePanel } from "../components/HallOfFamePanel.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
 import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
@@ -400,6 +401,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             onOpenTeamProfile={onOpenTeamProfile}
           />
           <SeasonArchivePanel seasonArchive={seasonArchive} accent={accent} category={category} />
+          <HallOfFamePanel seasonArchive={seasonArchive} accent={accent} />
         </div>
       )}
 

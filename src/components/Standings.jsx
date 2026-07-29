@@ -5,8 +5,17 @@ import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
-export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
-  const [tab, setTab] = useState(category);
+export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile, tab: controlledTab, onTabChange }) {
+  // Optionally controlled from outside (see SeasonEnd.jsx, where the
+  // champion header and the awards panels need to react to the exact
+  // same category tab this panel already has, instead of duplicating
+  // a second, separate tab row elsewhere on the same screen). Falls
+  // back to its own internal state when no controlled value is passed
+  // in, so the other place this panel is used (SeasonHub's Info tab)
+  // keeps working exactly as before, fully self-contained.
+  const [internalTab, setInternalTab] = useState(category);
+  const tab = controlledTab ?? internalTab;
+  const setTab = onTabChange ?? setInternalTab;
   const [showAll, setShowAll] = useState(false);
   const [teamView, setTeamView] = useState("equipos");
 

@@ -1,6 +1,7 @@
 import { CATEGORY_ORDER } from "../data/categories.js";
 import { clamp, pick } from "./random.js";
-import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating } from "./riders.js";
+import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating, photoIdFor } from "./riders.js";
+import { bikeAvg } from "./bikeDevelopment.js";
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears } from "./marketAI.js";
@@ -619,6 +620,32 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
       if (destTeam && destTeam.riders.length < 2) {
         destTeam.riders.push(signedRider);
         placed = true;
+      } else if (destTeam && destTeam.riders.length >= 2) {
+        // Bug fixed: a genuinely CONFIRMED deal (both sides already
+        // agreed — the rider's profile has been showing "ha firmado
+        // por X" for a while) used to get silently stranded here
+        // whenever the destination team's own roster continuity hadn't
+        // been decided yet by this point in the season transition
+        // (resolveSeasonMarketAcrossCategories runs AFTER this). That
+        // team's own two riders, still just sitting there un-renewed
+        // and un-released, looked exactly like "no room" — so the
+        // confirmed signing silently vanished, while later fases
+        // re-homed the displaced rider onto some completely different
+        // team (or even a different category), with nothing on screen
+        // ever explaining why. A confirmed deal should never lose to a
+        // renewal decision that hasn't even happened yet: the WORST of
+        // the two current riders gets bumped to make room instead — the
+        // confirmed signing always goes through, exactly like the
+        // negotiation screen already promised.
+        const bumpIdx = destTeam.riders[0] && destTeam.riders[1]
+          ? (overallRating(destTeam.riders[0]) <= overallRating(destTeam.riders[1]) ? 0 : 1)
+          : 0;
+        const bumped = destTeam.riders.splice(bumpIdx, 1)[0];
+        destTeam.riders.push(signedRider);
+        placed = true;
+        strandedRiders.push(finalizeStrandedHistory({ ...bumped, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0, _fromCategoryKey: neg.categoryKey, _fromBikeAvg: bikeAvg(destTeam.bike) }, standingsByCategory, neg.categoryKey, neg.createdSeason));
+      }
+      if (placed) {
         // Only ever mutates AI-vs-AI budgets directly here — the
         // player's own compensation spend (as buyer) is deducted
         // separately at the season transition (App.jsx's
@@ -723,7 +750,7 @@ export function buildMarketSummaryByCategory(marketLog, marketNegotiations, stra
 
     (marketLog[ck] || []).forEach((e) => {
       const bucket = e.type === "debut" ? "fichaje" : e.type;
-      if (groups[bucket]) groups[bucket].push({ text: e.text, riderId: e.riderId });
+      if (groups[bucket]) groups[bucket].push({ text: e.text, riderId: e.riderId, personId: e.personId, riderName: e.riderName });
     });
 
     (marketNegotiations || []).filter((n) => n.categoryKey === ck).forEach((n) => {
@@ -744,7 +771,9 @@ export function buildMarketSummaryByCategory(marketLog, marketNegotiations, stra
         if (seenConfirmedRiderIds.has(n.riderId)) return;
         seenConfirmedRiderIds.add(n.riderId);
         groups.fichaje.push({
-          riderId: n.riderId,
+          riderId: n.riderPhotoId,
+          personId: n.riderId,
+          riderName: n.riderName,
           text: n.fromTeamName
             ? `${n.riderName} ficha por ${n.toTeamName} tras una negociación con ${n.fromTeamName}.`
             : `${n.riderName} firma por ${n.toTeamName}.`,
@@ -752,7 +781,9 @@ export function buildMarketSummaryByCategory(marketLog, marketNegotiations, stra
       } else if (n.status === "applied" && n.kind === "renewal") {
         const years = n.riderTerms?.years;
         groups.renovacion.push({
-          riderId: n.riderId,
+          riderId: n.riderPhotoId,
+          personId: n.riderId,
+          riderName: n.riderName,
           text: `${n.riderName} renueva con ${n.toTeamName}${years ? ` (${years} temporada${years === 1 ? "" : "s"} más)` : ""}.`,
         });
       }
@@ -776,6 +807,7 @@ export function createNegotiation({ kind, rider, categoryKey, fromTeam, toTeamId
     id: nextMarketId("neg"),
     kind,
     riderId: rider.id,
+    riderPhotoId: photoIdFor(rider),
     riderName: rider.name,
     categoryKey,
     fromTeamId: fromTeam?.id ?? null,
@@ -897,20 +929,20 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
         logAdd.push({ round, text: `${neg.fromTeamName} acepta la compensación por ${neg.riderName}.` });
         historyAdd.push({ round, actor: "team", type: "accept", teamOfferAmount });
         negotiationLog(`(${neg.id}) equipo acepta la compensación`);
-        if (involvesPlayer) notifications.push(`${neg.fromTeamName} ha aceptado vuestra oferta por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.fromTeamName} ha aceptado vuestra oferta por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       } else if (result.counterAmount) {
         teamOfferAmount = result.counterAmount;
         status = "team_countered";
         logAdd.push({ round, text: `${neg.fromTeamName} presenta una contraoferta.` });
         historyAdd.push({ round, actor: "team", type: "counter", teamOfferAmount: result.counterAmount });
         negotiationLog(`(${neg.id}) equipo contraoferta compensación: €${result.counterAmount}`);
-        if (involvesPlayer) notifications.push(`${neg.fromTeamName} presenta una contraoferta por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.fromTeamName} presenta una contraoferta por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       } else {
         status = "failed";
         logAdd.push({ round, text: `${neg.fromTeamName} rechaza la oferta.` });
         historyAdd.push({ round, actor: "team", type: "reject" });
         negotiationLog(`(${neg.id}) equipo rechaza la oferta`);
-        if (involvesPlayer) notifications.push(`${neg.fromTeamName} rechaza vuestra oferta por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.fromTeamName} rechaza vuestra oferta por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       }
     } else if (status === "team_countered" && neg.toTeamId !== "player") {
       // The missing transition: the AI is the one buying, and the
@@ -924,19 +956,19 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
         status = "pending_rider";
         logAdd.push({ round, text: `${neg.toTeamName} acepta la compensación pedida por ${neg.fromTeamName}.` });
         historyAdd.push({ round, actor: "buyer", type: "accept", teamOfferAmount });
-        if (involvesPlayer) notifications.push(`${neg.toTeamName} acepta vuestra contraoferta por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.toTeamName} acepta vuestra contraoferta por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       } else if (result.decision === "counter") {
         teamOfferAmount = result.newAmount;
         status = "pending_team";
         resolveAtRound = round + 1;
         logAdd.push({ round, text: `${neg.toTeamName} presenta una nueva oferta de compensación.` });
         historyAdd.push({ round, actor: "buyer", type: "offer", teamOfferAmount: result.newAmount });
-        if (involvesPlayer) notifications.push(`${neg.toTeamName} mejora su oferta por ${neg.riderName}: €${result.newAmount.toLocaleString()}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.toTeamName} mejora su oferta por ${neg.riderName}: €${result.newAmount.toLocaleString()}.`, categoryKey: neg.categoryKey });
       } else {
         status = "failed";
         logAdd.push({ round, text: `${neg.toTeamName} se retira de la negociación.` });
         historyAdd.push({ round, actor: "buyer", type: "withdraw" });
-        if (involvesPlayer) notifications.push(`${neg.toTeamName} se retira de la negociación por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.toTeamName} se retira de la negociación por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       }
     }
 
@@ -963,13 +995,13 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
         logAdd.push({ round, text: `${neg.riderName} pide mejores condiciones.` });
         historyAdd.push({ round, actor: "rider", type: "counter", riderSalary: result.counterTerms.salary, riderTerms: result.counterTerms });
         negotiationLog(`(${neg.id}) piloto pide mejores condiciones: €${result.counterTerms.salary}/año`);
-        if (involvesPlayer) notifications.push(`${neg.riderName} presenta una contraoferta salarial.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.riderName} presenta una contraoferta salarial.`, categoryKey: neg.categoryKey });
       } else {
         status = "failed";
         logAdd.push({ round, text: `${neg.riderName} rechaza la propuesta.` });
         historyAdd.push({ round, actor: "rider", type: "reject" });
         negotiationLog(`(${neg.id}) piloto rechaza la propuesta`);
-        if (involvesPlayer) notifications.push(`${neg.riderName} rechaza vuestra propuesta.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.riderName} rechaza vuestra propuesta.`, categoryKey: neg.categoryKey });
       }
     } else if (status === "rider_countered" && neg.toTeamId !== "player") {
       // The other missing transition: the AI is buying and the RIDER
@@ -994,12 +1026,12 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
         resolveAtRound = round + 1;
         logAdd.push({ round, text: `${neg.toTeamName} mejora su propuesta a ${neg.riderName}.` });
         historyAdd.push({ round, actor: "buyer", type: "offer", riderSalary: result.newTerms.salary, riderTerms: result.newTerms });
-        if (involvesPlayer) notifications.push(`${neg.toTeamName} mejora su oferta a ${neg.riderName}: €${result.newTerms.salary.toLocaleString()}/año.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.toTeamName} mejora su oferta a ${neg.riderName}: €${result.newTerms.salary.toLocaleString()}/año.`, categoryKey: neg.categoryKey });
       } else {
         status = "failed";
         logAdd.push({ round, text: `${neg.toTeamName} se retira de la negociación.` });
         historyAdd.push({ round, actor: "buyer", type: "withdraw" });
-        if (involvesPlayer) notifications.push(`${neg.toTeamName} se retira de la negociación por ${neg.riderName}.`);
+        if (involvesPlayer) notifications.push({ text: `${neg.toTeamName} se retira de la negociación por ${neg.riderName}.`, categoryKey: neg.categoryKey });
       }
     }
 
@@ -1026,7 +1058,7 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
 
     if (!isWinner) {
       negotiationLog(`(${neg.id}) piloto prefiere otra oferta (${winner.toTeamName}, puntuación ${winner.riderDecisionScore.toFixed(2)} vs ${neg.riderDecisionScore.toFixed(2)}) — negociación perdida`);
-      if (involvesPlayer) notifications.push(`${neg.riderName} ficha por ${winner.toTeamName} en vez de por vuestro equipo — había más de un equipo interesado.`);
+      if (involvesPlayer) notifications.push({ text: `${neg.riderName} ficha por ${winner.toTeamName} en vez de por vuestro equipo — había más de un equipo interesado.`, categoryKey: neg.categoryKey });
       return { ...neg, status: "failed", log: [...neg.log, { round, text: `${neg.riderName} elige otra oferta.` }] };
     }
 
@@ -1035,9 +1067,12 @@ export function resolvePendingNegotiations(negotiations, round, resolveCtx) {
       justConfirmedRenewals.push({ riderId: neg.riderId, riderName: neg.riderName, categoryKey: neg.categoryKey, teamId: neg.toTeamId, years: neg.riderTerms.years, salary: neg.riderTerms.salary });
     }
     const hadRivals = competitors.length > 1;
-    notifications.push(involvesPlayer
-      ? (neg.kind === "renewal" ? `${neg.riderName} renueva su contrato con ${neg.toTeamName}.` : `Acuerdo completo alcanzado: ${neg.riderName} firma por ${neg.toTeamName} para la próxima temporada${hadRivals ? ", superando el interés de otro equipo" : ""}.`)
-      : `${neg.riderName} firmará por ${neg.toTeamName} la próxima temporada.`);
+    notifications.push({
+      text: involvesPlayer
+        ? (neg.kind === "renewal" ? `${neg.riderName} renueva su contrato con ${neg.toTeamName}.` : `Acuerdo completo alcanzado: ${neg.riderName} firma por ${neg.toTeamName} para la próxima temporada${hadRivals ? ", superando el interés de otro equipo" : ""}.`)
+        : `${neg.riderName} firmará por ${neg.toTeamName} la próxima temporada.`,
+      categoryKey: neg.categoryKey,
+    });
     return { ...neg, status: finalStatus, log: [...neg.log, { round, text: `${neg.riderName} acepta el contrato.` }] };
   });
 
@@ -1188,7 +1223,7 @@ export function tickMarket({ marketRumors, marketNegotiations }, { playerTeam, r
 
   const incomingOffer = maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, firstPass.negotiations);
   let withIncoming = incomingOffer ? [...firstPass.negotiations, incomingOffer] : firstPass.negotiations;
-  if (incomingOffer) notifications.push(`${incomingOffer.toTeamName} presenta una oferta por ${incomingOffer.riderName}.`);
+  if (incomingOffer) notifications.push({ text: `${incomingOffer.toTeamName} presenta una oferta por ${incomingOffer.riderName}.`, categoryKey: incomingOffer.categoryKey });
 
   // AI-vs-AI dealing: every category, including the two the player isn't
   // currently playing in, using the exact same negotiation lifecycle.

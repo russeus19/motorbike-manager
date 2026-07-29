@@ -262,6 +262,21 @@ export function substituteHireCost(rider, scale) {
    who doesn't have one. Used wherever a notification records "this is the
    rider this news item is about" so the Notification Center's photo always
    matches the same file a screen showing the rider directly would use. */
+/** Bug fixed: a free agent's own injury never counted down at all —
+ * the normal per-race injury countdown only ever runs inside
+ * processTeamAfterRace, which only looks at riders who are actually on
+ * SOME team's roster (or in team.substitutes) that exact race weekend.
+ * Anyone sitting in the free-agent pool — released while hurt, or a
+ * substitute sent back after recovering their OWN separate injury —
+ * was invisible to that loop and could stay "injured" forever, no
+ * matter how many races went by, since nothing ever touched their
+ * gpRemaining. Called once per race weekend against the whole pool. */
+export function decrementFreeAgentInjury(rider) {
+  if (!rider.injury || !(rider.injury.gpRemaining > 0)) return rider;
+  const gpRemaining = rider.injury.gpRemaining - 1;
+  return { ...rider, injury: gpRemaining <= 0 ? null : { ...rider.injury, gpRemaining } };
+}
+
 export function photoIdFor(rider) {
   return rider?.photoId ?? rider?.id ?? null;
 }

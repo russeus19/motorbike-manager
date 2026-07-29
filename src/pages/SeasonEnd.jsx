@@ -5,30 +5,35 @@ import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { Panel } from "../components/UIPrimitives.jsx";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CATEGORY_DATA } from "../data/categories.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 import { COLORS } from "../data/colors.js";
 import { findInTeamRoster } from "../utils/raceSimulation.js";
 import { findSeasonAwards } from "../utils/teamExpectations.js";
 
 export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, goToMarket, seasonNumber, openProfile, findRiderInCategory, onOpenTeamProfile, isCareer }) {
-  const riderRows = Object.entries(riderStandings).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
   const allTeamNames = { player: teamDisplayName(playerTeam), ...Object.fromEntries(rivalTeams.map((t) => [t.id, teamDisplayName(t)])) };
-  const teamRows = Object.entries(teamStandings).map(([id, pts]) => ({ id, name: allTeamNames[id], points: pts })).sort((a, b) => b.points - a.points);
-  const champion = riderRows[0];
-  const champTeam = teamRows[0];
+  const myPosition = Object.entries(teamStandings).map(([id, pts]) => ({ id, points: pts })).sort((a, b) => b.points - a.points).findIndex((t) => t.id === "player") + 1;
   const accentGold = COLORS.gold;
-  const myPosition = teamRows.findIndex((t) => t.id === "player") + 1;
   const [awardsTab, setAwardsTab] = useState(category);
 
-  const championFull = findInTeamRoster(playerTeam, champion?.id) || rivalTeams.map((t) => findInTeamRoster(t, champion?.id)).find(Boolean);
-
-  // Each category has its own set of four awards — the tab picks which
-  // category's teams/standings feed the comparison, same data shape
-  // whether it's the one you're playing or one of the other two.
+  // Both the champion header up top and the four awards below now read
+  // off the SAME selected category (whichever tab is active) instead of
+  // the header being permanently stuck on the category you actually
+  // played, no matter which one the tabs further down were showing —
+  // switching tabs updates the whole screen consistently, not just half
+  // of it.
   const awardsCatData = awardsTab === category
     ? { teams: [playerTeam, ...rivalTeams], riderStandings, teamStandings }
     : { teams: otherCategories[awardsTab]?.teams || [], riderStandings: otherCategories[awardsTab]?.riderStandings || {}, teamStandings: otherCategories[awardsTab]?.teamStandings || {} };
+
+  const tabRiderRows = Object.entries(awardsCatData.riderStandings).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.points - a.points);
+  const tabTeamNames = awardsTab === category ? allTeamNames : Object.fromEntries((awardsCatData.teams || []).map((t) => [t.id, teamDisplayName(t)]));
+  const tabTeamRows = Object.entries(awardsCatData.teamStandings).map(([id, pts]) => ({ id, name: tabTeamNames[id], points: pts })).sort((a, b) => b.points - a.points);
+  const champion = tabRiderRows[0];
+  const champTeam = tabTeamRows[0];
+  const championFull = (awardsCatData.teams || []).map((t) => findInTeamRoster(t, champion?.id)).find(Boolean);
+
   const { riderRevelacion, riderDecepcion, teamRevelacion, teamDecepcion } = findSeasonAwards(awardsCatData);
 
   function findRider(id) {
@@ -60,15 +65,18 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
     <div className="max-w-3xl mx-auto px-6 py-10">
       <div className="text-center mb-8">
         <Crown size={32} style={{ color: accentGold }} className="mx-auto mb-3" />
-        <div className="text-xs uppercase tracking-[0.2em] mb-3" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Fin de temporada {seasonNumber}</div>
+        <div className="text-xs uppercase tracking-[0.2em] mb-3" style={{ color: COLORS.muted }}>{CATEGORY_DATA[awardsTab].label} · Fin de temporada {seasonNumber}</div>
         {championFull && (
           <div className="flex flex-col items-center gap-1.5 mb-3">
             <RiderPhoto rider={championFull} size={96} className="rounded-xl" />
-            <RiderNumber rider={championFull} size={48} className="-mt-1" categoryKey={category} />
+            <RiderNumber rider={championFull} size={48} className="-mt-1" categoryKey={awardsTab} />
           </div>
         )}
-        <h2 className="text-3xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{champion?.name} es campeón de {CATEGORY_DATA[category].label}</h2>
-        <p className="text-sm mt-1" style={{ color: COLORS.muted }}>{champTeam?.name} se lleva el título de constructores. Tu equipo, {teamDisplayName(playerTeam)}, terminó {myPosition}º.</p>
+        <h2 className="text-3xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{champion?.name} es campeón de {CATEGORY_DATA[awardsTab].label}</h2>
+        <p className="text-sm mt-1" style={{ color: COLORS.muted }}>
+          {champTeam?.name} se lleva el título de constructores.
+          {awardsTab === category && ` Tu equipo, ${teamDisplayName(playerTeam)}, terminó ${myPosition}º.`}
+        </p>
       </div>
 
       <div className="mb-6">
@@ -83,25 +91,12 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
           findRiderInCategory={findRiderInCategory}
           openProfile={openProfile}
           onOpenTeamProfile={onOpenTeamProfile}
+          tab={awardsTab}
+          onTabChange={setAwardsTab}
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setAwardsTab(ck)}
-            className="text-xs px-2 py-1 rounded font-semibold"
-            style={{
-              background: awardsTab === ck ? accentGold : COLORS.panel2,
-              color: awardsTab === ck ? "#12151A" : COLORS.muted,
-              border: `1px solid ${awardsTab === ck ? accentGold : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-4 mb-6">
+      <div className="grid sm:grid-cols-2 gap-4 mb-6 mt-6">
         <Panel title="Piloto revelación" icon={TrendingUp} accent="#3F9142">
           {riderRevelacion ? (
             <button onClick={() => openAwardRider(riderRevelacion)} className="w-full text-left hover:opacity-80">

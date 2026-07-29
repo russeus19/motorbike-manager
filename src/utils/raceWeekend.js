@@ -55,12 +55,67 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   // first and could starve the essentials of funds; it now always runs
   // last.
   let substitutes = { ...(afterAI.substitutes || {}) };
-  Object.entries(substitutes).forEach(([ownerId, sub]) => {
+  let budgetAfterSubs = afterAI.budget;
+  Object.entries({ ...substitutes }).forEach(([ownerId, subOriginal]) => {
     const subResult = teamResults.find((x) => x.seatOwnerId === ownerId);
-    if (subResult) substitutes[ownerId] = bumpCareerStats(sub, categoryKey, subResult.position, subResult.crashed, subResult.points);
+    let sub = subOriginal;
+    if (subResult) {
+      sub = bumpCareerStats(sub, categoryKey, subResult.position, subResult.crashed, subResult.points);
+      // A substitute can get hurt too — this used to go completely
+      // unrecorded (only their career stats were updated), so a
+      // substitute who crashed hard mid-stint kept "racing" every
+      // week with an injury nobody ever saw or treated.
+      if (subResult.injuryResult) {
+        const inj = subResult.injuryResult;
+        sub = { ...sub, injury: inj };
+        notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} (sustituto) sufre una caída y se diagnostica ${inj.name.toLowerCase()} (lesión ${inj.severityLabel}).` });
+      }
+    }
+    // Bug fixed: a substitute's own injury — whether they somehow came
+    // in hurt or got hurt WHILE substituting — used to never count
+    // down at all. The normal per-rider injury countdown a few lines
+    // below only ever looks at `team.riders`, and a substitute lives in
+    // this completely separate `substitutes` map instead, so their
+    // injury just sat there at the same gpRemaining forever, no matter
+    // how many races went by — exactly the "still hurt weeks later"
+    // symptom this closes off.
+    if (sub.injury && sub.injury.gpRemaining > 0) {
+      const gpRemaining = sub.injury.gpRemaining - 1;
+      if (gpRemaining <= 0) {
+        sub = { ...sub, injury: null };
+      } else {
+        sub = { ...sub, injury: { ...sub.injury, gpRemaining } };
+        if (sub.injury.sidelined) {
+          // The substitute themselves is now genuinely out — they go
+          // back to the free-agent pool (still injured, so nobody else
+          // can sign them either until they heal — same rule as a
+          // normal rider) and the seat needs a SECOND substitute,
+          // exactly like the original rider's own injury did.
+          const originalRider = afterAI.riders.find((r) => r.id === ownerId);
+          const originalName = originalRider?.name || "tu piloto";
+          poolRef.pool = [...poolRef.pool, sub];
+          delete substitutes[ownerId];
+          notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} se lesiona sustituyendo a ${originalName} en ${teamDisplayName(team)} y también causa baja — hace falta un nuevo sustituto.` });
+          if (ctx.isPlayer) {
+            ctx.setPendingSub({ teamId: team.id, riderId: ownerId, riderName: originalName });
+          } else {
+            const newSub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
+            if (newSub) {
+              poolRef.pool = poolRef.pool.filter((x) => x.id !== newSub.id);
+              substitutes[ownerId] = { ...newSub, isNewTeamThisSeason: true };
+              budgetAfterSubs = Math.max(0, budgetAfterSubs - substituteHireCost(newSub, ctx.scale));
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(newSub), text: `${newSub.name} releva a ${sub.name} como sustituto de ${originalName} en ${teamDisplayName(team)}.` });
+            } else {
+              notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(originalRider || sub), text: `${teamDisplayName(team)} no encuentra un nuevo sustituto elegible y correrá con un solo piloto.` });
+            }
+          }
+          return;
+        }
+      }
+    }
+    substitutes[ownerId] = sub;
   });
 
-  let budgetAfterSubs = afterAI.budget;
   const riders = afterAI.riders.map((r) => {
     const ownResult = teamResults.find((x) => x.id === r.id);
     let next = r;
