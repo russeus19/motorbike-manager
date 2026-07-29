@@ -10,11 +10,15 @@ const CIRCUIT_ASSET_BASE = "/assets/circuits";
  * decorative. Falls back to a plain dark gradient (no broken-image
  * icon, no missing asset ever visible to the player) if the file
  * hasn't been uploaded yet, exactly like TeamLogo/RiderPhoto already
- * do for their own images. Path: public/assets/circuits/<ladder>/<index>/bg.jpg
+ * do for their own images. Path: public/assets/circuits/<ladder>/<1-22 or 1-12>/bg.jpg
  * — <ladder> is "motogp" for the 22 main-calendar circuits, or
- * "superbikes" for the 12 shared by Superbikes/Supersport/Sportbike. */
+ * "superbikes" for the 12 shared by Superbikes/Supersport/Sportbike.
+ * Folders are 1-indexed (round 1, round 2...) to match how a person
+ * organizing files thinks about "round 12", not the 0-indexed `round`
+ * used internally everywhere else in the game — the +1 happens right
+ * here, nowhere else needs to know about it. */
 function CircuitBackgroundPhoto({ ladder, index }) {
-  const src = `${CIRCUIT_ASSET_BASE}/${ladder}/${index}/bg.jpg`;
+  const src = `${CIRCUIT_ASSET_BASE}/${ladder}/${index + 1}/bg.jpg`;
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
   if (failed) {
@@ -32,9 +36,9 @@ function CircuitBackgroundPhoto({ ladder, index }) {
  * flavor here. Renders nothing at all if the file is missing — an
  * absent decorative line is much less jarring than an absent photo,
  * so no gradient fallback is needed here. Path:
- * public/assets/circuits/<ladder>/<index>/outline.svg */
+ * public/assets/circuits/<ladder>/<1-22 or 1-12>/outline.svg */
 function CircuitOutlineOverlay({ ladder, index }) {
-  const src = `${CIRCUIT_ASSET_BASE}/${ladder}/${index}/outline.svg`;
+  const src = `${CIRCUIT_ASSET_BASE}/${ladder}/${index + 1}/outline.svg`;
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
   if (failed) return null;
