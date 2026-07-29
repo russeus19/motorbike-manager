@@ -2,18 +2,63 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, MapPin, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { Panel, StatBar } from "./UIPrimitives.jsx";
+import { CategoryTabSelector } from "./CategoryTabSelector.jsx";
 import { ATTRS } from "../data/attributes.js";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
-import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
+import { CIRCUITS, CIRCUIT_PROFILES, dateForRound } from "../data/circuits.js";
 import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
 import { SUPERBIKES_RACE_MAIN_ROUNDS } from "../data/superbikesCalendar.js";
 import { COLORS } from "../data/colors.js";
 import { findGpHistoryEntry } from "../utils/raceHistory.js";
 
-export function CircuitInfoPanel({ circuitProfile, accent }) {
+const SHORT_MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function formatShortDate(date) {
+  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]}`;
+}
+
+/** The detailed circuit breakdown (blurb, real specs, tags, tech/rider
+ * demand bars) — shared between CircuitInfoPanel's own expanded state
+ * (Info tab) and CircuitHero's "Ver información del circuito" toggle
+ * (Inicio tab), so both read from one single piece of markup instead
+ * of two copies that could drift apart. */
+export function CircuitDetailContent({ circuitProfile, accent }) {
+  const c = circuitProfile;
+  return (
+    <div>
+      <p className="text-sm mb-2">{c.blurb}</p>
+      <p className="text-xs mb-3" style={{ color: COLORS.muted }}>{c.style}</p>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3" style={{ color: COLORS.muted }}>
+        <div>Año: <span style={{ color: COLORS.text }}>{c.built}</span></div>
+        <div>Longitud: <span style={{ color: COLORS.text }}>{c.lengthKm} km</span></div>
+        <div>Curvas izq/der: <span style={{ color: COLORS.text }}>{c.cornersLeft} / {c.cornersRight}</span></div>
+        <div>Recta principal: <span style={{ color: COLORS.text }}>{c.mainStraightM} m</span></div>
+        <div>Sentido: <span style={{ color: COLORS.text }}>{c.direction}</span></div>
+        <div>Clima: <span style={{ color: COLORS.text }}>☀️ {c.dryPct}% · 🌧️ {c.wetPct}%</span></div>
+      </div>
+      <div className="flex flex-wrap gap-1 mb-3">
+        {c.tags.map((tag) => (
+          <span key={tag} className="text-xs px-2 py-0.5 rounded-full" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>{tag}</span>
+        ))}
+      </div>
+      <div className="text-xs uppercase tracking-wider mb-1" style={{ color: COLORS.muted }}>Exigencia técnica</div>
+      {BIKE_AREA_KEYS.map((k) => (
+        <StatBar key={k} label={BIKE_LABELS[k]} value={c.tech[k]} accent={accent} />
+      ))}
+      <div className="text-xs uppercase tracking-wider mb-1 mt-2" style={{ color: COLORS.muted }}>Exigencia al piloto</div>
+      {ATTRS.map((a) => (
+        <StatBar key={a.key} label={a.label} value={c.riderWeight[a.key]} accent={accent} />
+      ))}
+    </div>
+  );
+}
+
+export function CircuitInfoPanel({ circuitProfile, accent, round, seasonNumber, daysUntilNextRace }) {
   const [expanded, setExpanded] = useState(false);
   const c = circuitProfile;
+  const dateLabel = round != null && seasonNumber != null ? formatShortDate(dateForRound(round, seasonNumber)) : null;
+  const daysLabel = daysUntilNextRace != null
+    ? (daysUntilNextRace <= 0 ? "Esta semana" : daysUntilNextRace === 1 ? "Mañana" : `Quedan ${daysUntilNextRace} días`)
+    : null;
   return (
     <Panel
       title="Circuito"
@@ -22,47 +67,26 @@ export function CircuitInfoPanel({ circuitProfile, accent }) {
       onHeaderClick={() => setExpanded((v) => !v)}
       headerRight={
         <span className="flex items-center gap-2">
+          {dateLabel && <span className="text-xs font-semibold" style={{ color: accent }}>{dateLabel}</span>}
           <span className="text-xs flex items-center gap-1.5"><CountryFlag nat={c.flag} width={20} /> {c.country}</span>
           {expanded ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}
         </span>
       }
     >
+      {daysLabel && (
+        <div className="text-xs font-semibold mb-2" style={{ color: accent }}>{daysLabel}</div>
+      )}
       {!expanded && (
         <div className="flex items-center justify-between text-xs" style={{ color: COLORS.muted }}>
           <span>{c.lengthKm} km · {c.cornersLeft + c.cornersRight} curvas · {c.direction}</span>
           <span>☀️ {c.dryPct}% · 🌧️ {c.wetPct}%</span>
         </div>
       )}
-      {expanded && (
-        <div>
-          <p className="text-sm mb-2">{c.blurb}</p>
-          <p className="text-xs mb-3" style={{ color: COLORS.muted }}>{c.style}</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3" style={{ color: COLORS.muted }}>
-            <div>Año: <span style={{ color: COLORS.text }}>{c.built}</span></div>
-            <div>Longitud: <span style={{ color: COLORS.text }}>{c.lengthKm} km</span></div>
-            <div>Curvas izq/der: <span style={{ color: COLORS.text }}>{c.cornersLeft} / {c.cornersRight}</span></div>
-            <div>Recta principal: <span style={{ color: COLORS.text }}>{c.mainStraightM} m</span></div>
-            <div>Sentido: <span style={{ color: COLORS.text }}>{c.direction}</span></div>
-            <div>Clima: <span style={{ color: COLORS.text }}>☀️ {c.dryPct}% · 🌧️ {c.wetPct}%</span></div>
-          </div>
-          <div className="flex flex-wrap gap-1 mb-3">
-            {c.tags.map((tag) => (
-              <span key={tag} className="text-xs px-2 py-0.5 rounded-full" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.muted }}>{tag}</span>
-            ))}
-          </div>
-          <div className="text-xs uppercase tracking-wider mb-1" style={{ color: COLORS.muted }}>Exigencia técnica</div>
-          {BIKE_AREA_KEYS.map((k) => (
-            <StatBar key={k} label={BIKE_LABELS[k]} value={c.tech[k]} accent={accent} />
-          ))}
-          <div className="text-xs uppercase tracking-wider mb-1 mt-2" style={{ color: COLORS.muted }}>Exigencia al piloto</div>
-          {ATTRS.map((a) => (
-            <StatBar key={a.key} label={a.label} value={c.riderWeight[a.key]} accent={accent} />
-          ))}
-        </div>
-      )}
+      {expanded && <CircuitDetailContent circuitProfile={c} accent={accent} />}
     </Panel>
   );
 }
+
 
 
 export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category }) {
@@ -98,7 +122,10 @@ export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category
                   <CountryFlag nat={prof.flag} width={18} className="flex-shrink-0" />
                   <span className="truncate">{c.split("—")[0].replace("Gran Premio de ", "").replace("Ronda de ", "").trim()}</span>
                 </span>
-                <span className="text-xs font-semibold flex-shrink-0 ml-2" style={{ color: statusColor }}>{status}</span>
+                <span className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  <span className="text-xs font-mono" style={{ color: COLORS.muted }}>{formatShortDate(dateForRound(masterRound, seasonNumber))}</span>
+                  <span className="text-xs font-semibold" style={{ color: statusColor }}>{status}</span>
+                </span>
               </button>
             );
           })}
@@ -151,15 +178,7 @@ function GpResultModal({ round, circuitName, isPlayed, entry, category, accent, 
           )}
           {isPlayed && entry && (
             <>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {CATEGORY_ORDER.map((ck) => (
-                  <button key={ck} onClick={() => setTab(ck)}
-                    className="px-3 py-1.5 rounded text-xs font-semibold"
-                    style={{ background: tab === ck ? accent : COLORS.panel2, color: tab === ck ? "#12151A" : COLORS.muted }}>
-                    {CATEGORY_DATA[ck].label}
-                  </button>
-                ))}
-              </div>
+              <CategoryTabSelector value={tab} onChange={setTab} accent={accent} size="compact" />
               <div className="space-y-1">
                 {(entry.results[tab] || []).map((r) => (
                   <div key={r.riderId} className="flex items-center px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>

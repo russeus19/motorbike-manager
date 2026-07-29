@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Archive, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, TrendingUp, Trophy } from "lucide-react";
 import { Panel, RiderNameButton } from "./UIPrimitives.jsx";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CategoryTabSelector } from "./CategoryTabSelector.jsx";
+import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
@@ -62,20 +63,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setTab(ck)}
-            className="text-xs px-2 py-1 rounded font-semibold"
-            style={{
-              background: tab === ck ? accent : COLORS.panel2,
-              color: tab === ck ? "#12151A" : COLORS.muted,
-              border: `1px solid ${tab === ck ? accent : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
-          </button>
-        ))}
-      </div>
+      <CategoryTabSelector value={tab} onChange={setTab} accent={accent} playerCategory={category} />
 
       <Panel
         title="Clasificación de pilotos"
@@ -191,15 +179,7 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
 
   return (
     <Panel title="Clasificaciones" icon={Trophy} accent={accent}>
-      <div className="flex flex-wrap gap-2 mb-3">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setTab(ck)}
-            className="text-xs px-2 py-1 rounded font-semibold"
-            style={{ background: tab === ck ? accent : COLORS.panel2, color: tab === ck ? "#12151A" : COLORS.muted, border: `1px solid ${tab === ck ? accent : COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
-            {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
-          </button>
-        ))}
-      </div>
+      <CategoryTabSelector value={tab} onChange={setTab} accent={accent} playerCategory={category} size="compact" />
 
       <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Pilotos</div>
       <div style={{ maxHeight: 320, overflowY: "auto" }}>
@@ -308,20 +288,7 @@ export function SeasonArchivePanel({ seasonArchive, accent, category }) {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setCatTab(ck)}
-            className="text-xs px-2 py-1 rounded font-semibold"
-            style={{
-              background: catTab === ck ? accent : COLORS.panel2,
-              color: catTab === ck ? "#12151A" : COLORS.muted,
-              border: `1px solid ${catTab === ck ? accent : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            {CATEGORY_DATA[ck].label}
-          </button>
-        ))}
-      </div>
+      <CategoryTabSelector value={catTab} onChange={setCatTab} accent={accent} size="compact" />
 
       <div className="flex gap-1.5 mb-3">
         {[["pilotos", "Pilotos"], ["equipos", "Escuderías"], ["constructores", "Constructores"]].map(([key, label]) => (

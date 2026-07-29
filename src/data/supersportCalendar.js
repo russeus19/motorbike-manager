@@ -9,4 +9,5 @@ export {
   SUPERBIKES_RACE_MAIN_ROUNDS as SUPERSPORT_RACE_MAIN_ROUNDS,
   SUPERBIKES_ROUND_MAP as SUPERSPORT_ROUND_MAP,
   isSuperbikesRaceWeek as isSupersportRaceWeek,
+  dateForSuperbikesRound as dateForSupersportRound,
 } from "./superbikesCalendar.js";

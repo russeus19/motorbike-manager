@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronRight, Flag, PackageCheck, Zap } from "lucide-react";
 import { BIKE_LABELS } from "../data/bikeAreas.js";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CategoryTabSelector } from "../components/CategoryTabSelector.jsx";
 import { COLORS } from "../data/colors.js";
 import { TeamNumberBadge } from "../components/TeamNumberBadge.jsx";
 
@@ -70,21 +70,12 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
         </div>
       )}
 
-      <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
-        <div className="flex flex-wrap gap-2">
-          {!sprintMode && !sessionLabel && CATEGORY_ORDER.map((ck) => (
-            <button key={ck} onClick={() => setTab(ck)}
-              className="text-xs px-3 py-1.5 rounded font-semibold"
-              style={{
-                background: tab === ck ? accent : COLORS.panel2,
-                color: tab === ck ? "#12151A" : COLORS.muted,
-                border: `1px solid ${tab === ck ? accent : COLORS.rule}`,
-                fontFamily: "Rajdhani, sans-serif",
-              }}>
-              {CATEGORY_DATA[ck].label}{ck === category ? " (tuya)" : ""}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap justify-between items-start gap-3 mb-3">
+        {!sprintMode && !sessionLabel && (
+          <div className="flex-1 min-w-[200px]">
+            <CategoryTabSelector value={tab} onChange={setTab} accent={accent} playerCategory={category} size="compact" />
+          </div>
+        )}
         <button onClick={continueAfterResult}
           className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
           style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>

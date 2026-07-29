@@ -24,6 +24,58 @@ export const CIRCUITS = [
 ];
 
 /* ======================================================================
+   CIRCUIT_DATES — the real 2026 MotoGP race-day date (month is
+   1-indexed, day is the actual Sunday the GP is run) for each round,
+   same order as CIRCUITS above. Sourced from the official 2026
+   calendar (motogp.com) — genuinely the real rhythm of the season:
+   back-to-back doubles in March and again in August-September, a real
+   ~4-week summer gap between Germany (12 Jul) and Great Britain
+   (9 Aug), rather than an evenly-spaced "one round every 7 days"
+   calendar with no personality. Season 1 uses these dates as-is (real
+   2026); season N uses the same month/day rhythm shifted forward by
+   (N-1) years — see dateForRound below — so "temporada 3" plays out
+   with the identical spacing, just three years later on the calendar.
+   ====================================================================== */
+export const CIRCUIT_DATES = [
+  { month: 3, day: 1 },   // Tailandia
+  { month: 3, day: 22 },  // Brasil
+  { month: 3, day: 29 },  // Américas
+  { month: 4, day: 26 },  // España — Jerez
+  { month: 5, day: 10 },  // Francia — Le Mans
+  { month: 5, day: 17 },  // Cataluña
+  { month: 5, day: 31 },  // Italia — Mugello
+  { month: 6, day: 7 },   // Hungría
+  { month: 6, day: 21 },  // Chequia — Brno
+  { month: 6, day: 28 },  // Países Bajos — Assen
+  { month: 7, day: 12 },  // Alemania — Sachsenring
+  { month: 8, day: 9 },   // Gran Bretaña — Silverstone
+  { month: 8, day: 30 },  // Aragón
+  { month: 9, day: 13 },  // San Marino — Misano
+  { month: 9, day: 20 },  // Austria
+  { month: 10, day: 4 },  // Japón — Motegi
+  { month: 10, day: 11 }, // Indonesia — Mandalika
+  { month: 10, day: 25 }, // Australia — Phillip Island
+  { month: 11, day: 1 },  // Malasia — Sepang
+  { month: 11, day: 8 },  // Qatar
+  { month: 11, day: 22 }, // Portugal
+  { month: 11, day: 29 }, // Comunitat Valenciana
+];
+
+const SEASON_1_YEAR = 2026;
+
+/** The real calendar date (as a JS Date, local midnight) a given round
+ * falls on, for a given in-game season number. Season 1 = the real
+ * 2026 dates above; season N repeats the identical month/day rhythm
+ * shifted (N-1) years forward — so a career's 3rd season plays out
+ * with exactly the same rest-week pattern as the 1st, just in 2028. */
+export function dateForRound(round, seasonNumber = 1) {
+  const d = CIRCUIT_DATES[round] || CIRCUIT_DATES[CIRCUIT_DATES.length - 1];
+  const year = SEASON_1_YEAR + (seasonNumber - 1);
+  return new Date(year, d.month - 1, d.day);
+}
+
+
+/* ======================================================================
    CIRCUIT PROFILES — one entry per round, same order as CIRCUITS above.
    Weather odds are grounded in the real climate of each country during
    the month MotoGP actually races there in 2026 (not random). Technical

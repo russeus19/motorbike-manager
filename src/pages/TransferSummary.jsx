@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowDown, ArrowLeftRight, ArrowUp, ChevronRight, DoorOpen, Flag, PenLine, RefreshCw } from "lucide-react";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CategoryTabSelector } from "../components/CategoryTabSelector.jsx";
 import { COLORS } from "../data/colors.js";
 import { MARKET_LOG_ORDER, MARKET_LOG_TITLES } from "../data/marketLogMeta.js";
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
@@ -21,20 +21,8 @@ export function MarketSummaryScreen({ summary, onContinue, onOpenRiderProfileByI
       </div>
       <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: "Rajdhani, sans-serif" }}>Así queda la parrilla</h2>
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        {CATEGORY_ORDER.map((ck) => (
-          <button key={ck} onClick={() => setTab(ck)}
-            className="text-xs px-3 py-1.5 rounded-full font-semibold transition-transform active:scale-95"
-            style={{
-              background: tab === ck ? COLORS.gold : COLORS.panel2,
-              color: tab === ck ? "#12151A" : COLORS.muted,
-              border: `1px solid ${tab === ck ? COLORS.gold : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            {CATEGORY_DATA[ck].label} ({totalForTab(summary[ck] || {})})
-          </button>
-        ))}
-      </div>
+      <CategoryTabSelector value={tab} onChange={setTab} accent={COLORS.gold}
+        renderExtra={(ck) => `(${totalForTab(summary[ck] || {})})`} />
 
       {isEmpty && (
         <p className="text-sm mb-6" style={{ color: COLORS.muted }}>No hubo movimientos de mercado reseñables en esta categoría.</p>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, MapPin, Save, Star, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, Save, Star, Wrench } from "lucide-react";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
 import { HallOfFamePanel } from "../components/HallOfFamePanel.jsx";
@@ -17,11 +17,12 @@ import { DetailedStandingsPanel, SeasonArchivePanel, StandingsPanel } from "../c
 import { RiderPhoto } from "../components/RiderPhoto.jsx";
 import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
+import { CircuitHero } from "../components/CircuitHero.jsx";
 import { AttrGrid, CheckerStrip, OverallBadge, Panel, PriorityAlertBanner, RiderNameButton } from "../components/UIPrimitives.jsx";
 import { WarehousePanel } from "../components/WarehousePanel.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
-import { CIRCUITS, CIRCUIT_PROFILES } from "../data/circuits.js";
+import { CIRCUITS, CIRCUIT_PROFILES, dateForRound } from "../data/circuits.js";
 import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
 import { SUPERBIKES_RACE_MAIN_ROUNDS, SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "../data/superbikesCalendar.js";
 import { COLORS } from "../data/colors.js";
@@ -42,6 +43,20 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   // circuit has nothing to do with their own calendar.
   const nextSuperbikesMainRound = isRestWeek ? SUPERBIKES_RACE_MAIN_ROUNDS.find((r) => r > round) : null;
   const superbikesRoundForDisplay = isRestWeek ? nextSuperbikesMainRound : round;
+  // "Today", for a turn-based game with no real-world clock, is simply
+  // the date of the last round THIS category actually raced — for the
+  // main ladder that's always round-1 (every one of its 22 rounds is a
+  // real GP, no gaps of its own); for Superbikes/Supersport/Sportbike
+  // it's the largest of their own shared rounds still behind the
+  // current one, since they skip weeks the main ladder doesn't. Season
+  // opener (nothing raced yet) has no such reference, so the countdown
+  // is simply omitted rather than measuring against a made-up date.
+  const lastRaceMainRound = isSbkCalendarCategory
+    ? [...SUPERBIKES_RACE_MAIN_ROUNDS].reverse().find((r) => r < round) ?? null
+    : (round > 0 ? round - 1 : null);
+  const daysUntilNextRace = lastRaceMainRound != null && superbikesRoundForDisplay != null
+    ? Math.round((dateForRound(superbikesRoundForDisplay, seasonNumber) - dateForRound(lastRaceMainRound, seasonNumber)) / (1000 * 60 * 60 * 24))
+    : null;
   const circuit = isSbkCalendarCategory
     ? (superbikesRoundForDisplay != null ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay]] : null)
     : CIRCUITS[round];
@@ -106,9 +121,9 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       <div className={compact ? "text-base font-mono" : "text-2xl font-mono"} style={{ color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
     </div>
   );
-  const renderSimularButton = () => (
+  const renderSimularButton = (fullWidth) => (
     <button onClick={onStartQualifying} disabled={!canRace}
-      className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
+      className={`py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0 ${fullWidth ? "w-full" : ""}`}
       style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
       <Flag size={18} /> {isRestWeek ? "Semana sin GP — Continuar" : "Simular GP"}
     </button>
@@ -118,45 +133,50 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
     <div className="max-w-5xl mx-auto px-6 py-8" style={{ paddingBottom: 96 }}>
       <CheckerStrip accent={accent} solid />
 
-      <div className="flex flex-wrap justify-between items-end gap-3 py-4">
-        <div className="flex items-center gap-3">
-          {seasonTab === "inicio" && <TeamLogo team={playerTeam} size={48} className="rounded-lg" />}
-          <div>
-            <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{teamDisplayName(playerTeam)}</span></div>
-          </div>
-        </div>
-        {/* Bell + Presupuesto: desktop/tablet only here, same row as the identity block. On mobile these move into the compact row below the circuit name instead. */}
-        {seasonTab === "inicio" && (
-          <div className="hidden sm:flex items-start gap-3">
+      {seasonTab === "inicio" ? (
+        <>
+          <div className="flex items-center justify-between py-4">
+            <div style={{ width: 40 }} />
+            <TeamLogo team={playerTeam} size={48} className="rounded-lg" />
             {renderBell()}
+          </div>
+          <div className="flex items-end justify-between mb-4">
+            <div>
+              <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
+              <div className="text-lg font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
+            </div>
             {renderBudget(false)}
           </div>
-        )}
-      </div>
 
-      {seasonTab === "inicio" && (
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-2 sm:mb-4">
-          <h2 className="font-bold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif", fontSize: "1.4rem" }}>
-            <MapPin size={17} style={{ color: accent }} /> {circuit}
-          </h2>
-          {/* Simular GP: desktop/tablet only here, inline with the circuit name. On mobile it moves into the compact row below instead. */}
-          <div className="hidden sm:block">{renderSimularButton()}</div>
+          <div className="mb-4">{renderSimularButton(true)}</div>
+
+          {!canRace && (
+            <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
+              No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.
+            </p>
+          )}
+
+          {circuit && (
+            <CircuitHero
+              gpName={circuit.split("—")[0].trim()}
+              circuitName={(circuit.split("—")[1] || "").trim()}
+              circuitProfile={circuitProfile}
+              ladder={isSbkCalendarCategory ? "superbikes" : "motogp"}
+              assetIndex={isSbkCalendarCategory ? SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay] : round}
+              accent={accent}
+              laps={circuitProfile?.records?.[category]?.laps}
+              daysLabel={daysUntilNextRace != null ? (daysUntilNextRace <= 0 ? "Esta semana" : daysUntilNextRace === 1 ? "Mañana" : `Quedan ${daysUntilNextRace} días`) : null}
+            />
+          )}
+        </>
+      ) : (
+        <div className="flex flex-wrap justify-between items-end gap-3 py-4">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length} · <span style={{ color: accent }}>{teamDisplayName(playerTeam)}</span></div>
+            </div>
+          </div>
         </div>
-      )}
-
-      {/* Mobile-only compact row: Notificaciones (izquierda) · Presupuesto (centro) · Simular GP (derecha) — same elements as above, just reused in a different layout for small screens. */}
-      {seasonTab === "inicio" && (
-        <div className="flex sm:hidden items-center justify-between gap-2 mb-4">
-          {renderBell()}
-          {renderBudget(true)}
-          {renderSimularButton()}
-        </div>
-      )}
-
-      {seasonTab === "inicio" && !canRace && (
-        <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
-          No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.
-        </p>
       )}
 
       {seasonTab === "inicio" && (
@@ -168,10 +188,6 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
               ))}
             </div>
           )}
-
-          <div className="mb-4">
-            <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} />
-          </div>
 
           <div className="mb-4">
             <Panel
@@ -384,7 +400,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
       {seasonTab === "info" && (
         <div className="space-y-4">
-          <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} />
+          <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} round={superbikesRoundForDisplay} seasonNumber={seasonNumber} daysUntilNextRace={daysUntilNextRace} />
           <CalendarPanel round={round} accent={accent} gpHistory={gpHistory} seasonNumber={seasonNumber} category={category} />
           <DetailedStandingsPanel
             category={category}
