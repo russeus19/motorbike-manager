@@ -230,7 +230,21 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   // renewed them, the same way a real MotoGP call-up overrides a Moto2
   // rider's plan to stay. Whatever seat they leave behind is a genuine
   // new vacancy, picked up naturally by Fase 3 below.
-  const PROMOTION_PAIRS = [{ higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" }, { higher: "superbikes", lower: "supersport" }, { higher: "supersport", lower: "sportbike" }];
+  // WorldWCR's own promotion path is deliberately two entries, not one:
+  // placed BEFORE the Sportbike pair (forEach runs in array order), so
+  // an exceptional WorldWCR rider gets first crack at a direct
+  // Supersport call-up — a real precedent exists for exactly this
+  // (Ana Carrasco, WorldWCR's inaugural champion, later raced in
+  // Supersport) — before anyone left over falls through to the normal,
+  // far more common step up to Sportbike right after. Whichever pass
+  // signs a rider first marks them isNewTeamThisSeason, which the
+  // other pass's own candidate filter already excludes, so nobody can
+  // double-promote in the same transition.
+  const PROMOTION_PAIRS = [
+    { higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" },
+    { higher: "superbikes", lower: "supersport" }, { higher: "supersport", lower: "sportbike" },
+    { higher: "supersport", lower: "worldwcr" }, { higher: "sportbike", lower: "worldwcr" },
+  ];
   PROMOTION_PAIRS.forEach(({ higher, lower }) => {
     if (!teamsByCategory[higher] || !teamsByCategory[lower]) return;
     const lowerStandings = categoriesData[lower]?.riderStandings || {};

@@ -281,7 +281,7 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // its market in general) nearly frozen: its own best riders kept
   // rejecting offers a rider in their exact position should almost
   // always accept.
-  const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5 };
+  const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5, worldwcr: 0.2 };
   const catDelta = (catRank[categoryKey] ?? 2) - (catRank[fromCategoryKey] ?? 2);
   if (catDelta > 0) score += 0.22;
   else if (catDelta < 0) {
