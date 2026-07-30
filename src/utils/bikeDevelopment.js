@@ -683,9 +683,19 @@ export function riderPrototypeOpinion(rider, prototype) {
    -3 to +4 per area, with bigger jumps only when the Base Tecnológica has
    pulled far enough ahead to justify it (i.e. an extraordinary season of
    research). */
-export function rolloverBike(team) {
+export function rolloverBike(team, categoryKey) {
   const { techBase, factory, staff } = ensureRD(team);
   const researchInvested = team.researchSpendThisSeason || 0;
+  // WorldWCR is a genuine single-make series (identical Yamaha R7 for
+  // everyone) — every team starts at exactly the same bike average by
+  // design (see data/teamsWorldWCR.js), and development needs to stay
+  // that way in spirit: a small, real edge for good management is fine,
+  // a MotoGP-sized 20-30 point gap opening up between the best- and
+  // worst-run team over a few seasons is not, since the whole point of
+  // the category is that the rider decides races, not the machinery.
+  // Dampening the season's delta (not the base bike values themselves)
+  // to 20% of normal keeps that same spirit intact indefinitely.
+  const devScale = categoryKey === "worldwcr" ? 0.2 : 1;
   const newBike = {};
   BIKE_AREA_KEYS.forEach((k) => {
     const factoryBonus = Math.round(factory.level * 0.12);
@@ -694,7 +704,7 @@ export function rolloverBike(team) {
     const target = clamp(techBase[k] + factoryBonus + staffBonus + noise, 1, 99);
     const rawDelta = target - team.bike[k];
     const maxGain = rawDelta > 4 ? Math.min(rawDelta, 9) : 4;
-    const delta = clamp(rawDelta, -3, maxGain);
+    const delta = clamp(rawDelta, -3, maxGain) * devScale;
 
     // The rest of the grid keeps developing whether you invest or not.
     // A season with little or no research spend means genuinely falling
@@ -704,7 +714,7 @@ export function rolloverBike(team) {
     // worth a real improvement on top of the normal drift, while zero
     // investment costs a real decline on top of it.
     const investmentRatio = clamp(researchInvested / (AREA_BASE[k].money * 3), 0, 1);
-    const investmentEffect = Math.round(investmentRatio * 9) - 5;
+    const investmentEffect = (Math.round(investmentRatio * 9) - 5) * devScale;
 
     newBike[k] = clamp(team.bike[k] + delta + investmentEffect, 1, 99);
   });

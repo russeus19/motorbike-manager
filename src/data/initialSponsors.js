@@ -135,4 +135,11 @@ export const INITIAL_SPONSORS_BY_CATEGORY = {
     "PATA AG Motorsport Italia": { main: "Pata", secondary: null },
     "Miguel Oliveira Team": { main: null, secondary: null },
   },
+  // WorldWCR — la mayoría de equipos arranca sin patrocinador propio
+  // confirmado (categoría pequeña, presupuestos modestos); solo estos
+  // dos ya llevan el nombre del patrocinador en su propio nombre real.
+  worldwcr: {
+    "Monster Energy Crescent Yamaha": { main: "Monster Energy", secondary: null },
+    "Pata AG Motorsport Italia": { main: "Pata AG", secondary: null },
+  },
 };

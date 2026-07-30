@@ -7,7 +7,7 @@ import { TeamNumberBadge } from "../components/TeamNumberBadge.jsx";
 export function QualifyingScreen({ pendingQualifying, accent, category, onContinue }) {
   const { circuitName, isWet, resultByCategory } = pendingQualifying;
   const [tab, setTab] = useState(category);
-  const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike";
+  const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike" || category === "worldwcr";
   const continueLabel = category === "motogp" ? "Continuar al Sprint" : isSbkCalendarCategory ? "Continuar a la Race 1" : "Continuar a la carrera";
 
   useEffect(() => {

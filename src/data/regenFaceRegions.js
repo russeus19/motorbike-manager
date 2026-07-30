@@ -54,6 +54,14 @@ export const REGEN_FACE_REGION_BY_NAT = {
 // more get added later, so every region draws from the full set.
 export const REGEN_FACES_PER_REGION = 20;
 
+// Same idea, but for the SEPARATE female regen face folders under
+// public/assets/riders/regen/female/<region>/ — a distinct path from
+// the male one above (see getRegenFacePath in utils/riderGeneration.js),
+// since a rookie's photo folder now depends on both nationality AND
+// gender. Starts at the same count as the male pools; adjust here if
+// you end up uploading a different number of female photos per region.
+export const REGEN_FEMALE_FACES_PER_REGION = 20;
+
 export function getRegenFaceRegion(nat) {
   return REGEN_FACE_REGION_BY_NAT[nat] || "europa_occidental";
 }

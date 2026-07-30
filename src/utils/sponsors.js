@@ -56,6 +56,7 @@ const CATEGORY_SPONSOR_TIER_CEILING = {
   moto2: 3, moto3: 3, // Internacional — Red Bull's own presence in both is handled separately as a `permanent` sponsor, so it no longer needs to hold the whole category's general ceiling up at Élite
   supersport: 3, // Internacional
   sportbike: 1,  // Regional
+  worldwcr: 0,   // Local — campeonato aún más pequeño y reciente que Sportbike
 };
 function categoryTierCeiling(categoryKey) {
   return CATEGORY_SPONSOR_TIER_CEILING[categoryKey] ?? SPONSOR_TIERS.length - 1;
@@ -66,7 +67,7 @@ function categoryTierCeiling(categoryKey) {
 // now it means "Local" for everyone unless this says otherwise). Only
 // Sportbike's own floor is actually "Local"; everything else keeps
 // bottoming out at Regional exactly like before this tier was added.
-const CATEGORY_SPONSOR_TIER_FLOOR = { sportbike: 0 }; // Local
+const CATEGORY_SPONSOR_TIER_FLOOR = { sportbike: 0, worldwcr: 0 }; // Local
 function categoryTierFloor(categoryKey) {
   return CATEGORY_SPONSOR_TIER_FLOOR[categoryKey] ?? 1; // Regional, the pre-existing default for everyone
 }

@@ -7,7 +7,7 @@ import { COLORS } from "../data/colors.js";
 // picks it up automatically, no per-screen changes needed.
 export const CATEGORY_LADDERS = {
   motogp: { label: "MotoGP", categories: ["motogp", "moto2", "moto3"] },
-  worldsbk: { label: "WorldSBK", categories: ["superbikes", "supersport", "sportbike"] },
+  worldsbk: { label: "WorldSBK", categories: ["superbikes", "supersport", "sportbike", "worldwcr"] },
 };
 
 function ladderOf(categoryKey) {

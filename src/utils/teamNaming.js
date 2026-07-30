@@ -47,12 +47,28 @@ export function teamDisplayName(team) {
  * data gets corrected. Shared by App.jsx's own save-load repair pass
  * and by anything else (like the save-slot picker) that needs to
  * display a team's name from raw, unrepaired save data. */
-export function staticTeamDataFor(categoryData, categoryKey, teamId) {
+export function staticTeamDataFor(categoryData, categoryKey, teamId, fallbackLogoId) {
   const teams = categoryData?.[categoryKey]?.teams || [];
   const idxMatch = /-team-(\d+)$/.exec(teamId || "");
   if (idxMatch) {
     const idx = parseInt(idxMatch[1], 10);
     if (teams[idx]) return teams[idx];
+  }
+  // Bug fixed: the player's own team always has id "player" (see
+  // App.jsx's chooseTeam/acceptCareerOffer, which deliberately swap the
+  // id on the way in) — never the "<category>-team-<n>" format every
+  // OTHER team keeps, so the lookup above can never find it. Every load
+  // silently fell through to `nameTemplate: null`, permanently losing
+  // the player's own dynamic-sponsor naming the very first time the
+  // game was ever saved and reloaded — invisible for however long the
+  // sponsor happened to still match the frozen base name, and only
+  // showing up as "stuck on the old name" the first time it actually
+  // changed. `logoId` is set once at instantiateTeams and never
+  // touched again for any team, including the player's own, so it's a
+  // reliable enough fallback identifier here.
+  if (fallbackLogoId) {
+    const byLogo = teams.find((t) => t.logoId === fallbackLogoId);
+    if (byLogo) return byLogo;
   }
   return null;
 }
@@ -65,6 +81,6 @@ export function staticTeamDataFor(categoryData, categoryKey, teamId) {
 export function teamDisplayNameFromSave(categoryData, categoryKey, team) {
   if (!team) return "—";
   if (team.nameTemplate) return teamDisplayName(team);
-  const staticData = staticTeamDataFor(categoryData, categoryKey, team.id);
+  const staticData = staticTeamDataFor(categoryData, categoryKey, team.id, team.logoId);
   return teamDisplayName({ ...team, nameTemplate: staticData?.nameTemplate ?? null });
 }

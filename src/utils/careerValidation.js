@@ -69,7 +69,7 @@ export function validateGlobalRiderIntegrity({ playerTeam, rivalTeams, otherCate
  * those fixes get pulled back into a valid one the moment a new season
  * starts, instead of staying stuck forever.
  */
-export function validateAndRepairTeam(team, scale, { padRosterTo2 = true } = {}) {
+export function validateAndRepairTeam(team, scale, { padRosterTo2 = true, categoryKey = null } = {}) {
   const repaired = { ...team };
   const issues = [];
 
@@ -89,7 +89,12 @@ export function validateAndRepairTeam(team, scale, { padRosterTo2 = true } = {})
     return true;
   });
   while (padRosterTo2 && riders.length < 2) {
-    riders.push(makeRookie(scale ?? 1));
+    // Bug fixed: this emergency-fill rookie always defaulted to male,
+    // even for WorldWCR — the one category in the game that requires
+    // every rider to be female. Harmless everywhere else, but a real
+    // problem here: a team ending up short a rider (a load-time repair,
+    // a data glitch) would silently get a man handed a WorldWCR seat.
+    riders.push(makeRookie(scale ?? 1, categoryKey, categoryKey === "worldwcr" ? "F" : "M"));
     issues.push("plaza vacía cubierta con un piloto de emergencia");
   }
   if (riders.length > 2) {
@@ -134,10 +139,10 @@ export function validateAndRepairTeam(team, scale, { padRosterTo2 = true } = {})
 /** Runs validateAndRepairTeam across a whole category's teams. Returns the
  * repaired team list plus a flat list of {team, issues} for anything that
  * needed fixing (useful for a debug notification later; safe to ignore). */
-export function validateAndRepairTeams(teams, scale) {
+export function validateAndRepairTeams(teams, scale, categoryKey) {
   const allIssues = [];
   const repaired = (teams || []).map((t) => {
-    const { team, issues } = validateAndRepairTeam(t, scale);
+    const { team, issues } = validateAndRepairTeam(t, scale, { categoryKey });
     if (issues.length) allIssues.push({ team: t.name, issues });
     return team;
   });

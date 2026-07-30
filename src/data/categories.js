@@ -4,6 +4,7 @@ import { MOTO3_TEAMS_DATA } from "./teamsMoto3.js";
 import { SUPERBIKES_TEAMS_DATA } from "./teamsSuperbikes.js";
 import { SUPERSPORT_TEAMS_DATA } from "./teamsSupersport.js";
 import { SPORTBIKE_TEAMS_DATA } from "./teamsSportbike.js";
+import { WORLDWCR_TEAMS_DATA } from "./teamsWorldWCR.js";
 
 export const CATEGORY_DATA = {
   motogp: { key: "motogp", label: "MotoGP", lower: "moto2", scale: 1, teams: MOTOGP_TEAMS_DATA },
@@ -18,5 +19,12 @@ export const CATEGORY_DATA = {
   // "categoría de calendario SBK" en todos los sitios que ya
   // distinguían superbikes/supersport de MotoGP/Moto2/Moto3.
   sportbike: { key: "sportbike", label: "WorldSPB", lower: null, scale: 0.25, teams: SPORTBIKE_TEAMS_DATA },
+  // WorldWCR — campeonato monomarca exclusivamente femenino (Yamaha R7
+  // única para todas), sin categoría "lower" que alimente pilotos hacia
+  // arriba. Comparte fin de semana con Superbikes/Supersport/Sportbike,
+  // pero solo en 6 de sus 12 rondas — ver data/wcrCalendar.js, que
+  // mapea sobre el propio espacio de rondas de Superbikes, no
+  // directamente sobre las 22 del calendario principal.
+  worldwcr: { key: "worldwcr", label: "WorldWCR", lower: null, scale: 0.15, teams: WORLDWCR_TEAMS_DATA },
 };
-export const CATEGORY_ORDER = ["motogp", "moto2", "moto3", "superbikes", "supersport", "sportbike"];
+export const CATEGORY_ORDER = ["motogp", "moto2", "moto3", "superbikes", "supersport", "sportbike", "worldwcr"];

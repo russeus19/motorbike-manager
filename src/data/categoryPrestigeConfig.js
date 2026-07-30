@@ -15,6 +15,7 @@ export const CATEGORY_PRESTIGE_CONFIG = {
   supersport: { min: 50, max: 110 },
   moto3: { min: 40, max: 90 },
   sportbike: { min: 20, max: 70 },
+  worldwcr: { min: 15, max: 60 },
 };
 
 // Anything not explicitly configured above (a future feeder category
@@ -43,6 +44,7 @@ export const COMPETITION_PRESTIGE = {
   supersport: 130,
   moto3: 140,
   sportbike: 100,
+  worldwcr: 80,
 };
 
 export function competitionPrestige(categoryKey) {

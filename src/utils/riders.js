@@ -39,6 +39,15 @@ export function makeAffinity() {
    its real newcomer age cap closely enough without modeling the
    real-world "28 if already experienced" exception separately. */
 export function isFreeAgentEligibleForCategory(rider, categoryKey) {
+  // WorldWCR is the only competition in the game with a gender
+  // requirement — every rider in the game carries a `gender` field
+  // (defaulting to "M" for the huge majority never explicitly set),
+  // but this is the one and only place that field gates a signing.
+  // No age cap here either: real WorldWCR grids include riders into
+  // their late 20s (María Herrera, the reigning champion, is 27), so
+  // this behaves like the age-unrestricted top tier below, not like
+  // Moto3's youth cutoff.
+  if (categoryKey === "worldwcr") return (rider.gender || "M") === "F";
   if (categoryKey === "motogp" || categoryKey === "superbikes" || categoryKey === "supersport") return true;
   if (categoryKey === "moto2") return rider.age <= 30;
   return rider.age <= 25;

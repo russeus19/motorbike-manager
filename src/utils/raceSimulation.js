@@ -226,9 +226,16 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
   const results = entries.map((r) => {
     const wetPenaltyMult = isWet ? 1.5 + (60 - r.adaptabilidad) / 100 : 1;
     const leveInjuryPenalty = (r.injury && !r.injury.sidelined && r.injury.gpRemaining > 0) ? 6 : 0;
+    // Tuned up ×1.6 across the board (both the raw formula and its
+    // floor, so the relative gap between a careful and a reckless
+    // rider stays exactly the same, only the whole scale moves) — a
+    // real 22-24 rider grid usually sees 3-6 DNFs per race (roughly
+    // 15-25% of the field), and the untuned numbers here (≈3% for a
+    // top rider, ≈7-8% for a middling one in the dry) landed well
+    // under that across a full season.
     const dnfChance = clamp(
-      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * dnfScale,
-      0.02 * dnfScale, 0.45
+      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * dnfScale * 1.6,
+      0.02 * dnfScale * 1.6, 0.45
     );
     const crashed = Math.random() < dnfChance;
     const skill = (isWet ? wetRiderSkill(r, circuit, isSprint) : riderSkill(r, circuit, isSprint)) * moraleSkillMultiplier(r);

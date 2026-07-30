@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { LogOut, Save } from "lucide-react";
 import { POINTS, SPRINT_POINTS } from "./data/pointsSystem.js";
+import { ensureIdCounterAbovePersistedIds } from "./utils/idGenerator.js";
 import { BIKE_LABELS } from "./data/bikeAreas.js";
 import { useGoogleFonts } from "./hooks/useGoogleFonts.js";
 import { NotificationCenterModal } from "./components/NotificationCenter.jsx";
@@ -14,19 +15,43 @@ import { competitionPrestige } from "./data/categoryPrestigeConfig.js";
 import { SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "./data/superbikesCalendar.js";
 import { isSupersportRaceWeek } from "./data/supersportCalendar.js";
 import { isSportbikeRaceWeek } from "./data/sportbikeCalendar.js";
+import { isWorldWcrRaceWeek, wcrRoundsLeftInSeason } from "./data/wcrCalendar.js";
 import { COLORS } from "./data/colors.js";
 
-// Superbikes and Supersport both run on the exact same 12-round calendar
-// (data/superbikesCalendar.js) and neither is part of the traditional
-// MotoGP→Moto2→Moto3 promotion ladder — they're simulated as background
-// categories from the point of view of whichever of the two the player
-// isn't managing. Centralizing the membership check here means every
-// "is this one of the two side calendars" branch below reads the same
-// list instead of two separate string comparisons that could drift.
-// WorldSPB shares this exact same weekend/calendar (see
-// data/superbikesCalendar.js), so it belongs in this list too.
-const SBK_CALENDAR_CATEGORIES = ["superbikes", "supersport", "sportbike"];
+// Superbikes, Supersport and Sportbike all run on the exact same
+// 12-round calendar (data/superbikesCalendar.js) and none of the three
+// is part of the traditional MotoGP→Moto2→Moto3 promotion ladder —
+// they're simulated as background categories from the point of view
+// of whichever the player isn't managing. Centralizing the membership
+// check here means every "is this one of the side calendars" branch
+// below reads the same list instead of separate string comparisons
+// that could drift.
+//
+// WorldWCR ALSO belongs in this list for circuit-lookup purposes — it
+// races at the exact same circuits as its paired Superbikes round, so
+// SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]] resolves its venue
+// correctly too, no separate circuit table needed. Where it genuinely
+// differs is WHICH weeks it races (only 6 of the 12) and how many
+// rounds are left in ITS OWN season (6, not 12) — those two things
+// can't just reuse isSuperbikesRaceWeek/the "12 -" arithmetic the other
+// three share, since WorldWCR is a subset nested one level deeper
+// (main calendar → Superbikes' 12 → WorldWCR's own 6). The three
+// helpers below are the single place that nesting is handled; every
+// other branch in this file calls these instead of re-deriving it.
+const SBK_CALENDAR_CATEGORIES = ["superbikes", "supersport", "sportbike", "worldwcr"];
 const isSbkCalendarCategory = (key) => SBK_CALENDAR_CATEGORIES.includes(key);
+
+function isCategoryRaceWeek(key, round) {
+  if (key === "worldwcr") return isWorldWcrRaceWeek(round);
+  if (isSbkCalendarCategory(key)) return isSuperbikesRaceWeek(round);
+  return true;
+}
+function roundsLeftForCategory(key, round) {
+  if (key === "worldwcr") return wcrRoundsLeftInSeason(round);
+  if (isSbkCalendarCategory(key)) return 12 - (SUPERBIKES_ROUND_MAP[round] + 1);
+  return CIRCUITS.length - round;
+}
+
 
 /** Runs advanceSponsorContractsForSeasonEnd across a whole category's
  * teams ONE AT A TIME instead of all at once from the same frozen
@@ -76,7 +101,7 @@ import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEn
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
-import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
+import { instantiateTeams, seedLegendFreeAgents, makeRookie } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
@@ -115,7 +140,7 @@ export default function MotorbikeManager() {
   const [draftCategory, setDraftCategory] = useState("motogp");
   const [teams, setTeams] = useState(() => {
     const scale = CATEGORY_DATA.motogp.scale;
-    return validateAndRepairTeams(instantiateTeams("motogp"), scale).teams.map((t) => seedInitialSponsors(t, "motogp", scale));
+    return validateAndRepairTeams(instantiateTeams("motogp"), scale, "motogp").teams.map((t) => seedInitialSponsors(t, "motogp", scale));
   });
 
   const [gameMode, setGameMode] = useState(null); // 'quick' | 'career'
@@ -450,7 +475,7 @@ export default function MotorbikeManager() {
     // fixed — would load with neither, and `teamDisplayName` would show
     // whatever raw `.name` happened to be frozen in that save forever,
     // no matter what the player did with sponsors afterward.
-    const staticTeamDataForCategory = (catKey, teamId) => staticTeamDataFor(CATEGORY_DATA, catKey, teamId);
+    const staticTeamDataForCategory = (catKey, teamId, logoId) => staticTeamDataFor(CATEGORY_DATA, catKey, teamId, logoId);
     const backfillPrestige = (t, catKey) => {
       if (!t) return t;
       // A save from before "suspensión" was renamed to "freno" still has
@@ -462,7 +487,7 @@ export default function MotorbikeManager() {
         migratedBike = { ...rest, freno: suspension };
       }
       const withBike = migratedBike === t.bike ? t : { ...t, bike: migratedBike };
-      const staticData = staticTeamDataForCategory(catKey, withBike.id);
+      const staticData = staticTeamDataForCategory(catKey, withBike.id, withBike.logoId);
       const withManufacturer = withBike.manufacturer
         ? withBike
         : { ...withBike, manufacturer: staticData?.manufacturer ?? CATEGORY_DATA[catKey]?.teams?.find((td) => td.name === withBike.name)?.manufacturer };
@@ -475,14 +500,33 @@ export default function MotorbikeManager() {
       return { ...withTeam, riders: withTeam.riders.map((r) => ensureRiderPrestige(r, catKey)) };
     };
     const playerTeam = data.playerTeam
-      ? backfillPrestige(validateAndRepairTeams([data.playerTeam], CATEGORY_DATA[category]?.scale ?? 1).teams[0], category)
+      ? backfillPrestige(validateAndRepairTeams([data.playerTeam], CATEGORY_DATA[category]?.scale ?? 1, category).teams[0], category)
       : null;
-    const rivalTeams = validateAndRepairTeams(data.rivalTeams || [], CATEGORY_DATA[category]?.scale ?? 1).teams.map((t) => backfillPrestige(t, category));
+    const rivalTeams = validateAndRepairTeams(data.rivalTeams || [], CATEGORY_DATA[category]?.scale ?? 1, category).teams.map((t) => backfillPrestige(t, category));
     const otherCategories = {};
     Object.entries(data.otherCategories || {}).forEach(([key, catState]) => {
-      const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1);
+      const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1, key);
       otherCategories[key] = { ...catState, teams: teams.map((t) => backfillPrestige(t, key)) };
     });
+
+    // See ensureIdCounterAbovePersistedIds's own comment: without this,
+    // any rider created after this load (almost always a regen) could
+    // get an id that collides with one already in the save, since the
+    // in-memory counter that hands out ids always restarts at 0 on
+    // every load. Collects every rider id currently in this save —
+    // main rosters, substitutes, and the free-agent pool — across all
+    // categories, not just the one being played.
+    const allPersistedRiderIds = [];
+    const collectIds = (t) => {
+      if (!t) return;
+      (t.riders || []).forEach((r) => allPersistedRiderIds.push(r.id));
+      Object.values(t.substitutes || {}).forEach((s) => allPersistedRiderIds.push(s.id));
+    };
+    collectIds(playerTeam);
+    rivalTeams.forEach(collectIds);
+    Object.values(otherCategories).forEach((cat) => (cat.teams || []).forEach(collectIds));
+    (data.freeAgents || []).forEach((r) => allPersistedRiderIds.push(r.id));
+    ensureIdCounterAbovePersistedIds(allPersistedRiderIds);
 
     setGame({
       notifications: emptyNotifications(),
@@ -529,7 +573,7 @@ export default function MotorbikeManager() {
 
   function submitCareerName() {
     if (!draftManagerName.trim()) return;
-    const moto3Teams = validateAndRepairTeams(instantiateTeams("moto3"), CATEGORY_DATA.moto3.scale).teams.map((t) => seedInitialSponsors(t, "moto3", CATEGORY_DATA.moto3.scale));
+    const moto3Teams = validateAndRepairTeams(instantiateTeams("moto3"), CATEGORY_DATA.moto3.scale, "moto3").teams.map((t) => seedInitialSponsors(t, "moto3", CATEGORY_DATA.moto3.scale));
     const ranked = [...moto3Teams].sort((a, b) => bikeAvg(a.bike) - bikeAvg(b.bike));
     const worst = ranked.slice(0, 6);
     const shuffled = [...worst].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -554,7 +598,7 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== "moto3");
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
+      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale, k).teams, false)
         .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: teamDisplayName(team), points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
@@ -856,7 +900,7 @@ export default function MotorbikeManager() {
   function pickCategory(catKey) {
     setDraftCategory(catKey);
     const scale = CATEGORY_DATA[catKey].scale;
-    setTeams(validateAndRepairTeams(instantiateTeams(catKey), scale).teams.map((t) => seedInitialSponsors(t, catKey, scale)));
+    setTeams(validateAndRepairTeams(instantiateTeams(catKey), scale, catKey).teams.map((t) => seedInitialSponsors(t, catKey, scale)));
   }
 
   function chooseTeam(idx) {
@@ -876,7 +920,7 @@ export default function MotorbikeManager() {
     const otherKeys = CATEGORY_ORDER.filter((k) => k !== draftCategory);
     const initOther = {};
     otherKeys.forEach((k) => {
-      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale).teams, false)
+      const t = assignSeasonExpectations(validateAndRepairTeams(instantiateTeams(k), CATEGORY_DATA[k].scale, k).teams, false)
         .map((team) => seedInitialSponsors(team, k, CATEGORY_DATA[k].scale));
       const rs = {}; t.forEach((team) => team.riders.forEach((r) => { rs[r.id] = { name: r.name, teamName: teamDisplayName(team), points: 0 }; }));
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
@@ -1405,7 +1449,7 @@ export default function MotorbikeManager() {
       // whichever of the two the player ISN'T playing (and so shows up
       // here, in otherCategories) is on its bye week too. Leave it
       // untouched rather than simulating a race it doesn't have.
-      if (isSbkCalendarCategory(key) && !isSuperbikesRaceWeek(round)) {
+      if (isSbkCalendarCategory(key) && !isCategoryRaceWeek(key, round)) {
         nextOther[key] = catState;
         return;
       }
@@ -1469,7 +1513,7 @@ export default function MotorbikeManager() {
   }
 
   function startWeekend() {
-    if (isSbkCalendarCategory(category) && !isSuperbikesRaceWeek(round)) {
+    if (isSbkCalendarCategory(category) && !isCategoryRaceWeek(category, round)) {
       advanceRestWeek();
     } else {
       runQualifying();
@@ -1481,7 +1525,7 @@ export default function MotorbikeManager() {
     const circuitName = isSbkCalendarCategory(category) ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]] : CIRCUITS[round];
     const circuitProfile = isSbkCalendarCategory(category) ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
     const isWet = Math.random() * 100 < circuitProfile.wetPct;
-    const roundsLeft = isSbkCalendarCategory(category) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
+    const roundsLeft = roundsLeftForCategory(category, round);
     const notifQueue = [];
 
     const applyQualifyingInjuries = (results) => {
@@ -1523,8 +1567,9 @@ export default function MotorbikeManager() {
       if (key === "superbikes" && !isSuperbikesRaceWeek(round)) return; // no session this week — team stays untouched
       if (key === "supersport" && !isSupersportRaceWeek(round)) return; // no session this week — team stays untouched
       if (key === "sportbike" && !isSportbikeRaceWeek(round)) return; // no session this week — team stays untouched
+      if (key === "worldwcr" && !isWorldWcrRaceWeek(round)) return; // no session this week — team stays untouched
       const catCircuit = isSbkCalendarCategory(key) ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
-      const catRoundsLeft = isSbkCalendarCategory(key) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
+      const catRoundsLeft = roundsLeftForCategory(key, round);
       const entries = buildEntries(catState.teams).map((r) => ({ ...r, categoryKeyForNotif: key }));
       const q = simulateQualifying(entries, catCircuit, isWet, catRoundsLeft, key);
       const injuriesById = applyQualifyingInjuries(q.results);
@@ -1619,7 +1664,7 @@ export default function MotorbikeManager() {
     const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
     const gridByCategory = pendingQualifying?.gridByCategory ?? {};
     const circuitName = pendingQualifying?.circuitName ?? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]];
-    const superbikesRoundsLeft = 12 - (SUPERBIKES_ROUND_MAP[round] + 1);
+    const superbikesRoundsLeft = roundsLeftForCategory(category, round);
     const notifQueue = [];
 
     const { teams: raceTeams, results: raceResults } = simulateSprintForTeams(
@@ -1678,7 +1723,7 @@ export default function MotorbikeManager() {
     const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
     const gridByCategory = pendingQualifying?.gridByCategory ?? {};
     const circuitName = pendingQualifying?.circuitName ?? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]];
-    const superbikesRoundsLeft = 12 - (SUPERBIKES_ROUND_MAP[round] + 1);
+    const superbikesRoundsLeft = roundsLeftForCategory(category, round);
     const notifQueue = [];
 
     const { teams: sprintTeams, results: sprintResults } = simulateSprintForTeams(
@@ -1733,7 +1778,7 @@ export default function MotorbikeManager() {
     const circuitName = pendingQualifying?.circuitName ?? (isSbkCalendarCategory(category) ? SUPERBIKES_CIRCUITS[SUPERBIKES_ROUND_MAP[round]] : CIRCUITS[round]);
     const isWet = pendingQualifying?.isWet ?? (Math.random() * 100 < circuitProfile.wetPct);
     const gridByCategory = pendingQualifying?.gridByCategory ?? {};
-    const roundsLeft = isSbkCalendarCategory(category) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
+    const roundsLeft = roundsLeftForCategory(category, round);
     const notifQueue = [];
     const poolRef = { pool: [...freeAgents] };
 
@@ -1816,8 +1861,12 @@ export default function MotorbikeManager() {
         nextOtherCategories[key] = catState;
         return;
       }
+      if (key === "worldwcr" && !isWorldWcrRaceWeek(round)) {
+        nextOtherCategories[key] = catState;
+        return;
+      }
       const catCircuit = isSbkCalendarCategory(key) ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[round]] : mainCircuitProfile;
-      const catRoundsLeft = isSbkCalendarCategory(key) ? 12 - (SUPERBIKES_ROUND_MAP[round] + 1) : CIRCUITS.length - round;
+      const catRoundsLeft = roundsLeftForCategory(key, round);
       let raceTeams = catState.teams;
       let rS = { ...catState.riderStandings };
       let tS = { ...catState.teamStandings };
@@ -1840,12 +1889,13 @@ export default function MotorbikeManager() {
       // WorldSBK runs Race 1 (full points) then the Superpole Race (half
       // points, like a Sprint) silently before its own Race 2 below —
       // same rules the player experiences directly when it's their own
-      // category, just condensed into one background tick. Supersport
-      // shares the same Superpole-quali/Race1/Race2 weekend but has no
-      // middle Superpole Race, so it only gets the Race 1 leg here —
-      // Race 2 is the ordinary simulateFullGridRound call right after
-      // this block, same as it is for every other category.
-      if (key === "superbikes" || key === "supersport" || key === "sportbike") {
+      // category, just condensed into one background tick. Supersport,
+      // Sportbike and WorldWCR share the same Superpole-quali/Race1/Race2
+      // weekend but have no middle Superpole Race, so they only get the
+      // Race 1 leg here — Race 2 is the ordinary simulateFullGridRound
+      // call right after this block, same as it is for every other
+      // category.
+      if (key === "superbikes" || key === "supersport" || key === "sportbike" || key === "worldwcr") {
         const race1Outcome = simulateSprintForTeams(catState.teams, catCircuit, isWet, gridByCategory[key], key, notifQueue, POINTS, 1, false, catRoundsLeft);
         raceTeams = race1Outcome.teams;
         race1Outcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
@@ -2308,6 +2358,21 @@ export default function MotorbikeManager() {
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
     ];
 
+    // WorldWCR is the one category in the game with a hard gender
+    // requirement, and real women's motorcycle racing has a far
+    // smaller talent pool to draw new signings from than every other
+    // category — 34 rostered riders plus whoever's already a free
+    // agent is thin, especially once a few retire. Rather than only
+    // ever generating a new female rookie exactly when a WorldWCR seat
+    // happens to fall vacant (which is what the normal debut-rookie
+    // fallback in transferMarket.js already does), five fresh
+    // prospects join the free-agent pool every season regardless —
+    // building up a genuine bench of available talent over a career,
+    // not just enough to plug the current hole and no more.
+    for (let i = 0; i < 5; i++) {
+      poolFreeAgents = [...poolFreeAgents, makeRookie(CATEGORY_DATA.worldwcr.scale, "worldwcr", "F")];
+    }
+
     // A confirmed negotiation's compensation to the selling team is the
     // only cost that used to come out of the old selection screen's
     // "spend" total — charge it here instead, once, at the moment it
@@ -2487,7 +2552,7 @@ export default function MotorbikeManager() {
     // discarded the player's own team-prestige evolution every single
     // season (rivals never had this problem, since evolvedRivals was
     // already sourced from combinedPlayedCategory). ---
-    const rolledPlayerTeamBase = rolloverBike(playerAfterSponsorSeasonEnd);
+    const rolledPlayerTeamBase = rolloverBike(playerAfterSponsorSeasonEnd, ctxCategory);
     // Bug fixed (feature, really): Investigación (kind: "research")
     // and Factory/Staff upgrades that were still counting down purely
     // because the season ran out of Grands Prix used to just sit there
@@ -2506,9 +2571,9 @@ export default function MotorbikeManager() {
           : `La mejora de ${labels[a.kind]} se completa durante la pretemporada — nuevo nivel: ${a.newLevel}.`,
       })));
     }
-    evolvedRivals = evolvedRivals.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t))).team);
+    evolvedRivals = evolvedRivals.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), ctxCategory)).team);
     Object.keys(nextOther).forEach((key) => {
-      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t))).team) };
+      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), key)).team) };
     });
 
     // --- Season-boundary validation: guarantees every team — the
@@ -2516,9 +2581,9 @@ export default function MotorbikeManager() {
     // contract-truth pipeline as everyone else's — starts the new
     // season with a non-negative budget, exactly 2 valid riders and a
     // valid warehouse. ---
-    ({ teams: evolvedRivals } = validateAndRepairTeams(evolvedRivals, scale));
+    ({ teams: evolvedRivals } = validateAndRepairTeams(evolvedRivals, scale, ctxCategory));
     Object.keys(nextOther).forEach((key) => {
-      const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale);
+      const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale, key);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
     });
     const { team: repairedPlayerTeam } = validateAndRepairTeam({ ...rolledPlayerTeam, riders: finalRoster }, scale, { padRosterTo2: false });

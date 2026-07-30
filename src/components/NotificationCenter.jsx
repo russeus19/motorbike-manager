@@ -6,8 +6,8 @@ import { COLORS } from "../data/colors.js";
 import { NOTIF_ICON } from "../data/notificationIcons.js";
 
 export function NotificationCenterModal({ notifications, category, onClose }) {
-  const isSbkCalendarCategory = (ck) => ck === "superbikes" || ck === "supersport" || ck === "sportbike";
-  const visibleCategories = isSbkCalendarCategory(category) ? ["superbikes", "supersport", "sportbike"] : CATEGORY_ORDER.filter((ck) => !isSbkCalendarCategory(ck));
+  const isSbkCalendarCategory = (ck) => ck === "superbikes" || ck === "supersport" || ck === "sportbike" || ck === "worldwcr";
+  const visibleCategories = isSbkCalendarCategory(category) ? ["superbikes", "supersport", "sportbike", "worldwcr"] : CATEGORY_ORDER.filter((ck) => !isSbkCalendarCategory(ck));
   const [tab, setTab] = useState(category);
   const items = notifications[tab] || [];
 

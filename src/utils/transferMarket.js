@@ -345,7 +345,14 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     } else {
       // Nobody in the whole pool wanted this seat — a fresh prospect
       // gets their shot instead, exactly like the old rookie fallback.
-      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey);
+      // Bug fixed: this always generated a male rookie regardless of
+      // category, since makeRookie defaults to gender "M" — harmless
+      // everywhere else, but WorldWCR requires every rider to be
+      // female (isFreeAgentEligibleForCategory enforces this for the
+      // free-agent POOL, but a freshly-created rookie never passes
+      // through that filter at all, since it isn't drawn from the pool
+      // in the first place).
+      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey, categoryKey === "worldwcr" ? "F" : "M");
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, rookie);
       log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), personId: rookie.id, riderName: rookie.name, text: `${rookie.name} debuta con ${teamDisplayName(team)} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
     }

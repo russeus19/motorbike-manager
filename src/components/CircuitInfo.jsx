@@ -8,6 +8,7 @@ import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CIRCUITS, CIRCUIT_PROFILES, dateForRound } from "../data/circuits.js";
 import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
 import { SUPERBIKES_RACE_MAIN_ROUNDS } from "../data/superbikesCalendar.js";
+import { WCR_RACE_SBK_ROUNDS, WCR_RACE_MAIN_ROUNDS } from "../data/wcrCalendar.js";
 import { COLORS } from "../data/colors.js";
 import { findGpHistoryEntry } from "../utils/raceHistory.js";
 
@@ -93,15 +94,24 @@ export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category
   const [expanded, setExpanded] = useState(false);
   const [selectedRound, setSelectedRound] = useState(null);
 
-  const isSbkCalendar = category === "superbikes" || category === "supersport" || category === "sportbike";
-  const circuitsList = isSbkCalendar ? SUPERBIKES_CIRCUITS : CIRCUITS;
-  const profilesList = isSbkCalendar ? SUPERBIKES_CIRCUIT_PROFILES : CIRCUIT_PROFILES;
+  const isSbkCalendar = category === "superbikes" || category === "supersport" || category === "sportbike" || category === "worldwcr";
+  // WorldWCR only ever shows its own 6 rounds here, not all 12 shared by
+  // Superbikes/Supersport/Sportbike — WCR_RACE_SBK_ROUNDS picks out
+  // just those 6 circuits (and their matching main-calendar rounds)
+  // from the full 12, rather than listing rounds it never actually
+  // races on.
+  const isWcr = category === "worldwcr";
+  const circuitsList = isWcr ? WCR_RACE_SBK_ROUNDS.map((i) => SUPERBIKES_CIRCUITS[i]) : isSbkCalendar ? SUPERBIKES_CIRCUITS : CIRCUITS;
+  const profilesList = isWcr ? WCR_RACE_SBK_ROUNDS.map((i) => SUPERBIKES_CIRCUIT_PROFILES[i]) : isSbkCalendar ? SUPERBIKES_CIRCUIT_PROFILES : CIRCUIT_PROFILES;
   // For Superbikes and Supersport (same 12 rounds, same weekend), each
   // round maps to a specific week on the shared 22-week master clock
   // (data/superbikesCalendar.js) — that's what decides its status and
   // what looks up the right gpHistory entry, since history is always
-  // recorded by the master round.
-  const masterRoundFor = (i) => (isSbkCalendar ? SUPERBIKES_RACE_MAIN_ROUNDS[i] : i);
+  // recorded by the master round. WorldWCR nests one level deeper
+  // still (its own 6 rounds are themselves a subset of Superbikes'
+  // 12), so it uses WCR_RACE_MAIN_ROUNDS instead of re-deriving that
+  // chain here.
+  const masterRoundFor = (i) => (isWcr ? WCR_RACE_MAIN_ROUNDS[i] : isSbkCalendar ? SUPERBIKES_RACE_MAIN_ROUNDS[i] : i);
 
   return (
     <Panel title="Calendario" icon={MapPin} accent={accent} onHeaderClick={() => setExpanded((v) => !v)}

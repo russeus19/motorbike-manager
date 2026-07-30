@@ -2,9 +2,10 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { BIKE_AREA_KEYS } from "../data/bikeAreas.js";
 import { FREE_AGENT_LEGENDS_DATA } from "../data/freeAgentLegends.js";
 import { pickRookieNat, pickRookieName } from "../data/rookieNames.js";
-import { getRegenFaceRegion, REGEN_FACES_PER_REGION } from "../data/regenFaceRegions.js";
+import { pickFemaleRookieNat, pickFemaleRookieName } from "../data/rookieNamesFemale.js";
+import { getRegenFaceRegion, REGEN_FACES_PER_REGION, REGEN_FEMALE_FACES_PER_REGION } from "../data/regenFaceRegions.js";
 import { bikeAvg } from "./bikeDevelopment.js";
-import { nextId } from "./idGenerator.js";
+import { nextId, nextRegenId } from "./idGenerator.js";
 import { clamp, randInt } from "./random.js";
 import { finalizeRiderEconomics, initRiderPotentialFields, assignUniqueNumber, dedupeRiderNumbers } from "./riders.js";
 import { initialRiderPrestige, initialTeamPrestige } from "./prestige.js";
@@ -107,13 +108,15 @@ function rookieAttrRoll(attr, scale) {
   return randInt(lo + shift, hi + shift);
 }
 
-export function makeRookie(scale, categoryKey) {
+export function makeRookie(scale, categoryKey, gender = "M") {
   const resolvedScale = scale ?? 0.32;
   const resolvedCategoryKey = categoryKey || categoryKeyFromScale(resolvedScale);
-  const nat = pickRookieNat();
+  const isFemale = gender === "F";
+  const nat = isFemale ? pickFemaleRookieNat() : pickRookieNat();
   const base = {
-    name: pickRookieName(nat),
+    name: isFemale ? pickFemaleRookieName(nat) : pickRookieName(nat),
     nat,
+    gender,
     age: randInt(16, 18),
     potential: rollRookiePotential(),
     tecnica: rookieAttrRoll("tecnica", resolvedScale),
@@ -131,9 +134,15 @@ export function makeRookie(scale, categoryKey) {
     // The region keeps the face's ethnicity honest for their flag
     // instead of, say, a Japanese rookie ending up with a clearly
     // European face — see data/regenFaceRegions.js for the mapping.
-    photoId: `regen/${getRegenFaceRegion(nat)}/${randInt(1, REGEN_FACES_PER_REGION)}`,
+    // Female regens draw from their own separate folder
+    // (public/assets/riders/regen/female/<region>/) rather than the
+    // male one — different photo set entirely, not just a different
+    // pick within the same one.
+    photoId: isFemale
+      ? `regen/female/${getRegenFaceRegion(nat)}/${randInt(1, REGEN_FEMALE_FACES_PER_REGION)}`
+      : `regen/${getRegenFaceRegion(nat)}/${randInt(1, REGEN_FACES_PER_REGION)}`,
   };
-  const withPotential = { id: nextId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
+  const withPotential = { id: nextRegenId(), ...base, ...initRiderPotentialFields(base), isNewTeamThisSeason: true };
   const finalized = finalizeRiderEconomics(withPotential, resolvedScale);
   return { ...finalized, prestige: initialRiderPrestige(finalized, resolvedCategoryKey) };
 }

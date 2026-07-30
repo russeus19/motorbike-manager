@@ -25,6 +25,7 @@ import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 import { CIRCUITS, CIRCUIT_PROFILES, dateForRound } from "../data/circuits.js";
 import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "../data/circuitsSuperbikes.js";
 import { SUPERBIKES_RACE_MAIN_ROUNDS, SUPERBIKES_ROUND_MAP, isSuperbikesRaceWeek } from "../data/superbikesCalendar.js";
+import { isWorldWcrRaceWeek, WCR_RACE_MAIN_ROUNDS } from "../data/wcrCalendar.js";
 import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { raceLineup } from "../utils/raceSimulation.js";
@@ -34,25 +35,35 @@ import { initWarehouse } from "../utils/warehouseEngine.js";
 
 export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
-  const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike";
-  const isRestWeek = isSbkCalendarCategory && !isSuperbikesRaceWeek(round);
-  // On a rest week there's no Superbikes/Supersport round this exact
-  // week (both share the same 12-round calendar), but the player still
-  // benefits from seeing where their NEXT round actually is, rather
-  // than whatever GP happens to be running elsewhere that week — that
-  // circuit has nothing to do with their own calendar.
-  const nextSuperbikesMainRound = isRestWeek ? SUPERBIKES_RACE_MAIN_ROUNDS.find((r) => r > round) : null;
+  const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike" || category === "worldwcr";
+  // WorldWCR races on a narrower 6-round subset of Superbikes' own
+  // 12-round calendar (see data/wcrCalendar.js) — everywhere below that
+  // needs "is this category's race week" or "which main-calendar rounds
+  // does it actually race on" picks the right check/array for whichever
+  // of the four SBK-family categories is being played, instead of
+  // assuming all four share Superbikes' own weeks exactly like
+  // Supersport and Sportbike do.
+  const isRaceWeekNow = category === "worldwcr" ? isWorldWcrRaceWeek(round) : isSuperbikesRaceWeek(round);
+  const raceMainRounds = category === "worldwcr" ? WCR_RACE_MAIN_ROUNDS : SUPERBIKES_RACE_MAIN_ROUNDS;
+  const isRestWeek = isSbkCalendarCategory && !isRaceWeekNow;
+  // On a rest week there's no round of THIS category this exact week,
+  // but the player still benefits from seeing where their NEXT round
+  // actually is, rather than whatever GP happens to be running
+  // elsewhere that week — that circuit has nothing to do with their
+  // own calendar.
+  const nextSuperbikesMainRound = isRestWeek ? raceMainRounds.find((r) => r > round) : null;
   const superbikesRoundForDisplay = isRestWeek ? nextSuperbikesMainRound : round;
   // "Today", for a turn-based game with no real-world clock, is simply
   // the date of the last round THIS category actually raced — for the
   // main ladder that's always round-1 (every one of its 22 rounds is a
-  // real GP, no gaps of its own); for Superbikes/Supersport/Sportbike
-  // it's the largest of their own shared rounds still behind the
-  // current one, since they skip weeks the main ladder doesn't. Season
-  // opener (nothing raced yet) has no such reference, so the countdown
-  // is simply omitted rather than measuring against a made-up date.
+  // real GP, no gaps of its own); for Superbikes/Supersport/Sportbike/
+  // WorldWCR it's the largest of their own shared rounds still behind
+  // the current one, since they skip weeks the main ladder doesn't.
+  // Season opener (nothing raced yet) has no such reference, so the
+  // countdown is simply omitted rather than measuring against a made-up
+  // date.
   const lastRaceMainRound = isSbkCalendarCategory
-    ? [...SUPERBIKES_RACE_MAIN_ROUNDS].reverse().find((r) => r < round) ?? null
+    ? [...raceMainRounds].reverse().find((r) => r < round) ?? null
     : (round > 0 ? round - 1 : null);
   const daysUntilNextRace = lastRaceMainRound != null && superbikesRoundForDisplay != null
     ? Math.round((dateForRound(superbikesRoundForDisplay, seasonNumber) - dateForRound(lastRaceMainRound, seasonNumber)) / (1000 * 60 * 60 * 24))
@@ -117,8 +128,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   );
   const renderBudget = (compact) => (
     <div className={compact ? "text-center" : "text-right"}>
-      <div className={compact ? "text-[10px] uppercase tracking-wider" : "text-xs uppercase tracking-wider"} style={{ color: COLORS.muted }}>Presupuesto</div>
-      <div className={compact ? "text-base font-mono" : "text-2xl font-mono"} style={{ color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
+      <div className={compact ? "text-[10px] uppercase tracking-[0.2em]" : "text-xs uppercase tracking-[0.2em]"} style={{ color: COLORS.muted }}>Presupuesto</div>
+      <div className={compact ? "text-base font-bold" : "text-lg font-bold"} style={{ fontFamily: "Rajdhani, sans-serif", color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
     </div>
   );
   const renderSimularButton = (fullWidth) => (
@@ -130,25 +141,23 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   );
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8" style={{ paddingBottom: 96 }}>
-      <CheckerStrip accent={accent} solid />
-
+    <div className="max-w-5xl mx-auto px-6 pt-6" style={{ paddingBottom: 96 }}>
+      {seasonTab === "inicio" && <div className="mb-6"><CheckerStrip accent={accent} solid /></div>}
       {seasonTab === "inicio" ? (
         <>
-          <div className="flex items-center justify-between py-4">
-            <div style={{ width: 40 }} />
-            <TeamLogo team={playerTeam} size={48} className="rounded-lg" />
-            {renderBell()}
-          </div>
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <div className="text-xs uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
-              <div className="text-lg font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
+          <div className="grid items-start mb-3 gap-2" style={{ gridTemplateColumns: "1fr auto 1fr" }}>
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-[0.2em] truncate" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
+              <div className="text-lg font-bold truncate" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
             </div>
-            {renderBudget(false)}
+            <TeamLogo team={playerTeam} size={48} className="rounded-lg flex-shrink-0" />
+            <div className="flex-shrink-0 justify-self-end">{renderBudget(false)}</div>
           </div>
 
-          <div className="mb-4">{renderSimularButton(true)}</div>
+          <div className="flex items-center justify-between mb-4 gap-3">
+            {renderBell()}
+            {renderSimularButton(false)}
+          </div>
 
           {!canRace && (
             <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
