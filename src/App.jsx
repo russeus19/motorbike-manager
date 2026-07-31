@@ -101,7 +101,7 @@ import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEn
 import { processTeamAfterRace } from "./utils/raceWeekend.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
-import { instantiateTeams, seedLegendFreeAgents, makeRookie } from "./utils/riderGeneration.js";
+import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
@@ -2357,21 +2357,6 @@ export default function MotorbikeManager() {
       ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
     ];
-
-    // WorldWCR is the one category in the game with a hard gender
-    // requirement, and real women's motorcycle racing has a far
-    // smaller talent pool to draw new signings from than every other
-    // category — 34 rostered riders plus whoever's already a free
-    // agent is thin, especially once a few retire. Rather than only
-    // ever generating a new female rookie exactly when a WorldWCR seat
-    // happens to fall vacant (which is what the normal debut-rookie
-    // fallback in transferMarket.js already does), five fresh
-    // prospects join the free-agent pool every season regardless —
-    // building up a genuine bench of available talent over a career,
-    // not just enough to plug the current hole and no more.
-    for (let i = 0; i < 5; i++) {
-      poolFreeAgents = [...poolFreeAgents, makeRookie(CATEGORY_DATA.worldwcr.scale, "worldwcr", "F")];
-    }
 
     // A confirmed negotiation's compensation to the selling team is the
     // only cost that used to come out of the old selection screen's

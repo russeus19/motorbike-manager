@@ -22,4 +22,18 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Jordi Torres", photoId: 124, nat: "🇪🇸", age: 35, potential: 25, tecnica: 69, ritmo: 67, adelantamientos: 64, mental: 64, adaptabilidad: 64, fisico: 62 , prestige: 55 , number: 81 },
   { name: "Darryn Binder", photoId: 126, nat: "🇿🇦", age: 28, potential: 45, tecnica: 72, ritmo: 70, adelantamientos: 69, mental: 63, adaptabilidad: 65, fisico: 69 , prestige: 46 , number: 15 },
   { name: "Noah Dettwiler", photoId: 127, nat: "🇨🇭", age: 19, potential: 60, tecnica: 58, ritmo: 61, adelantamientos: 58, mental: 52, adaptabilidad: 55, fisico: 58 , prestige: 20 , number: 55 },
+  // WorldWCR-adjacent free agents — real riders, currently unattached
+  // to any team. See utils/riderGeneration.js's female regen system for
+  // how newly-generated rookies get their gender; these are hand-authored
+  // entries, so the field is set explicitly here instead.
+  { name: "Ornella Ongaro", photoId: 230, nat: "🇫🇷", age: 36, gender: "F", potential: 35, tecnica: 33, ritmo: 34, adelantamientos: 34, mental: 37, adaptabilidad: 35, fisico: 37, prestige: 25, number: 28 },
+  { name: "Ran Yochay", photoId: 231, nat: "🇮🇱", age: 24, gender: "F", potential: 37, tecnica: 32, ritmo: 25, adelantamientos: 21, mental: 32, adaptabilidad: 27, fisico: 31, prestige: 18, number: 10 },
+  { name: "Andrea Sibaja", photoId: 232, nat: "🇪🇸", age: 34, gender: "F", potential: 30, tecnica: 28, ritmo: 33, adelantamientos: 28, mental: 31, adaptabilidad: 31, fisico: 29, prestige: 20, number: 77 },
+  { name: "Nicole van Aswegen", photoId: 233, nat: "🇿🇦", age: 40, gender: "F", potential: 26, tecnica: 22, ritmo: 28, adelantamientos: 28, mental: 26, adaptabilidad: 22, fisico: 30, prestige: 16, number: 21 },
+  { name: "Lena Kemmer", photoId: 234, nat: "🇦🇹", age: 22, gender: "F", potential: 37, tecnica: 31, ritmo: 31, adelantamientos: 23, mental: 24, adaptabilidad: 32, fisico: 27, prestige: 18, number: 35 },
+  { name: "Luna Hirano", photoId: 235, nat: "🇯🇵", age: 27, gender: "F", potential: 32, tecnica: 23, ritmo: 31, adelantamientos: 25, mental: 25, adaptabilidad: 28, fisico: 30, prestige: 17, number: 44 },
+  { name: "Jamie Hanks-Elliott", photoId: 236, nat: "🇬🇧", age: 23, gender: "F", potential: 39, tecnica: 27, ritmo: 36, adelantamientos: 32, mental: 28, adaptabilidad: 27, fisico: 30, prestige: 20, number: 76 },
+  { name: "Krystal Silfa", photoId: 237, nat: "🇩🇴", age: 22, gender: "F", potential: 34, tecnica: 24, ritmo: 27, adelantamientos: 29, mental: 25, adaptabilidad: 24, fisico: 21, prestige: 15, number: 5 },
+  { name: "Sara Varon", photoId: 238, nat: "🇨🇴", age: 23, gender: "F", potential: 38, tecnica: 27, ritmo: 25, adelantamientos: 27, mental: 31, adaptabilidad: 32, fisico: 32, prestige: 19, number: 15 },
+  { name: "Jessica Howden", photoId: 239, nat: "🇿🇦", age: 23, gender: "F", potential: 44, tecnica: 40, ritmo: 33, adelantamientos: 33, mental: 33, adaptabilidad: 37, fisico: 34, prestige: 25, number: 52 },
 ];

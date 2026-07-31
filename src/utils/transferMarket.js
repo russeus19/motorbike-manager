@@ -243,7 +243,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   const PROMOTION_PAIRS = [
     { higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" },
     { higher: "superbikes", lower: "supersport" }, { higher: "supersport", lower: "sportbike" },
-    { higher: "supersport", lower: "worldwcr" }, { higher: "sportbike", lower: "worldwcr" },
+    { higher: "supersport", lower: "worldwcr" }, { higher: "moto3", lower: "worldwcr" }, { higher: "sportbike", lower: "worldwcr" },
   ];
   PROMOTION_PAIRS.forEach(({ higher, lower }) => {
     if (!teamsByCategory[higher] || !teamsByCategory[lower]) return;
@@ -260,12 +260,31 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     // the comment above), but instantly sweeping away someone who was
     // just actively recruited this very transition undermines the
     // decision that was just made, in a way a renewal doesn't.
+    // WorldWCR needs its own, much stricter version of this filter.
+    // Top-10 (out of a 22-24 rider MotoGP/Superbikes-style grid) is a
+    // reasonable "genuinely in contention" slice — but WorldWCR only
+    // has 34 riders total across a 6-round season, where a large chunk
+    // of the field ties on zero points. Sorting "top 10 by points" in
+    // that situation isn't picking the 10 best riders, it's picking 10
+    // essentially at random among everyone tied at the bottom — which
+    // is exactly how someone genuinely outside position 20 ended up
+    // getting promoted. Two changes fix that: a much smaller slice (a
+    // real elite handful, not a third of the whole grid), and an
+    // explicit potential floor so a team only ever signs someone
+    // because they're actually worth it, never just because a promotion
+    // pair happened to need a name to fill a slot. The bar is
+    // noticeably higher for the rarer direct-to-Supersport jump than
+    // for the ordinary step up to Sportbike.
+    const isWcrSource = lower === "worldwcr";
+    const wcrPotentialFloor = higher === "moto3" ? 70 : higher === "supersport" ? 65 : 55;
+    const lowerSlice = isWcrSource ? rankedLowerIds.slice(0, 3) : rankedLowerIds.slice(0, 10);
     const candidatePool = [];
-    rankedLowerIds.slice(0, 10).forEach((riderId) => {
+    lowerSlice.forEach((riderId) => {
       for (const t of teamsByCategory[lower]) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
         if (idx >= 0) {
           const r = t.riders[idx];
+          if (isWcrSource && (r.potential ?? 0) < wcrPotentialFloor) break;
           if (!r.isNewTeamThisSeason && isFreeAgentEligibleForCategory(r, higher)) candidatePool.push({ rider: r, fromTeamId: t.id });
           break;
         }
@@ -319,7 +338,24 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     const team = findTeam(teamsByCategory, categoryKey, teamId);
     if (!team || team.riders.length >= 2) return; // already filled by an earlier vacancy in this same pass
 
-    const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+    // Same WorldWCR-specific tightening as the promotion-pairs pass
+    // above, and for the same reason: this pool is shared across every
+    // category, so a WCR rider released by her own team earlier in
+    // this same transition (Fase 1/2's own continuity decision, not
+    // the promotion logic) would otherwise reach any other category's
+    // vacancy here with no quality gate at all — just the ordinary age
+    // check every free agent gets. A genuinely capable WorldWCR free
+    // agent should still be able to find a seat elsewhere; a mediocre
+    // one filling gaps only because nobody else was available should
+    // not.
+    const eligible = pool.filter((r) => {
+      if (!isFreeAgentEligibleForCategory(r, categoryKey)) return false;
+      if (r._fromCategoryKey === "worldwcr" && categoryKey !== "worldwcr") {
+        const floor = categoryKey === "moto3" ? 70 : categoryKey === "supersport" ? 65 : 55;
+        return (r.potential ?? 0) >= floor;
+      }
+      return true;
+    });
     const bikeAvgOffered = bikeAvgOf(team);
     const ranked = eligible
       .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))
