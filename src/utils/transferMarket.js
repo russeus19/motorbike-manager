@@ -98,6 +98,40 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     });
   });
 
+  // Hoisted above Fase 2 (used to live inside Fase 2.5 only) so both
+  // phases can share the exact same definition of "which category feeds
+  // which" — see the ambition check at the top of Fase 2's renewal
+  // decision below, and Fase 2.5's own promotion pass further down.
+  // WorldWCR's own promotion path is deliberately two entries, not one:
+  // placed BEFORE the Sportbike pair (forEach runs in array order), so
+  // an exceptional WorldWCR rider gets first crack at a direct
+  // Supersport call-up — a real precedent exists for exactly this
+  // (Ana Carrasco, WorldWCR's inaugural champion, later raced in
+  // Supersport) — before anyone left over falls through to the normal,
+  // far more common step up to Sportbike right after.
+  const PROMOTION_PAIRS = [
+    { higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" },
+    { higher: "superbikes", lower: "supersport" }, { higher: "supersport", lower: "sportbike" },
+    { higher: "supersport", lower: "worldwcr" }, { higher: "moto3", lower: "worldwcr" }, { higher: "sportbike", lower: "worldwcr" },
+  ];
+  // Reverse lookup: for a given lower category, which higher one(s) it
+  // can feed into, in the SAME priority order as PROMOTION_PAIRS itself
+  // (WorldWCR's direct-to-Supersport listed before its Sportbike step,
+  // matching the "exceptional case first" precedence Fase 2.5 uses).
+  const higherCategoriesFor = {};
+  PROMOTION_PAIRS.forEach(({ higher, lower }) => {
+    (higherCategoriesFor[lower] ||= []).push(higher);
+  });
+  // How many of a category's own top finishers are genuinely in the
+  // running for a call-up — mirrors Fase 2.5's own candidate slice
+  // exactly, so a rider only ever gets treated as "ambitious" here if
+  // they'd actually be considered there too. WorldWCR uses its own
+  // much smaller slice (see crossoverCandidatePoolSize); every other
+  // category uses the same Top-10 Fase 2.5 always has.
+  function ambitionSliceSize(categoryKey) {
+    return categoryKey === "worldwcr" ? crossoverCandidatePoolSize(seasonNumber) : 10;
+  }
+
   // --- Fase 2: continuity-vs-market, ordered by how attractive the team
   // is, across every category at once. A real team's management checks
   // the market BEFORE ever committing to a renewal — not the other way
@@ -154,6 +188,34 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       // Contract truth: still under contract, no market decision needed.
       if ((r.contractYears ?? 0) > 0) { kept.push(r); return; }
 
+      // Bug fixed: a genuine star having a great season in a lower
+      // category almost always just renewed with their own team for
+      // several YEARS at a time, instead of ever getting a real shot at
+      // moving up — the exact opposite of how an ambitious athlete
+      // actually behaves. Running Fase 2.5 before this was tried first
+      // and reverted — it backfires the other way, since MotoGP's own
+      // vacancies mostly come from ITS OWN release decisions right here
+      // in Fase 2, so promoting first just means there's usually
+      // nothing open yet to promote INTO. And pulling the rider straight
+      // into the free-agent pool from here doesn't work either — Fase
+      // 2.5 right after this only looks for candidates still sitting on
+      // a lower-category TEAM's roster, so a rider already yanked out
+      // into the pool becomes invisible to it.
+      // The fix that actually works: a rider who'd genuinely be a Fase
+      // 2.5 candidate — ranked in the real contention slice of a
+      // category with somewhere higher to go — stays MUCH less willing
+      // to just settle for a renewal, and even if they do end up
+      // staying, it's for one season only, never multiple years. That
+      // keeps them sitting right where Fase 2.5 (immediately after this)
+      // can still find and poach them this very transition, AND makes
+      // sure they come up for a fresh decision again next season instead
+      // of being locked away on a long deal the moment no vacancy
+      // happens to be open this exact year.
+      const higherOptions = higherCategoriesFor[ck];
+      const ownRank = riderPosByIdByCategory[ck]?.[r.id];
+      const isAmbitious = higherOptions?.length && ownRank && ownRank <= ambitionSliceSize(ck)
+        && higherOptions.some((hk) => isFreeAgentEligibleForCategory(r, hk));
+
       const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
       const points = riderStandings?.[r.id]?.points || 0;
       const crashes = r.crashesThisSeason || 0;
@@ -195,10 +257,14 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         crashes, injuriesThisSeason: r.injuriesThisSeason || 0,
       });
       const teamWantsToRenew = Math.random() < continuityToRenewalProbability(continuity);
-      const riderWillingToStay = teamWantsToRenew ? riderWantsToStay(r, t, ck) : false;
+      // An ambitious rider only settles for staying a fraction as often
+      // as a normal one would — most of the time they'd rather test
+      // whether somewhere higher comes calling instead of just taking
+      // the renewal on offer.
+      const riderWillingToStay = teamWantsToRenew ? (riderWantsToStay(r, t, ck) && (!isAmbitious || Math.random() < 0.25)) : false;
 
       if (teamWantsToRenew && riderWillingToStay) {
-        const years = proposedContractYears(r);
+        const years = isAmbitious ? 1 : proposedContractYears(r);
         kept.push({ ...r, contractYears: years, salary: Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (0.95 + Math.random() * 0.2)) });
         log[ck].push({ type: "renovacion", riderId: photoIdFor(r), personId: r.id, riderName: r.name, text: `${r.name} renueva con ${teamDisplayName(t)} (${years} temporada${years === 1 ? "" : "s"})`, category: CATEGORY_DATA[ck].label });
         return;
@@ -221,15 +287,22 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
 
   // --- Fase 2.5: cross-category promotion — real teams actively chase
   // the best of the category below instead of only ever drawing from
-  // whoever happens to already be a free agent. Without this, a Moto2
-  // champion who (correctly) renews with their own team would never
-  // become available to MotoGP, and MotoGP's vacancies would only ever
-  // be filled from the leftover pool of released/free riders — exactly
-  // backwards from how real promotions work. A rider poached this way
-  // leaves their own category's roster even if that team had just
-  // renewed them, the same way a real MotoGP call-up overrides a Moto2
-  // rider's plan to stay. Whatever seat they leave behind is a genuine
-  // new vacancy, picked up naturally by Fase 3 below.
+  // whoever happens to already be a free agent. Runs BEFORE Fase 2's
+  // own renewal decisions on purpose (this used to run after — bug
+  // fixed): a rider having a genuinely great season wants to test
+  // whether a higher category will come calling before ever settling
+  // for a renewal with their current team, exactly like a real
+  // ambitious athlete would. Running this first means a Moto2 champion
+  // gets evaluated for a MotoGP call-up before their own team ever gets
+  // the chance to lock them into a renewal — the old order let that
+  // renewal happen FIRST, so a standout season in a lower category
+  // almost never actually led anywhere, no matter how good it was.
+  // A rider poached this way leaves their own category's roster
+  // regardless of whether they were about to renew — the same way a
+  // real MotoGP call-up overrides a Moto2 rider's plan to stay.
+  // Whatever seat they leave behind (here, or from Fase 1 retirements)
+  // is a genuine vacancy Fase 2's own continuity-vs-market pass and
+  // Fase 3 below both still see normally.
   // WorldWCR's own promotion path is deliberately two entries, not one:
   // placed BEFORE the Sportbike pair (forEach runs in array order), so
   // an exceptional WorldWCR rider gets first crack at a direct
@@ -240,11 +313,6 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   // signs a rider first marks them isNewTeamThisSeason, which the
   // other pass's own candidate filter already excludes, so nobody can
   // double-promote in the same transition.
-  const PROMOTION_PAIRS = [
-    { higher: "motogp", lower: "moto2" }, { higher: "moto2", lower: "moto3" },
-    { higher: "superbikes", lower: "supersport" }, { higher: "supersport", lower: "sportbike" },
-    { higher: "supersport", lower: "worldwcr" }, { higher: "moto3", lower: "worldwcr" }, { higher: "sportbike", lower: "worldwcr" },
-  ];
   PROMOTION_PAIRS.forEach(({ higher, lower }) => {
     if (!teamsByCategory[higher] || !teamsByCategory[lower]) return;
     const lowerStandings = categoriesData[lower]?.riderStandings || {};
@@ -283,6 +351,15 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       for (const t of teamsByCategory[lower]) {
         const idx = t.riders.findIndex((r) => r.id === riderId);
         if (idx >= 0) {
+          // Bug fixed: the player's own team was never excluded from
+          // this pool — meaning an AI team in the higher category could
+          // poach the player's own rider straight off their roster, with
+          // no offer to accept or decline, the moment that rider had a
+          // good enough season. Every other AI-vs-AI mechanism in this
+          // file (Fase 2's market swaps, Fase 3's vacancy fills) already
+          // respects excludeTeamId; this cross-category promotion pass
+          // is the one place that check had never been added.
+          if (t.id === categoriesData[lower]?.excludeTeamId) break;
           const r = t.riders[idx];
           if (isWcrSource && (r.potential ?? 0) < wcrPotentialFloor) break;
           if (!r.isNewTeamThisSeason && isFreeAgentEligibleForCategory(r, higher)) candidatePool.push({ rider: r, fromTeamId: t.id });

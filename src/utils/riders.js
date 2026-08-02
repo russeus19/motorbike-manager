@@ -80,16 +80,23 @@ export function crossoverCandidatePoolSize(seasonNumber = 1) {
 
 export function crossoverPotentialFloor(targetCategoryKey, seasonNumber = 1) {
   const bySeason = Math.max(0, (seasonNumber ?? 1) - 1); // no easing at all in season 1
-  // Base values (season 1) are deliberately high — WorldWCR is a brand
-  // new, small category; only a genuine standout should ever be worth
-  // poaching from it at the start of a career. Easing down a little
-  // each season tells the story of women's racing quietly growing in
-  // both quality and depth over time, without ever making crossovers
-  // routine — even after a long career these floors stay meaningfully
-  // above "just any decent WorldWCR rider".
-  if (targetCategoryKey === "moto3") return Math.max(75, 85 - bySeason * 0.5);
-  if (targetCategoryKey === "supersport") return Math.max(63, 78 - bySeason * 0.7);
-  return Math.max(50, 68 - bySeason * 0.8); // sportbike and anything else
+  // Base values (season 1) were originally set even higher than this,
+  // but turned out to badly overshoot: almost every female rider in the
+  // game — the WorldWCR roster included — has a potential well under
+  // 60, so a Sportbike floor of 68 meant essentially nobody could ever
+  // qualify, no matter how good a season they had. The result wasn't
+  // "rare crossovers", it was "no crossovers at all" — women only ever
+  // showing up elsewhere as short-notice substitutes (which never
+  // checked this gate to begin with), never as a real signing. These
+  // values instead sit just above the genuine standouts already in the
+  // game (WorldWCR's best hover in the high 60s/low 70s), so a truly
+  // exceptional season has a real shot from season 1, while merely
+  // decent riders still don't qualify. Easing down a little each season
+  // tells the story of women's racing quietly growing in both quality
+  // and depth over time, without ever making crossovers routine.
+  if (targetCategoryKey === "moto3") return Math.max(65, 75 - bySeason * 0.5);
+  if (targetCategoryKey === "supersport") return Math.max(55, 68 - bySeason * 0.7);
+  return Math.max(45, 58 - bySeason * 0.8); // sportbike and anything else
 }
 
 /** True if this rider passes the crossover bar above — a small
