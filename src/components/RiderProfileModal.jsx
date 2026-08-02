@@ -456,32 +456,33 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
         {profileTab === "trayectoria" && (
           <>
             <div className="space-y-2 my-4">
-              {CATEGORY_ORDER.map((ck) => {
+              {CATEGORY_ORDER.filter((ck) => ck !== "worldwcr" || rider.gender === "F").map((ck) => {
                 const races = rider.careerRaces?.[ck] || 0;
                 const podiums = rider.careerPodiums?.[ck] || 0;
                 const wins = rider.careerWins?.[ck] || 0;
                 const active = races > 0;
                 return (
-                  <div key={ck} className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, opacity: active ? 1 : 0.55 }}>
-                    <div className="font-semibold text-sm truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: active ? COLORS.text : COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
-                    <div className="flex items-center gap-5 flex-shrink-0">
-                      <TrajectoryStat icon={Flag} value={races} label="Carreras" />
-                      <TrajectoryStat icon={Medal} value={podiums} label="Podios" />
-                      <TrajectoryStat icon={Trophy} value={wins} label="Victorias" accent={wins > 0 ? COLORS.gold : undefined} />
+                  <div key={ck}>
+                    <div className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, opacity: active ? 1 : 0.55 }}>
+                      <div className="font-semibold text-sm truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: active ? COLORS.text : COLORS.muted }}>{CATEGORY_DATA[ck].label}</div>
+                      <div className="flex items-center gap-5 flex-shrink-0">
+                        <TrajectoryStat icon={Flag} value={races} label="Carreras" />
+                        <TrajectoryStat icon={Medal} value={podiums} label="Podios" />
+                        <TrajectoryStat icon={Trophy} value={wins} label="Victorias" accent={wins > 0 ? COLORS.gold : undefined} />
+                      </div>
                     </div>
+                    {ck === "motogp" && (rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
+                      <div className="rounded-xl px-4 py-3 mt-2 flex items-center justify-between gap-3 ml-3" style={{ background: "transparent", border: `1px dashed ${COLORS.rule}` }}>
+                        <div className="text-xs truncate" style={{ color: COLORS.muted }}>↳ Sprints MotoGP</div>
+                        <div className="flex items-center gap-5 flex-shrink-0">
+                          <TrajectoryStat icon={Medal} value={rider.careerSprintPodiums?.motogp || 0} label="Podios" />
+                          <TrajectoryStat icon={Trophy} value={rider.careerSprintWins?.motogp || 0} label="Victorias" accent={(rider.careerSprintWins?.motogp || 0) > 0 ? COLORS.gold : undefined} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
-
-              {(rider.careerSprintWins?.motogp || rider.careerSprintPodiums?.motogp) > 0 && (
-                <div className="rounded-xl px-4 py-3 flex items-center justify-between gap-3 ml-3" style={{ background: "transparent", border: `1px dashed ${COLORS.rule}` }}>
-                  <div className="text-xs truncate" style={{ color: COLORS.muted }}>↳ Sprints MotoGP</div>
-                  <div className="flex items-center gap-5 flex-shrink-0">
-                    <TrajectoryStat icon={Medal} value={rider.careerSprintPodiums?.motogp || 0} label="Podios" />
-                    <TrajectoryStat icon={Trophy} value={rider.careerSprintWins?.motogp || 0} label="Victorias" accent={(rider.careerSprintWins?.motogp || 0) > 0 ? COLORS.gold : undefined} />
-                  </div>
-                </div>
-              )}
             </div>
 
             <div>

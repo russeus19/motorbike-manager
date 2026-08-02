@@ -2,7 +2,7 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
-import { assignUniqueNumber, computeSalary, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./riders.js";
+import { assignUniqueNumber, computeSalary, crossoverCandidatePoolSize, crossoverPotentialFloor, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 import { teamDisplayName } from "./teamNaming.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
@@ -51,7 +51,7 @@ function stripRiderFromAllRosters(teamsByCategory, riderId, exceptCategoryKey, e
   });
 }
 
-export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPool, retiredIds, log) {
+export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPool, retiredIds, log, seasonNumber = 1) {
   let pool = [...freeAgentPool];
   const teamsByCategory = {};
   const teamExpectationVerdictById = {};
@@ -276,8 +276,8 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     // noticeably higher for the rarer direct-to-Supersport jump than
     // for the ordinary step up to Sportbike.
     const isWcrSource = lower === "worldwcr";
-    const wcrPotentialFloor = higher === "moto3" ? 70 : higher === "supersport" ? 65 : 55;
-    const lowerSlice = isWcrSource ? rankedLowerIds.slice(0, 3) : rankedLowerIds.slice(0, 10);
+    const wcrPotentialFloor = crossoverPotentialFloor(higher, seasonNumber);
+    const lowerSlice = isWcrSource ? rankedLowerIds.slice(0, crossoverCandidatePoolSize(seasonNumber)) : rankedLowerIds.slice(0, 10);
     const candidatePool = [];
     lowerSlice.forEach((riderId) => {
       for (const t of teamsByCategory[lower]) {
@@ -338,24 +338,18 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     const team = findTeam(teamsByCategory, categoryKey, teamId);
     if (!team || team.riders.length >= 2) return; // already filled by an earlier vacancy in this same pass
 
-    // Same WorldWCR-specific tightening as the promotion-pairs pass
-    // above, and for the same reason: this pool is shared across every
-    // category, so a WCR rider released by her own team earlier in
-    // this same transition (Fase 1/2's own continuity decision, not
-    // the promotion logic) would otherwise reach any other category's
-    // vacancy here with no quality gate at all — just the ordinary age
-    // check every free agent gets. A genuinely capable WorldWCR free
-    // agent should still be able to find a seat elsewhere; a mediocre
-    // one filling gaps only because nobody else was available should
-    // not.
-    const eligible = pool.filter((r) => {
-      if (!isFreeAgentEligibleForCategory(r, categoryKey)) return false;
-      if (r._fromCategoryKey === "worldwcr" && categoryKey !== "worldwcr") {
-        const floor = categoryKey === "moto3" ? 70 : categoryKey === "supersport" ? 65 : 55;
-        return (r.potential ?? 0) >= floor;
-      }
-      return true;
-    });
+    // Same tightening as the promotion-pairs pass above, and for the
+    // same reason: this pool is shared across every category. Checking
+    // gender directly (via passesCrossoverGate, not just
+    // _fromCategoryKey === "worldwcr") is deliberate — a female rider
+    // sitting in the pool as a hand-authored free agent
+    // (data/freeAgentLegends.js) never carries that marker at all,
+    // since she was never dynamically released from a WorldWCR team
+    // this transition, so checking only the marker let every static
+    // female free agent bypass this entirely. A genuinely capable
+    // woman should still be able to find a seat elsewhere; one filling
+    // gaps only because nobody else was available should not.
+    const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, seasonNumber));
     const bikeAvgOffered = bikeAvgOf(team);
     const ranked = eligible
       .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))

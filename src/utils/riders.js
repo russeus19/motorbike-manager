@@ -53,6 +53,53 @@ export function isFreeAgentEligibleForCategory(rider, categoryKey) {
   return rider.age <= 25;
 }
 
+/** How much of a chance any female rider has of being seriously
+ * considered for a seat OUTSIDE WorldWCR — used by every place a woman
+ * could end up signing for a different category (the season-end
+ * market's promotion pairs and vacancy fill in transferMarket.js, and
+ * live in-season AI-initiated signings in marketNegotiations.js), so
+ * all three enforce the exact same standard rather than three separate
+ * copies that could drift apart. Deliberately strict in the early
+ * seasons — real crossover is rare today — and eases gradually over a
+ * long career, as a nod to women's motorcycle racing's quality and
+ * depth genuinely growing over time rather than staying frozen at
+ * whatever it looked like in season 1. Floors are capped so it never
+ * becomes trivial even after many seasons — the goal is "rare" easing
+ * toward "uncommon but real", never "same as any other rider". */
+/** How many of WorldWCR's own top finishers are even considered as
+ * crossover candidates at all (see PROMOTION_PAIRS in
+ * transferMarket.js) — deliberately tiny at the start (a real elite
+ * handful out of WorldWCR's 34-rider grid, not the Top-10 slice every
+ * other, much bigger category uses), widening slowly over the seasons
+ * to reflect the category's growing depth of talent, not just the
+ * quality of any one standout. */
+export function crossoverCandidatePoolSize(seasonNumber = 1) {
+  const bySeason = Math.max(0, (seasonNumber ?? 1) - 1);
+  return Math.min(6, 3 + Math.floor(bySeason / 4));
+}
+
+export function crossoverPotentialFloor(targetCategoryKey, seasonNumber = 1) {
+  const bySeason = Math.max(0, (seasonNumber ?? 1) - 1); // no easing at all in season 1
+  // Base values (season 1) are deliberately high — WorldWCR is a brand
+  // new, small category; only a genuine standout should ever be worth
+  // poaching from it at the start of a career. Easing down a little
+  // each season tells the story of women's racing quietly growing in
+  // both quality and depth over time, without ever making crossovers
+  // routine — even after a long career these floors stay meaningfully
+  // above "just any decent WorldWCR rider".
+  if (targetCategoryKey === "moto3") return Math.max(75, 85 - bySeason * 0.5);
+  if (targetCategoryKey === "supersport") return Math.max(63, 78 - bySeason * 0.7);
+  return Math.max(50, 68 - bySeason * 0.8); // sportbike and anything else
+}
+
+/** True if this rider passes the crossover bar above — a small
+ * convenience so callers don't need to remember the "only applies to
+ * women, and never to WorldWCR itself" condition every time. */
+export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) {
+  if (rider.gender !== "F" || targetCategoryKey === "worldwcr") return true;
+  return (rider.potential ?? 0) >= crossoverPotentialFloor(targetCategoryKey, seasonNumber);
+}
+
 
 /* Shared by both formulas below: total wins/podiums across every
    category a rider has ever raced in — the game's existing stand-in for

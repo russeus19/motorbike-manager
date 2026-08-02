@@ -141,5 +141,7 @@ export const INITIAL_SPONSORS_BY_CATEGORY = {
   worldwcr: {
     "Monster Energy Crescent Yamaha": { main: "Monster Energy", secondary: null },
     "Pata AG Motorsport Italia": { main: "Pata AG", secondary: null },
+    "YVS Sabadell Diva Racing": { main: "YVS Sabadell", secondary: null },
+    "Terra & Vita GRT Yamaha WorldWCR": { main: "Terra & Vita", secondary: null },
   },
 };
