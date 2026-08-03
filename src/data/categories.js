@@ -28,3 +28,10 @@ export const CATEGORY_DATA = {
   worldwcr: { key: "worldwcr", label: "WorldWCR", lower: null, scale: 0.15, teams: WORLDWCR_TEAMS_DATA },
 };
 export const CATEGORY_ORDER = ["motogp", "moto2", "moto3", "superbikes", "supersport", "sportbike", "worldwcr"];
+
+// Nobody debuts straight into MotoGP, Moto2 or WorldSBK — every real
+// rider works their way up through an entry-level category first.
+// These four are the only ones a brand-new regen can ever be created
+// in directly; the other three only ever receive riders who were
+// already racing somewhere below them.
+export const ROOKIE_ELIGIBLE_CATEGORIES = ["moto3", "sportbike", "supersport", "worldwcr"];

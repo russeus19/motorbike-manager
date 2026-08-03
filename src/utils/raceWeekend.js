@@ -153,7 +153,19 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
       }
     }
 
-    if (next.injury && next.injury.gpRemaining > 0) {
+    // Bug fixed: a brand-new injury from THIS SAME race (just assigned
+    // a few lines above) used to fall straight into this countdown
+    // block too — decrementing gpRemaining by one race in the exact
+    // same pass it was diagnosed in, before the rider (or their
+    // substitute) had raced a single weekend with it. A short injury
+    // (gpTotal 1) could clear itself instantly this same race weekend,
+    // leaving the substitute the player had just been asked to hire
+    // completely orphaned: the original rider shows as healthy again
+    // immediately, the substitute never actually races. The countdown
+    // below only makes sense for an injury that was ALREADY there
+    // before this race started — a fresh one starts counting down from
+    // the NEXT race weekend instead, exactly once.
+    if (!ownResult?.injuryResult && next.injury && next.injury.gpRemaining > 0) {
       const wasDeferred = !!next.injury.deferSubstituteDecision;
       const gpRemaining = next.injury.gpRemaining - 1;
       if (gpRemaining <= 0) {

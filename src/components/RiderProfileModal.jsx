@@ -202,7 +202,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
         </div>
 
         <div className="flex gap-1.5 px-5 pt-3 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
-          {[["personal", "Datos personales"], ["contrato", "Contrato"], ["trayectoria", "Trayectoria"]].map(([key, label]) => (
+          {[["personal", "Datos personales"], ["contrato", "Contrato"], ["trayectoria", "Trayectoria"]].filter(([key]) => key !== "contrato" || !rider.retired).map(([key, label]) => (
             <button key={key} onClick={() => setProfileTab(key)}
               className="text-xs px-3 py-2 rounded-t-lg font-semibold transition-colors"
               style={{

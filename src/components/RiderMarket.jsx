@@ -134,6 +134,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   const [contractFilter, setContractFilter] = useState("all"); // all | contracted | free
   const [categoryFilter, setCategoryFilter] = useState("all"); // all | <cada key de CATEGORY_ORDER> | free
   const [natFilter, setNatFilter] = useState("all"); // all | emoji de bandera del piloto (r.nat)
+  const [genderFilter, setGenderFilter] = useState("all"); // all | M | F
   const [minAge, setMinAge] = useState(14);
   const [maxAge, setMaxAge] = useState(45);
   const [minCA, setMinCA] = useState(0);
@@ -172,6 +173,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
     if (CATEGORY_ORDER.includes(categoryFilter) && e.categoryKey !== categoryFilter) return false;
     const r = e.rider;
     if (natFilter !== "all" && r.nat !== natFilter) return false;
+    if (genderFilter !== "all" && (r.gender || "M") !== genderFilter) return false;
     const ca = overallRating(r);
     if (r.age < minAge || r.age > maxAge) return false;
     if (ca < minCA || ca > maxCA) return false;
@@ -213,6 +215,14 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
           </label>
           <label className="flex flex-col gap-1.5 mb-3 text-xs" style={{ color: COLORS.muted }}>País de procedencia
             <NationalityPicker value={{ value: natFilter, onChange: setNatFilter }} options={availableNats} accent={accent} />
+          </label>
+          <label className="flex flex-col gap-1.5 mb-3 text-xs" style={{ color: COLORS.muted }}>Sexo
+            <select value={genderFilter} onChange={(e) => setGenderFilter(e.target.value)}
+              className="px-3 py-2 rounded-xl text-sm" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }}>
+              <option value="all">Todos</option>
+              <option value="M">Hombre</option>
+              <option value="F">Mujer</option>
+            </select>
           </label>
           <label className="flex flex-col gap-1.5 mb-3 text-xs" style={{ color: COLORS.muted }}>Estado del contrato
             <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value)}

@@ -1,6 +1,6 @@
 import { CATEGORY_ORDER } from "../data/categories.js";
 import { clamp, pick } from "./random.js";
-import { computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating, photoIdFor } from "./riders.js";
+import { categoryRankDelta, computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor } from "./riders.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
@@ -214,7 +214,7 @@ export function scoreTeamOfferAcceptance(rider, fromTeam, offerAmount, scale, ri
  * category promotion (Moto3→Moto2, Moto2→MotoGP).
  */
 export function scoreRiderOfferAcceptance(rider, toTeam, terms, ctx) {
-  const { scale, isPromotion, currentTeamBikeAvg, negotiation } = ctx;
+  const { scale, currentTeamBikeAvg, negotiation } = ctx;
   const fairSalary = computeSalary(rider, scale);
   const salaryScore = fairSalary > 0 ? clamp((terms.salary / fairSalary - 1) * 1.2, -1, 1) : 0;
   const durationScore = clamp((terms.years - 1) / 2, -0.3, 0.4);
@@ -233,10 +233,30 @@ export function scoreRiderOfferAcceptance(rider, toTeam, terms, ctx) {
 
   const moraleBonus = (moraleTierInfo(rider.moraleState?.tier).modifier - 1) * 4; // roughly -0.24..+0.24
   const ageFactor = rider.age <= 23 ? 0.15 : rider.age >= 33 ? -0.1 : 0;
-  const promotionBonus = isPromotion ? 0.35 : 0;
+  // Bug fixed: this used to be a flat +0.35 "isPromotion" bonus that was
+  // ALWAYS passed as false by both callers, meaning it never actually
+  // fired — there was no real category-awareness here at all. A rider
+  // having a great season in Superbikes would accept an offer from a
+  // WorldWCR team exactly as readily as one from another Superbikes
+  // squad, since nothing here ever checked how far down that actually
+  // is. categoryRankDelta (shared with wouldRiderJoin, so the two can't
+  // drift apart again) gives the real size of the jump; the resistance
+  // to a big drop scales with the rider's own prestige — someone
+  // currently thriving holds out for something as good or better,
+  // someone struggling is far more open to stepping down.
+  const fromCategoryKey = rider._fromCategoryKey || negotiation?.categoryKey;
+  const catDelta = negotiation?.categoryKey ? categoryRankDelta(negotiation.categoryKey, fromCategoryKey) : 0;
+  const riderPrestige = rider.prestige ?? 60;
+  let categoryMoveScore = 0;
+  if (catDelta > 0) {
+    categoryMoveScore = clamp(catDelta * 0.2, 0, 0.45);
+  } else if (catDelta < 0) {
+    const doingWell = clamp((riderPrestige - 55) / 45, 0, 1);
+    categoryMoveScore = -clamp(Math.abs(catDelta) * (0.3 + doingWell * 0.5), 0, 1.2);
+  }
   const leverage = negotiation ? negotiationLeverage(negotiation, "rider") : 0;
 
-  const total = clamp(salaryScore * 0.35 + durationScore * 0.15 + bonusScore + bikeQualityScore * 0.25 + prestigeAppealScore * 0.2 + moraleBonus * 0.1 + ageFactor + promotionBonus + leverage, -1, 1);
+  const total = clamp(salaryScore * 0.35 + durationScore * 0.15 + bonusScore + bikeQualityScore * 0.25 + prestigeAppealScore * 0.2 + moraleBonus * 0.1 + ageFactor + categoryMoveScore + leverage, -1, 1);
 
   if (total >= 0.15) return { accept: true, counterTerms: null, score: total };
   if (total >= -0.2) {
@@ -321,7 +341,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     if (buyer.riders.length + seatsTaken >= 2) return;
 
     const ambition = buyerAmbition(buyer);
-    const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+    const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, seasonNumber));
     const useFreeAgent = eligibleFreeAgents.length > 0 && Math.random() < 0.4;
 
     let rider = null;
@@ -332,6 +352,16 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
       const sellers = teams.filter((t) => t.id !== buyer.id && t.riders.length);
       if (!sellers.length) return;
       const seller = pick(sellers);
+      // Fixed, then un-fixed: this used to only check age/gender
+      // eligibility, letting the AI approach anyone regardless of
+      // contract status. A restriction to the final contract year was
+      // tried, but that was inconsistent — the player can already pay
+      // a selling team compensation (needsTeamCompensation) to sign
+      // someone mid-contract, so an AI team should be able to do
+      // exactly the same real transfer, not just poach whoever's
+      // nearly out of contract anyway. needsTeamCompensation already
+      // prices the fee correctly for however many years are left; no
+      // separate eligibility restriction is needed on top of that.
       const candidates = seller.riders.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
       if (!candidates.length) return;
       rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(r, ambition, categoryKey));
@@ -357,6 +387,12 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
       winBonus: 0,
       titleBonus: 0,
     };
+    // Bug fixed: nothing here ever checked whether the buyer could
+    // actually afford what they were about to offer — a team could open
+    // a negotiation (and any transfer-fee compensation on top) it had
+    // no realistic way to pay for. Same hard budget rule as every
+    // signing point in transferMarket.js now.
+    if (riderTerms.salary + (teamOfferAmount || 0) > (buyer.budget || 0)) return;
 
     created.push(createNegotiation({
       kind: "signing", rider, categoryKey, fromTeam,

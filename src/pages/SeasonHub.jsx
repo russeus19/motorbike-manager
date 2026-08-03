@@ -425,7 +425,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             openProfile={openProfile}
             onOpenTeamProfile={onOpenTeamProfile}
           />
-          <SeasonArchivePanel seasonArchive={seasonArchive} accent={accent} category={category} />
+          <SeasonArchivePanel seasonArchive={seasonArchive} accent={accent} category={category} onOpenRiderProfileById={onOpenRiderProfileById} />
           <HallOfFamePanel seasonArchive={seasonArchive} accent={accent} />
         </div>
       )}

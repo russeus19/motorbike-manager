@@ -102,9 +102,94 @@ export function crossoverPotentialFloor(targetCategoryKey, seasonNumber = 1) {
 /** True if this rider passes the crossover bar above — a small
  * convenience so callers don't need to remember the "only applies to
  * women, and never to WorldWCR itself" condition every time. */
+/** Shared by wouldRiderJoin (marketAI.js, AI-vs-AI) and
+ * scoreRiderOfferAcceptance (marketNegotiations.js, the player's own
+ * offers) — a single definition of "how prestigious is this category
+ * relative to the others" so the two can never drift out of sync with
+ * each other again. They used to each keep their own separate copy;
+ * Sportbike went missing from one of them once already (silently
+ * treating a well-earned Sportbike→Supersport promotion as a
+ * downgrade), and worse, scoreRiderOfferAcceptance never had ANY
+ * category-awareness at all — a rider having a great season in
+ * Superbikes would accept an offer from a WorldWCR team exactly as
+ * readily as one from Superbikes itself, since nothing there ever
+ * checked how far down that actually is. */
+export const CATEGORY_RANK = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5, worldwcr: 0.2 };
+
+export function categoryRankDelta(toCategoryKey, fromCategoryKey) {
+  return (CATEGORY_RANK[toCategoryKey] ?? 2) - (CATEGORY_RANK[fromCategoryKey ?? toCategoryKey] ?? 2);
+}
+
+// The natural feeder for each of the three "elite" categories — the
+// only origin a rider can come from without needing to clear an
+// exceptionally high bar first. MotoGP only really recruits from
+// Moto2, Moto2 only really recruits from Moto3, Superbikes only really
+// recruits from Supersport — a rider from any OTHER category (a
+// completely different ladder, like Supersport turning up in MotoGP)
+// has no real pathway there at all in reality, no matter how modest a
+// jump it might look like on paper.
+const NATURAL_FEEDER = { motogp: "moto2", moto2: "moto3", superbikes: "supersport" };
+
+/** How good a rider from a NON-feeder ladder would have to be to even
+ * be considered for MotoGP/Moto2/Superbikes — deliberately far higher
+ * than crossoverPotentialFloor's own values, since jumping ladders
+ * entirely (not just up one step within the same one) should be
+ * exceedingly rare, reserved for a genuinely transcendent talent. */
+function offLadderPotentialFloor(targetCategoryKey, seasonNumber = 1) {
+  const bySeason = Math.max(0, (seasonNumber ?? 1) - 1);
+  if (targetCategoryKey === "motogp") return Math.max(82, 92 - bySeason * 0.3);
+  if (targetCategoryKey === "moto2") return Math.max(75, 84 - bySeason * 0.3);
+  if (targetCategoryKey === "superbikes") return Math.max(72, 80 - bySeason * 0.3);
+  return 0;
+}
+
+/** Even coming from the right feeder, MotoGP/Moto2/Superbikes shouldn't
+ * take just "whoever's best of what's left" — a rider who finished
+ * deep in the midfield of Moto2 (say, 30th) has no real business in
+ * MotoGP regardless of how thin the rest of the pool happens to be
+ * that transition. Lower than offLadderPotentialFloor, since this IS
+ * the normal, expected pathway — but still a real bar, not zero. */
+function naturalFeederPotentialFloor(targetCategoryKey, seasonNumber = 1) {
+  const bySeason = Math.max(0, (seasonNumber ?? 1) - 1);
+  if (targetCategoryKey === "motogp") return Math.max(58, 68 - bySeason * 0.4);
+  if (targetCategoryKey === "moto2") return Math.max(48, 58 - bySeason * 0.4);
+  if (targetCategoryKey === "superbikes") return Math.max(45, 55 - bySeason * 0.4);
+  return 0;
+}
+
 export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) {
-  if (rider.gender !== "F" || targetCategoryKey === "worldwcr") return true;
-  return (rider.potential ?? 0) >= crossoverPotentialFloor(targetCategoryKey, seasonNumber);
+  if (rider.gender === "F" && targetCategoryKey !== "worldwcr" && (rider.potential ?? 0) < crossoverPotentialFloor(targetCategoryKey, seasonNumber)) return false;
+  // Bug fixed: this only ever gated the WorldWCR gender-crossover case
+  // — a male rider from any category, however mismatched, always
+  // passed. That's how a mid-50s-average Supersport rider (and a
+  // freshly generated regen right alongside them) ended up signed by
+  // a MotoGP team: nothing here ever asked whether their own ladder
+  // even connects to MotoGP at all, only whether the rider happened to
+  // be female. Bug fixed: this generalizes the same idea to every
+  // rider, gender aside — MotoGP/Moto2/Superbikes only take their
+  // natural feeder for granted; anyone from a different ladder needs
+  // to clear a genuinely elite bar first.
+  const naturalFeeder = NATURAL_FEEDER[targetCategoryKey];
+  if (naturalFeeder) {
+    const fromCat = rider._fromCategoryKey;
+    if (fromCat && fromCat !== targetCategoryKey && fromCat !== naturalFeeder) {
+      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
+    }
+    // Bug fixed: even THROUGH the natural feeder, there was no quality
+    // floor at all — just "best of whoever happens to still be
+    // available" with no minimum. That's how a rider who finished 30th
+    // in Moto2 (Luca Lunetta) could still get force-signed by a MotoGP
+    // team: his POTENTIAL (74) is actually decent on paper, so a
+    // potential-only floor doesn't catch him — potential is what he
+    // might become, not what he is right now, and a team calling
+    // someone up cares about CURRENT form (his overall rating, 63) at
+    // least as much as future promise. Both need to clear the bar.
+    if (fromCat === naturalFeeder) {
+      const floor = naturalFeederPotentialFloor(targetCategoryKey, seasonNumber);
+      if ((rider.potential ?? 0) < floor || overallRating(rider) < floor) return false;
+    }
+  }
+  return true;
 }
 
 

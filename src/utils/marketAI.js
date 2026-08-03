@@ -1,5 +1,5 @@
 import { clamp, randInt } from "./random.js";
-import { overallRating } from "./riders.js";
+import { categoryRankDelta, overallRating } from "./riders.js";
 import { evaluateRiderSeason } from "./seasonHistory.js";
 
 /**
@@ -281,20 +281,26 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // its market in general) nearly frozen: its own best riders kept
   // rejecting offers a rider in their exact position should almost
   // always accept.
-  const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5, worldwcr: 0.2 };
-  const catDelta = (catRank[categoryKey] ?? 2) - (catRank[fromCategoryKey] ?? 2);
-  if (catDelta > 0) score += 0.22;
+  const catDelta = categoryRankDelta(categoryKey, fromCategoryKey);
+  if (catDelta > 0) score += clamp(catDelta * 0.15, 0, 0.35);
   else if (catDelta < 0) {
     // Bajar de categoría rara vez tiene sentido para alguien ya asentado
     // arriba — un veterano de MotoGP no vuelve a Moto2 a los 30 años,
     // esté sin equipo o no. Solo un piloto todavía joven, para quien
     // reconstruirse en una categoría inferior sigue siendo una decisión
     // de carrera razonable, se lo plantea con algo de apertura.
+    // Bug fixed: every drop got the exact same flat penalty regardless
+    // of how far it actually was — a Supersport rider being chased by
+    // Sportbike (one small step down) was punished exactly as hard as
+    // a Superbikes standout being offered a WorldWCR seat (an enormous
+    // one). Scaling by the real size of the gap means a small step down
+    // stays plausible while a genuine free-fall stays very rare.
     let dropPenalty;
-    if (rider.age >= 30) dropPenalty = 0.65;
-    else if (rider.age >= 27) dropPenalty = 0.42;
-    else dropPenalty = 0.22;
-    if (!isUnemployed) dropPenalty += 0.15;
+    if (rider.age >= 30) dropPenalty = 0.35;
+    else if (rider.age >= 27) dropPenalty = 0.22;
+    else dropPenalty = 0.12;
+    dropPenalty *= Math.abs(catDelta);
+    if (!isUnemployed) dropPenalty += 0.15 * Math.abs(catDelta);
     score -= dropPenalty;
   }
 

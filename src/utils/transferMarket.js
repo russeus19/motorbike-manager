@@ -1,8 +1,8 @@
-import { CATEGORY_DATA } from "../data/categories.js";
+import { CATEGORY_DATA, ROOKIE_ELIGIBLE_CATEGORIES } from "../data/categories.js";
 import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
-import { assignUniqueNumber, computeSalary, crossoverCandidatePoolSize, crossoverPotentialFloor, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor, substituteHireCost } from "./riders.js";
+import { assignUniqueNumber, categoryRankDelta, computeSalary, crossoverCandidatePoolSize, crossoverPotentialFloor, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor, substituteHireCost } from "./riders.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 import { teamDisplayName } from "./teamNaming.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
@@ -56,6 +56,13 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   const teamsByCategory = {};
   const teamExpectationVerdictById = {};
   const riderPosByIdByCategory = {};
+  // Full data (not just the id) for every rider who retires this
+  // transition — retiredIds alone was only ever enough to say "this
+  // rider legitimately left the game", never enough to actually look
+  // them up again afterward. See App.jsx, which folds these into a
+  // persistent archive so a retired rider's profile stays available
+  // for good, exactly like it was the day they hung up their boots.
+  const retiredRiders = [];
 
   // --- Fase 1: retirement only — unaffected by market timing, so this
   // stays a simple independent per-category pass. ---
@@ -89,6 +96,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         };
         if (shouldRetire(r, retireCtx)) {
           retiredIds?.add(r.id);
+          retiredRiders.push({ ...r, retired: true, retiredSeasonNumber: seasonNumber, lastCategoryKey: ck, lastTeamName: teamDisplayName(t) });
           log[ck].push({ type: "retiro", riderId: photoIdFor(r), personId: r.id, riderName: r.name, text: `${r.name} se retira`, category: CATEGORY_DATA[ck].label });
           return;
         }
@@ -230,6 +238,14 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       if (bestOutside && bestOutside.score > ownScore + MARKET_SWAP_MARGIN) {
         const bikeAvgOffered = bikeAvgOf(t);
         const offeredSalary = Math.round(computeSalary(bestOutside.p, CATEGORY_DATA[ck].scale) * (1.1 + Math.random() * 0.2));
+        // Bug fixed: budget only ever nudged a candidate's score down a
+        // little (scoreCandidateForTeam), it never actually blocked a
+        // signing outright — a team could end up committing to a
+        // salary it plainly couldn't sustain. A hard check here (and at
+        // every other signing point in this file) means an unaffordable
+        // candidate is simply skipped, the same way a human manager
+        // couldn't offer a contract with money they don't have.
+        if (offeredSalary > t.budget) return;
         const accepted = wouldRiderJoin(bestOutside.p, t, ck, offeredSalary, {
           fromCategoryKey: bestOutside.p._fromCategoryKey || ck, bikeAvgOffered, currentBikeAvg: bestOutside.p._fromBikeAvg ?? bikeAvgOffered,
           isUnemployed: true, seasonsUnsigned: bestOutside.p.seasonsUnsigned || 0,
@@ -383,6 +399,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         for (const { idx } of scored) {
           const c = candidatePool[idx];
           const offeredSalary = Math.round(computeSalary(c.rider, CATEGORY_DATA[higher].scale) * (1.15 + Math.random() * 0.25));
+          if (offeredSalary > liveTeam.budget) continue;
           const accepted = wouldRiderJoin(c.rider, liveTeam, higher, offeredSalary, {
             fromCategoryKey: lower, bikeAvgOffered: bikeAvgOf(liveTeam), currentBikeAvg: bikeAvgOf(findTeam(teamsByCategory, lower, c.fromTeamId)),
           });
@@ -435,6 +452,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     let signed = null;
     for (const { r } of ranked) {
       const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[categoryKey].scale) * (1 + Math.random() * 0.15));
+      if (offeredSalary > team.budget) continue;
       const accepted = wouldRiderJoin(r, team, categoryKey, offeredSalary, {
         fromCategoryKey: r._fromCategoryKey || categoryKey, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
         isUnemployed: true, seasonsUnsigned: r.seasonsUnsigned || 0,
@@ -449,23 +467,32 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const newRider = { ...cleanRider, contractYears: years, salary: signed.salary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
       stripRiderFromAllRosters(teamsByCategory, newRider.id, categoryKey, teamId);
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
-      const catRank = { motogp: 3, moto2: 2, superbikes: 2, supersport: 1.5, moto3: 1, sportbike: 0.5 };
+      // Bug fixed: this local copy of the category ranking was missing
+      // worldwcr — the exact same class of bug already found twice
+      // elsewhere in this file — meaning a WorldWCR-origin signing here
+      // would silently log as a plain "fichaje" instead of correctly
+      // showing as an "ascenso"/"descenso". Reusing the one shared
+      // definition (categoryRankDelta) means there's only one place
+      // left that can ever go stale.
       const fromCat = _fromCategoryKey;
       let logType = "fichaje";
       let text;
-      if (fromCat && fromCat !== categoryKey && catRank[categoryKey] > catRank[fromCat]) {
+      if (fromCat && fromCat !== categoryKey && categoryRankDelta(categoryKey, fromCat) > 0) {
         logType = "ascenso";
         text = `${newRider.name} asciende de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)})`;
-      } else if (fromCat && fromCat !== categoryKey && catRank[categoryKey] < catRank[fromCat]) {
+      } else if (fromCat && fromCat !== categoryKey && categoryRankDelta(categoryKey, fromCat) < 0) {
         logType = "descenso";
         text = `${newRider.name} baja de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)})`;
       } else {
         text = `${newRider.name} ficha por ${teamDisplayName(team)}`;
       }
       log[categoryKey].push({ type: logType, riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text, category: CATEGORY_DATA[categoryKey].label });
-    } else {
+    } else if (ROOKIE_ELIGIBLE_CATEGORIES.includes(categoryKey)) {
       // Nobody in the whole pool wanted this seat — a fresh prospect
       // gets their shot instead, exactly like the old rookie fallback.
+      // Only ever happens in the four entry categories (see the branch
+      // below for MotoGP/Moto2/WorldSBK, which never generate anyone
+      // new at all).
       // Bug fixed: this always generated a male rookie regardless of
       // category, since makeRookie defaults to gender "M" — harmless
       // everywhere else, but WorldWCR requires every rider to be
@@ -476,6 +503,70 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey, categoryKey === "worldwcr" ? "F" : "M");
       applyRiderToTeam(teamsByCategory, categoryKey, teamId, rookie);
       log[categoryKey].push({ type: "debut", riderId: photoIdFor(rookie), personId: rookie.id, riderName: rookie.name, text: `${rookie.name} debuta con ${teamDisplayName(team)} (${rookie.age} años)`, category: CATEGORY_DATA[categoryKey].label });
+    } else {
+      // Bug fixed: MotoGP, Moto2 and WorldSBK used to fall back to
+      // generating a brand-new rookie here too, just like the entry
+      // categories above — meaning a vacancy nobody in the market
+      // wanted could still end up "filled" by a rider who came from
+      // absolutely nowhere. Nobody debuts directly into these three in
+      // real life; every rider already works their way up through an
+      // entry category first. So instead of ever creating someone new,
+      // this forces a real, EXISTING rider into the seat.
+      // Bug fixed: this used to check the general free-agent pool
+      // FIRST and only fall back to the feeder category if the pool
+      // was completely empty — meaning a mediocre free agent from a
+      // totally unrelated category (a released WorldSPB rider, say)
+      // could get force-signed into MotoGP ahead of a genuinely good
+      // Moto2 rider, just because the pool happened to have someone in
+      // it at all. A real MotoGP team desperate for a body pulls up
+      // from Moto2 first — that's who they actually know and scout —
+      // and only reaches into the wider free-agent pool if the feeder
+      // category itself has nobody eligible left to give up.
+      let forced = null;
+      let forcedFromTeamId = null;
+      const feeder = CATEGORY_DATA[categoryKey]?.lower;
+      const feederTeams = feeder ? teamsByCategory[feeder] : null;
+      if (feederTeams) {
+        const feederCandidates = feederTeams.flatMap((t) => t.riders.map((r) => ({ r, teamId: t.id })));
+        // Bug fixed: this picked the single best-scoring rider out of
+        // the ENTIRE feeder category with no quality floor at all —
+        // "best of whoever's left" isn't the same as "actually good
+        // enough for MotoGP/Moto2/Superbikes". passesCrossoverGate
+        // already knows the right bar for a natural-feeder crossing;
+        // it just needs _fromCategoryKey to check against, which a
+        // rider still racing on their own team's roster (rather than
+        // sitting in the free-agent pool) never carries — so it's set
+        // here explicitly for the check alone.
+        const bestFeeder = feederCandidates
+          .filter(({ r }) => passesCrossoverGate({ ...r, _fromCategoryKey: feeder }, categoryKey, seasonNumber))
+          .map(({ r, teamId: ftId }) => ({ r, teamId: ftId, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))
+          .sort((a, b) => b.score - a.score)[0];
+        if (bestFeeder) { forced = bestFeeder.r; forcedFromTeamId = bestFeeder.teamId; }
+      }
+      if (!forced) forced = ranked[0]?.r ?? null;
+      if (forced) {
+        pool = pool.filter((r) => r.id !== forced.id);
+        const years = proposedContractYears(forced);
+        const offeredSalary = Math.round(computeSalary(forced, CATEGORY_DATA[categoryKey].scale) * (1 + Math.random() * 0.15));
+        const { _fromCategoryKey, _fromBikeAvg, ...cleanRider } = forced;
+        const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
+        if (forcedFromTeamId) {
+          teamsByCategory[CATEGORY_DATA[categoryKey].lower] = teamsByCategory[CATEGORY_DATA[categoryKey].lower].map((t) => (
+            t.id === forcedFromTeamId ? { ...t, riders: t.riders.filter((r) => r.id !== forced.id) } : t
+          ));
+        } else {
+          stripRiderFromAllRosters(teamsByCategory, newRider.id, categoryKey, teamId);
+        }
+        applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
+        const fromCat = _fromCategoryKey || (forcedFromTeamId ? CATEGORY_DATA[categoryKey].lower : null);
+        const text = fromCat && fromCat !== categoryKey
+          ? `${newRider.name} sube de urgencia de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)}), sin nadie más disponible en el mercado`
+          : `${newRider.name} ficha por ${teamDisplayName(team)} de urgencia, sin nadie más disponible en el mercado`;
+        log[categoryKey].push({ type: "ascenso", riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text, category: CATEGORY_DATA[categoryKey].label });
+      }
+      // If there's truly nobody anywhere — an extreme edge case this
+      // should never realistically reach — the seat is simply left
+      // open rather than conjuring someone from nothing.
     }
   });
 
@@ -498,12 +589,13 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       let changed = true;
       while (changed) {
         changed = false;
-        const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck));
+        const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck) && passesCrossoverGate(r, ck, seasonNumber));
         if (!eligible.length) break;
         const teamBudget = liveTeam.budget;
         const riderScores = liveTeam.riders.map((r) => scoreCandidateForTeam(r, liveTeam, { categoryKey: ck, teamBudget }));
         const weakestIdx = riderScores[0] <= riderScores[1] ? 0 : 1;
         const weakest = liveTeam.riders[weakestIdx];
+        if (weakest.injury && weakest.injury.sidelined) break; // never mid-treatment — same rule the in-season version already follows
         const weakestScore = riderScores[weakestIdx];
 
         const ranked = eligible
@@ -514,6 +606,18 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         for (const { r } of ranked) {
           const bikeAvgOffered = bikeAvgOf(liveTeam);
           const offeredSalary = Math.round(computeSalary(r, CATEGORY_DATA[ck].scale) * (1.1 + Math.random() * 0.2));
+          // Bug fixed: releasing your OWN rider mid-contract to make
+          // room used to be completely free — no cost at all, even
+          // though poaching an equivalent rider FROM another team
+          // always required paying that team compensation
+          // (needsTeamCompensation). Same idea applies here: cutting a
+          // rider loose before their contract is up has a real cost
+          // (fireRiderCost, the same formula the mid-season upgrade
+          // mechanism already uses), and the team needs to genuinely be
+          // able to afford BOTH that and the new rider's salary — not
+          // just have the new salary nudge their score down a little.
+          const releaseCost = fireRiderCost(weakest);
+          if (releaseCost + offeredSalary > liveTeam.budget) continue;
           const accepted = wouldRiderJoin(r, liveTeam, ck, offeredSalary, {
             fromCategoryKey: r._fromCategoryKey || ck, bikeAvgOffered, currentBikeAvg: r._fromBikeAvg ?? bikeAvgOffered,
             isUnemployed: true, seasonsUnsigned: r.seasonsUnsigned || 0,
@@ -526,7 +630,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           const newRider = { ...cleanRider, contractYears: years, salary: offeredSalary, isNewTeamThisSeason: true, seasonsUnsigned: 0 };
           stripRiderFromAllRosters(teamsByCategory, newRider.id, ck, teamId);
           teamsByCategory[ck] = teamsByCategory[ck].map((t) => (
-            t.id === teamId ? { ...t, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
+            t.id === teamId ? { ...t, budget: t.budget - releaseCost, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
           ));
           log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text: `${newRider.name} ficha por ${teamDisplayName(liveTeam)}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label });
           log[ck].push({ type: "salida", riderId: photoIdFor(weakest), personId: weakest.id, riderName: weakest.name, text: `${weakest.name} queda libre tras la mejora de plantilla de ${teamDisplayName(liveTeam)}`, category: CATEGORY_DATA[ck].label });
@@ -538,7 +642,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     });
   });
 
-  return { teamsByCategory, pool };
+  return { teamsByCategory, pool, retiredRiders };
 }
 
 function bikeAvgOf(team) {
@@ -678,7 +782,7 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   const weakest = team.riders[weakestIdx];
   if (weakest.injury && weakest.injury.sidelined) return team; // never mid-treatment
 
-  const eligiblePool = poolRef.pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+  const eligiblePool = poolRef.pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, ctx.seasonNumber));
   const ranked = eligiblePool
     .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget }) }))
     .filter(({ score }) => score > scored[weakestIdx] + 15)

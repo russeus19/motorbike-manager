@@ -186,6 +186,7 @@ export default function MotorbikeManager() {
   const riderPodiums = game?.riderPodiums ?? {};
   const sprintWins = game?.sprintWins ?? {};
   const seasonArchive = game?.seasonArchive ?? [];
+  const retiredRiders = game?.retiredRiders ?? [];
   const sprintPodiums = game?.sprintPodiums ?? {};
   const teamStandings = game?.teamStandings ?? {};
   const lastResult = game?.lastResult ?? null;
@@ -252,6 +253,7 @@ export default function MotorbikeManager() {
   const setRiderPodiums = makeFieldSetter("riderPodiums");
   const setSprintWins = makeFieldSetter("sprintWins");
   const setSeasonArchive = makeFieldSetter("seasonArchive");
+  const setRetiredRiders = makeFieldSetter("retiredRiders");
   const setSprintPodiums = makeFieldSetter("sprintPodiums");
   const setTeamStandings = makeFieldSetter("teamStandings");
   const setLastResult = makeFieldSetter("lastResult");
@@ -392,6 +394,12 @@ export default function MotorbikeManager() {
       const foundElsewhere = findRiderInCategory(ck, riderId);
       if (foundElsewhere) { openProfile(foundElsewhere.rider, foundElsewhere.teamName, ck); return; }
     }
+    // Last resort: a rider who's retired since whichever record this
+    // click came from — their profile stays available on purpose (see
+    // resolveSeasonMarketAcrossCategories's retiredRiders output), just
+    // without a Contrato tab, since there's no contract to show anymore.
+    const retired = retiredRiders.find((r) => r.id === riderId);
+    if (retired) { openProfile(retired, retired.lastTeamName || "Retirado", retired.lastCategoryKey ?? null); return; }
   }
 
   /* Opens a team's profile purely from an id + category — same idea for
@@ -534,7 +542,7 @@ export default function MotorbikeManager() {
       riderPodiums: {},
       sprintWins: {},
       sprintPodiums: {},
-      seasonArchive: [],
+      seasonArchive: [], retiredRiders: [],
       ...data,
       gameMode: restoredGameMode,
       playerTeam,
@@ -617,7 +625,7 @@ export default function MotorbikeManager() {
       seasonNumber: 1,
       budget: chosenTeam.budget,
       riderStandings: rsFixed,
-      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [],
+      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [], retiredRiders: [],
       teamStandings: ts,
       lastResult: null,
       gpHistory: [],
@@ -939,7 +947,7 @@ export default function MotorbikeManager() {
       seasonNumber: 1,
       budget: chosen.budget,
       riderStandings: rsFixed,
-      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [],
+      riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonArchive: [], retiredRiders: [],
       teamStandings: ts,
       lastResult: null,
       gpHistory: [],
@@ -2483,9 +2491,10 @@ export default function MotorbikeManager() {
     CATEGORY_ORDER.forEach((ck) => {
       categoriesForMarket[ck] = { teams: catTeams[ck], riderStandings: catRiderStandings[ck], teamStandings: catTeamStandings[ck], excludeTeamId: excludeIds[ck] };
     });
-    const marketResult = resolveSeasonMarketAcrossCategories(categoriesForMarket, poolFreeAgents, retiredIds, marketLog);
+    const marketResult = resolveSeasonMarketAcrossCategories(categoriesForMarket, poolFreeAgents, retiredIds, marketLog, seasonNumber);
     CATEGORY_ORDER.forEach((ck) => { catTeams[ck] = marketResult.teamsByCategory[ck]; });
     poolFreeAgents = marketResult.pool;
+    if (marketResult.retiredRiders?.length) setRetiredRiders([...retiredRiders, ...marketResult.retiredRiders]);
 
     // Anyone left unsigned in the shared pool ages a season of
     // unemployment (nudging them toward retirement) and keeps evolving —

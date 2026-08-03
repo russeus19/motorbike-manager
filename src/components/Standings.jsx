@@ -256,7 +256,7 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
  * pickers, then whichever of pilotos/equipos/constructores is selected
  * for that season+category snapshot.
  */
-export function SeasonArchivePanel({ seasonArchive, accent, category }) {
+export function SeasonArchivePanel({ seasonArchive, accent, category, onOpenRiderProfileById }) {
   const [seasonIdx, setSeasonIdx] = useState(Math.max(0, (seasonArchive || []).length - 1));
   const [catTab, setCatTab] = useState(category);
   const [viewTab, setViewTab] = useState("pilotos");
@@ -310,7 +310,11 @@ export function SeasonArchivePanel({ seasonArchive, accent, category }) {
         {rows.map((r, i) => (
           <li key={r.id || r.name} className="flex justify-between">
             <span style={{ color: i < 3 ? COLORS.gold : COLORS.text }}>
-              {i + 1}. {r.name}{r.teamName ? <span style={{ color: COLORS.muted }}> ({r.teamName})</span> : null}
+              {i + 1}.{" "}
+              {viewTab === "pilotos" && onOpenRiderProfileById ? (
+                <button onClick={() => onOpenRiderProfileById(r.id, catTab)} className="hover:underline" style={{ color: "inherit" }}>{r.name}</button>
+              ) : r.name}
+              {r.teamName ? <span style={{ color: COLORS.muted }}> ({r.teamName})</span> : null}
             </span>
             <span className="font-mono" style={{ color: COLORS.muted }}>{r.points}</span>
           </li>

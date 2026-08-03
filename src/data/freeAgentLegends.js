@@ -36,4 +36,8 @@ export const FREE_AGENT_LEGENDS_DATA = [
   { name: "Krystal Silfa", photoId: 237, nat: "🇩🇴", age: 22, gender: "F", potential: 34, tecnica: 24, ritmo: 27, adelantamientos: 29, mental: 25, adaptabilidad: 24, fisico: 21, prestige: 15, number: 5 },
   { name: "Sara Varon", photoId: 238, nat: "🇨🇴", age: 23, gender: "F", potential: 38, tecnica: 27, ritmo: 25, adelantamientos: 27, mental: 31, adaptabilidad: 32, fisico: 32, prestige: 19, number: 15 },
   { name: "Jessica Howden", photoId: 239, nat: "🇿🇦", age: 23, gender: "F", potential: 44, tecnica: 40, ritmo: 33, adelantamientos: 33, mental: 33, adaptabilidad: 37, fisico: 34, prestige: 25, number: 52 },
+  { name: "Rosa Jiménez", photoId: 240, nat: "🇪🇸", age: 17, gender: "F", potential: 56, tecnica: 34, ritmo: 34, adelantamientos: 41, mental: 41, adaptabilidad: 34, fisico: 38, prestige: 27, number: 24 },
+  { name: "Elisabetta Monti", photoId: 241, nat: "🇮🇹", age: 16, gender: "F", potential: 47, tecnica: 36, ritmo: 27, adelantamientos: 25, mental: 25, adaptabilidad: 31, fisico: 24, prestige: 18, number: 11 },
+  { name: "Ginevra Minelli", photoId: 242, nat: "🇮🇹", age: 17, gender: "F", potential: 43, tecnica: 25, ritmo: 23, adelantamientos: 21, mental: 25, adaptabilidad: 24, fisico: 26, prestige: 14, number: 83 },
+  { name: "Saidatul Zakirah", photoId: 243, nat: "🇲🇾", age: 18, gender: "F", potential: 45, tecnica: 21, ritmo: 26, adelantamientos: 23, mental: 30, adaptabilidad: 30, fisico: 26, prestige: 16, number: 88 },
 ];

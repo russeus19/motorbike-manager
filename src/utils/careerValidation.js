@@ -1,4 +1,5 @@
 import { BIKE_AREA_KEYS } from "../data/bikeAreas.js";
+import { ROOKIE_ELIGIBLE_CATEGORIES } from "../data/categories.js";
 import { WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { ensureRD } from "./bikeDevelopment.js";
 import { makeRookie } from "./riderGeneration.js";
@@ -94,6 +95,21 @@ export function validateAndRepairTeam(team, scale, { padRosterTo2 = true, catego
     // every rider to be female. Harmless everywhere else, but a real
     // problem here: a team ending up short a rider (a load-time repair,
     // a data glitch) would silently get a man handed a WorldWCR seat.
+    // Bug fixed: this also used to generate a brand-new rookie for ANY
+    // category, including MotoGP/Moto2/WorldSBK — but nobody debuts
+    // directly into those three in real life. Unlike the season-end
+    // market engine (transferMarket.js), this function only ever sees
+    // ONE isolated team — it has no visibility into other categories'
+    // rosters to pull an existing rider up from instead. So for these
+    // three, it simply doesn't fabricate anyone here at all; the team
+    // is left short a rider rather than handed an implausible new
+    // debutant, and the next real season transition's market engine
+    // (which CAN see the whole grid) fills the seat properly with
+    // someone who actually exists.
+    if (categoryKey && !ROOKIE_ELIGIBLE_CATEGORIES.includes(categoryKey)) {
+      issues.push("plaza vacía sin cubrir (categoría sin generación de debutantes) — se resolverá en la próxima transición de temporada");
+      break;
+    }
     riders.push(makeRookie(scale ?? 1, categoryKey, categoryKey === "worldwcr" ? "F" : "M"));
     issues.push("plaza vacía cubierta con un piloto de emergencia");
   }
