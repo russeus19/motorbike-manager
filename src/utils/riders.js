@@ -220,7 +220,6 @@ export function computeMarketValue(rider, scale) {
 
   const ageMultiplierForPotential = rider.age <= 21 ? 1.5 : rider.age <= 24 ? 1.2 : rider.age <= 27 ? 0.85
     : rider.age <= 30 ? 0.5 : rider.age <= 33 ? 0.25 : 0.1;
-  const potentialValue = potentialGap * potentialGap * 0.55 * ageMultiplierForPotential;
 
   const ageFactorForCA = rider.age <= 24 ? 1.15 : rider.age <= 28 ? 1.0 : rider.age <= 31 ? 0.85
     : rider.age <= 34 ? 0.65 : rider.age <= 37 ? 0.45 : 0.3;
@@ -232,6 +231,18 @@ export function computeMarketValue(rider, scale) {
   const moraleFactor = 0.85 + (rider.morale / 100) * 0.3;
 
   const caValue = Math.pow(ca / 100, 2.3) * 100 * 1.6;
+  // Bug fixed: potentialValue grew as the SQUARE of the gap with no
+  // ceiling at all, completely independent of caValue — a raw 18
+  // year old with modest current ability (CA 40) but a huge ceiling
+  // (potential 90) could out-value a fully proven, genuinely elite
+  // rider (CA 85) by more than 20x. Real speculative promise is worth
+  // a real premium, but it should never let someone unproven out-price
+  // someone who has actually shown they belong at the top — capping
+  // potentialValue relative to caValue itself keeps current ability as
+  // the dominant driver, with potential as a meaningful but bounded
+  // bonus on top of it, not an independent, unbounded source of value.
+  const uncappedPotentialValue = potentialGap * potentialGap * 0.55 * ageMultiplierForPotential;
+  const potentialValue = Math.min(uncappedPotentialValue, caValue * 1.4 + 15);
   const base = (caValue + potentialValue) * ageFactorForCA;
   return Math.max(15000, Math.round(base * prestigeFactor * experienceFactor * moraleFactor * 9000 * scale));
 }

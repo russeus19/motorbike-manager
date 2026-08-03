@@ -1,4 +1,4 @@
-import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityDowngrade, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages } from "./bikeDevelopment.js";
+import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityDowngrade, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages, processApprovedPackages } from "./bikeDevelopment.js";
 import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./economy.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
@@ -7,10 +7,55 @@ import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
 import { aiManageWarehouse, consumeWarehouseForResult, initWarehouse, resolveWarehouseProduction } from "./warehouseEngine.js";
 import { teamDisplayName } from "./teamNaming.js";
 
+/**
+ * The week-passes-regardless-of-racing half of a team's upkeep:
+ * warehouse production, R&D project/package advancement, facility
+ * upgrades, and (for AI teams) their own warehouse/R&D/facility
+ * decisions. None of this depends on an actual race happening — it's
+ * the administrative side of running a team, which real time keeps
+ * moving forward on whether or not there's a Grand Prix this
+ * particular week.
+ *
+ * Used in two places: at the end of processTeamAfterRace (a race
+ * happened, so this runs right after the race-specific processing
+ * above), and directly from a rest week (no race this week, but the
+ * calendar still moved forward one week, so this still needs to run
+ * on its own). Bug fixed: before this was split out, a rest week
+ * (Superbikes/Supersport/Sportbike/WorldWCR only race 6-12 of the
+ * calendar's 22 weeks) simply never touched the player's own team, or
+ * rivals, or other background categories on their own bye week at
+ * all — every one of those "off" weeks meant zero warehouse
+ * production and zero R&D/facility progress for everyone in that
+ * category, while a MotoGP/Moto2/Moto3 team (racing every single
+ * week) kept progressing continuously. Time itself is now what
+ * drives this, in weeks, not "did a race happen" — exactly the
+ * category-specific quirk this closes off.
+ */
+export function processTeamWeeklyProgress(team, categoryKey, ctx, notifQueue) {
+  const warehouse = resolveWarehouseProduction(team.warehouse || initWarehouse());
+  let midTeam = { ...team, warehouse };
+
+  if (!ctx.isPlayer) {
+    const managed = aiManageWarehouse(midTeam, ctx.scale, notifQueue, categoryKey);
+    midTeam = { ...midTeam, warehouse: managed.warehouse, budget: Math.max(0, managed.budget) };
+  }
+
+  const { team: afterProjects, arrivals: projectArrivals } = advanceTeamProjects(midTeam);
+  const afterPackages = ctx.isPlayer ? processApprovedPackages(afterProjects) : aiDecidePendingPackages(afterProjects, notifQueue, categoryKey, ctx.scale);
+  const { team: afterFacilities, arrivals: facilityArrivals } = advanceFacilityUpgrades(afterPackages);
+
+  if (ctx.isPlayer) return { team: afterFacilities, projectArrivals, facilityArrivals };
+
+  const afterRD = aiConsiderProject(afterFacilities, ctx);
+  const afterDistressCheck = aiConsiderFacilityDowngrade(afterRD, ctx.scale, notifQueue, categoryKey);
+  const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterDistressCheck, ctx.scale);
+  return { team: { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) }, projectArrivals, facilityArrivals };
+}
+
 export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRef, notifQueue) {
   const teamResults = raceResults.filter((r) => r.teamId === team.id);
 
-  let warehouse = resolveWarehouseProduction(team.warehouse || initWarehouse());
+  let warehouse = team.warehouse || initWarehouse();
   teamResults.forEach((r) => {
     if (!r.crashed || !r.dnfCause) return;
     const { warehouse: wh2 } = consumeWarehouseForResult(warehouse, r.dnfCause, r.injuryResult?.severity);
@@ -205,27 +250,20 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
   });
 
   let finalBudget = ctx.isPlayer ? afterAI.budget : budgetAfterSubs;
-  if (!ctx.isPlayer) {
-    const managed = aiManageWarehouse({ ...afterAI, warehouse, budget: finalBudget }, ctx.scale, notifQueue, categoryKey);
-    warehouse = managed.warehouse;
-    finalBudget = Math.max(0, managed.budget);
-  }
-
   let midTeam = { ...afterAI, riders, substitutes, warehouse, budget: finalBudget };
   if (!ctx.isPlayer) midTeam = aiMaybeFireRider(midTeam, categoryKey, ctx, poolRef, notifQueue);
 
-  // R&D (development/research) is the lowest priority spend: it only ever
-  // touches whatever budget is left once racing capability and roster
-  // needs have already been paid for. Factory/Staff upgrades tick down
-  // and get considered right alongside it — same low-priority tier,
-  // since they're long-term infrastructure bets rather than weekly needs.
-  if (ctx.isPlayer) return midTeam;
-  const afterProjects = advanceTeamProjects(midTeam).team;
-  const afterPackages = aiDecidePendingPackages(afterProjects, notifQueue, categoryKey, ctx.scale);
-  const afterFacilities = advanceFacilityUpgrades(afterPackages).team;
-  const afterRD = aiConsiderProject(afterFacilities, ctx);
-  const afterDistressCheck = aiConsiderFacilityDowngrade(afterRD, ctx.scale, notifQueue, categoryKey);
-  const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterDistressCheck, ctx.scale);
-  return { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) };
+  // Everything from here on — warehouse production, R&D, facilities,
+  // and (for AI) their own warehouse/R&D/facility decisions — doesn't
+  // actually depend on a race having happened at all; it's the same
+  // week-by-week upkeep processTeamWeeklyProgress runs for a rest week
+  // too. Delegating here instead of duplicating it keeps the two
+  // paths from ever drifting out of sync with each other again.
+  const weekly = processTeamWeeklyProgress(midTeam, categoryKey, ctx, notifQueue);
+  // AI callers throughout the codebase all expect a bare team object
+  // back from this function, exactly like before this refactor — only
+  // the player path (surfaced through runRace, which needs to show the
+  // player what just arrived) gets the richer { team, arrivals } shape.
+  return ctx.isPlayer ? weekly : weekly.team;
 }
 

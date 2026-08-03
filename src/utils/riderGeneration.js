@@ -151,7 +151,24 @@ export function makeRookie(scale, categoryKey, gender = "M") {
 export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0, number: Number.isFinite(base.number) ? base.number : assignUniqueNumber([]) };
   const withPotential = { ...withId, ...initRiderPotentialFields(withId) };
-  const finalized = finalizeRiderEconomics(withPotential, 1, 0);
+  // Bug fixed: this always used MotoGP's own scale (1) for every
+  // entry's market value and salary — fine back when this pool only
+  // ever held actual MotoGP-tier veterans, but this same pool now also
+  // holds much more modest prospects (the WorldWCR-eligible free
+  // agents added alongside the category). Scale is the single biggest
+  // multiplier in computeMarketValue/computeSalary, so a 24-37 average
+  // rider still priced at MotoGP's scale came out worth millions.
+  // Auto-detecting scale from current stats alone was tried and
+  // reverted — it demoted young, high-potential-but-still-raw MotoGP
+  // prospects (like Noah Dettwiler) below WorldWCR-tier riders, since a
+  // rookie's current level doesn't reflect which category they're
+  // actually destined for. So this follows the exact same pattern
+  // prestige already uses on this same pool: an explicit value per
+  // entry (only ever needed for the WorldWCR-tier additions so far),
+  // falling back to MotoGP's scale for anyone who doesn't specify one
+  // — every pre-existing entry keeps working exactly as before.
+  const scale = base.scale ?? 1;
+  const finalized = finalizeRiderEconomics(withPotential, scale, 0);
   // Every current entry in data/freeAgentLegends.js carries an explicit
   // prestige value precisely because this pool mixes real MotoGP-level
   // veterans with much younger Moto3/Moto2-tier prospects — always

@@ -91,14 +91,14 @@ import { SeasonEndScreen } from "./pages/SeasonEnd.jsx";
 import { RosterCompletionScreen } from "./pages/RosterCompletion.jsx";
 import { SeasonScreen } from "./pages/SeasonHub.jsx";
 import { MarketSummaryScreen } from "./pages/TransferSummary.jsx";
-import { acceptPendingPackage, advanceFacilityUpgrades, advanceTeamProjects, aiResolvePrototypes, applyFacilityDowngrade, applyPrototype, bikeAvg, canStartFacilityDowngrade, canStartFacilityUpgrade, canStartProject, completeAllPendingResearchAndFacilities, discardPendingPackage, discardPrototype, processApprovedPackages, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
+import { acceptPendingPackage, aiResolvePrototypes, applyFacilityDowngrade, applyPrototype, bikeAvg, canStartFacilityDowngrade, canStartFacilityUpgrade, canStartProject, completeAllPendingResearchAndFacilities, discardPendingPackage, discardPrototype, riderPrototypeOpinion, rolloverBike, startFacilityUpgrade, startProjectOnTeam, testPrototype } from "./utils/bikeDevelopment.js";
 import { BikePackageModal } from "./components/BikePackageModal.jsx";
 import { validateAndRepairTeam, validateAndRepairTeams, validateGlobalRiderIntegrity } from "./utils/careerValidation.js";
 import { emptyNotifications, mergeNotificationItems, markAllNotificationsRead, countUnread } from "./utils/notifications.js";
 import { buildClassificationDisplay, buildEntries, bumpCareerStats, findInTeamRoster, simulateFullGridRound, simulateQualifying, simulateRound } from "./utils/raceSimulation.js";
 import { buildGpHistoryEntry } from "./utils/raceHistory.js";
 import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, createNegotiation, modifyOffer, needsTeamCompensation, nextSeasonCommittedRiderCount, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
-import { processTeamAfterRace } from "./utils/raceWeekend.js";
+import { processTeamAfterRace, processTeamWeeklyProgress } from "./utils/raceWeekend.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
@@ -1455,10 +1455,18 @@ export default function MotorbikeManager() {
       // The player's own category (superbikes or supersport) is on a bye
       // week — and since both share the exact same 12-round calendar,
       // whichever of the two the player ISN'T playing (and so shows up
-      // here, in otherCategories) is on its bye week too. Leave it
-      // untouched rather than simulating a race it doesn't have.
+      // here, in otherCategories) is on its bye week too. There's no
+      // race to simulate, but real time hasn't actually stopped: every
+      // team's warehouse, R&D, and facilities still need a week's worth
+      // of progress. Bug fixed: this used to leave the whole category
+      // completely untouched on its own bye week — meaning WorldWCR (6
+      // of 22 weeks) or WorldSPB/WorldSSP (12 of 22) lost that
+      // administrative progress on every single week they didn't race,
+      // while MotoGP/Moto2/Moto3 (racing every week) never lost any.
       if (isSbkCalendarCategory(key) && !isCategoryRaceWeek(key, round)) {
-        nextOther[key] = catState;
+        const catScale = CATEGORY_DATA[key].scale;
+        const weeklyTeams = catState.teams.map((t) => processTeamWeeklyProgress(t, key, { isPlayer: false, scale: catScale }, notifQueue).team);
+        nextOther[key] = { ...catState, teams: weeklyTeams };
         return;
       }
       const qEntries = buildEntries(catState.teams);
@@ -1508,12 +1516,33 @@ export default function MotorbikeManager() {
       nextOther[key] = { ...catState, teams: teamsWithMorale, riderStandings: rS, teamStandings: tS, riderWins: rW, riderPodiums: rP, sprintWins: sW, sprintPodiums: sP };
     });
 
+    // The played category itself is on its own bye week (that's the
+    // whole reason this function runs instead of runRace) — but real
+    // time still moved forward one week, so the player's own team and
+    // its rivals get exactly the same administrative upkeep the
+    // background categories above just got. Bug fixed: before this,
+    // NEITHER the player's team NOR its rivals were touched at all
+    // during a rest week — every WorldWCR/WorldSPB/WorldSSP bye week
+    // meant zero warehouse production and zero R&D/facility progress
+    // for the player specifically, on top of the same gap for every
+    // other team in the category above.
+    const { team: playerAfterWeekly, projectArrivals: playerArrivals, facilityArrivals: playerFacilityArrivals } =
+      processTeamWeeklyProgress(playerTeam, category, { isPlayer: true, scale }, notifQueue);
+    playerFacilityArrivals.forEach((a) => {
+      const label = a.kind === "factory" ? "Fábrica" : "Staff técnico";
+      notifQueue.push({ type: "dev", category, text: `Mejora de ${label} completada: nivel ${a.newLevel}.` });
+    });
+    const rivalsAfterWeekly = rivalTeams.map((t) => processTeamWeeklyProgress(t, category, { isPlayer: false, scale }, notifQueue).team);
+
     poolRef.pool = poolRef.pool.map(decrementFreeAgentInjury);
     setGame((g) => (g ? {
       ...g,
+      playerTeam: playerAfterWeekly,
+      rivalTeams: rivalsAfterWeekly,
       otherCategories: nextOther,
       freeAgents: poolRef.pool,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
+      lastResult: { ...(g.lastResult || {}), arrivals: playerArrivals },
     } : g));
     const nextRound = round + 1;
     setRound(nextRound);
@@ -1792,13 +1821,18 @@ export default function MotorbikeManager() {
 
     // --- Played category: player + rivals ---
     const { results, poleRiderId, fastestLapRiderId } = simulateRound(playerTeam, rivalTeams, circuitProfile, isWet, roundsLeft, gridByCategory[category]);
-    const { team: playerAfterProjects, arrivals } = advanceTeamProjects(playerTeam);
-    const playerAfterPackages = processApprovedPackages(playerAfterProjects);
-    const { team: playerAfterFacilities, arrivals: facilityArrivals } = advanceFacilityUpgrades(playerAfterPackages);
 
     let newPendingSub = pendingSubstitution;
     const playerCtx = { isPlayer: true, scale, setPendingSub: (info) => { newPendingSub = info; } };
-    const playerProcessed = processTeamAfterRace(playerAfterFacilities, results, category, playerCtx, poolRef, notifQueue);
+    // Bug fixed: this used to call advanceTeamProjects/processApprovedPackages/
+    // advanceFacilityUpgrades directly here, THEN hand the already-advanced
+    // team into processTeamAfterRace — which (now that it also has to run
+    // this same administrative upkeep for a rest week, not just a race
+    // week) would advance them a SECOND time every single race weekend.
+    // processTeamAfterRace now runs this internally exactly once and hands
+    // back the arrivals alongside the team, so nothing needs pre-advancing
+    // here at all.
+    const { team: playerProcessed, projectArrivals: arrivals, facilityArrivals } = processTeamAfterRace(playerTeam, results, category, playerCtx, poolRef, notifQueue);
     facilityArrivals.forEach((a) => {
       const label = a.kind === "factory" ? "Fábrica" : "Staff técnico";
       notifQueue.push({ type: "dev", category, text: `Mejora de ${label} completada: nivel ${a.newLevel}.` });
