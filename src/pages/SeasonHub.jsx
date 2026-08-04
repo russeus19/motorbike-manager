@@ -128,8 +128,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   );
   const renderBudget = (compact) => (
     <div className={compact ? "text-center" : "text-right"}>
-      <div className={compact ? "text-[10px] uppercase tracking-[0.2em]" : "text-xs uppercase tracking-[0.2em]"} style={{ color: COLORS.muted }}>Presupuesto</div>
-      <div className={compact ? "text-base font-bold" : "text-lg font-bold"} style={{ fontFamily: "Rajdhani, sans-serif", color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
+      <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: COLORS.muted }}>Presupuesto</div>
+      <div className={compact ? "text-base font-bold" : "text-2xl font-bold"} style={{ fontFamily: "Rajdhani, sans-serif", color: budget < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(budget).toLocaleString()}</div>
     </div>
   );
   const renderSimularButton = (fullWidth) => (
@@ -145,13 +145,13 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       {seasonTab === "inicio" && <div className="mb-6"><CheckerStrip accent={accent} solid /></div>}
       {seasonTab === "inicio" ? (
         <>
-          <div className="grid items-start mb-3 gap-2" style={{ gridTemplateColumns: "minmax(0,1.5fr) auto minmax(0,1fr)" }}>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.15em] leading-snug" style={{ color: COLORS.muted, wordBreak: "break-word" }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
-              <div className="text-lg font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
+          <div className="text-xs uppercase tracking-[0.15em] mb-3" style={{ color: COLORS.muted, wordBreak: "break-word" }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <TeamLogo team={playerTeam} size={72} className="rounded-lg flex-shrink-0" />
+              <div className="text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
             </div>
-            <TeamLogo team={playerTeam} size={44} className="rounded-lg flex-shrink-0" />
-            <div className="flex-shrink-0 justify-self-end">{renderBudget(false)}</div>
+            <div className="flex-shrink-0">{renderBudget(false)}</div>
           </div>
 
           <div className="flex items-center justify-between mb-4 gap-3">
