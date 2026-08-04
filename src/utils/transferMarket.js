@@ -527,7 +527,18 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const feeder = CATEGORY_DATA[categoryKey]?.lower;
       const feederTeams = feeder ? teamsByCategory[feeder] : null;
       if (feederTeams) {
-        const feederCandidates = feederTeams.flatMap((t) => t.riders.map((r) => ({ r, teamId: t.id })));
+        // Bug fixed: this never excluded the player's own team when
+        // searching the feeder category — meaning a player managing a
+        // Moto2/Supersport/Sportbike team could have their own rider
+        // pulled away to fill an AI team's urgent MotoGP/Moto2/
+        // Superbikes vacancy with no offer to accept or decline, the
+        // exact same class of bug already found and fixed once for
+        // Fase 2.5's own promotion pass — this "urgent call-up"
+        // fallback had the identical gap and was never covered by that
+        // earlier fix.
+        const feederCandidates = feederTeams
+          .filter((t) => t.id !== categoriesData[feeder]?.excludeTeamId)
+          .flatMap((t) => t.riders.map((r) => ({ r, teamId: t.id })));
         // Bug fixed: this picked the single best-scoring rider out of
         // the ENTIRE feeder category with no quality floor at all —
         // "best of whoever's left" isn't the same as "actually good

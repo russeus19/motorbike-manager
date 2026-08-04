@@ -130,6 +130,47 @@ export function categoryRankDelta(toCategoryKey, fromCategoryKey) {
 // jump it might look like on paper.
 const NATURAL_FEEDER = { motogp: "moto2", moto2: "moto3", superbikes: "supersport" };
 
+/** The reverse of NATURAL_FEEDER, plus WorldWCR's own crossover paths
+ * (which don't fit the "natural feeder" shape at all — WorldWCR isn't
+ * feeder-eligible for any of them the way Moto3 is for Moto2). Shared
+ * between the season-end promotion pass and the live, mid-season
+ * market so a rider's crossover prospects mean the same thing in both
+ * — a genuinely good WorldWCR rider being chased by a Sportbike team
+ * shouldn't have to wait for a season transition to happen; real
+ * scouting doesn't only happen on the last day of the year. */
+/** Every OTHER category, in principle, could take an interest in a
+ * given rider — real scouts don't limit themselves to one specific
+ * neighboring category. What actually decides whether a specific
+ * offer makes sense is the DIRECTION of the move relative to the
+ * rider's own level: moving up needs real quality (scaled by how big
+ * the jump is), moving down only makes sense for a rider who isn't
+ * excelling where they are (a struggling MotoGP rider getting a
+ * Superbikes/Supersport look, not a title contender). WorldWCR is the
+ * one special case: always a live option for any female rider
+ * regardless of category, but exactly the same "not excelling"
+ * condition applies — genuinely thriving elsewhere, it holds no real
+ * appeal (see categoryRankDelta/scoreRiderOfferAcceptance's own
+ * downgrade resistance for the same idea on the acceptance side).
+ */
+export function isPlausibleCrossoverSuitor(rider, fromCategoryKey, toCategoryKey, seasonNumber = 1) {
+  if (toCategoryKey === fromCategoryKey) return false;
+  if (toCategoryKey === "worldwcr") {
+    if ((rider.gender || "M") !== "F") return false;
+    if (fromCategoryKey === "worldwcr") return false;
+    return (rider.prestige ?? 60) < 65; // moving DOWN to WorldWCR — only if not thriving where they are
+  }
+  if (fromCategoryKey === "worldwcr") return passesCrossoverGate(rider, toCategoryKey, seasonNumber); // moving UP from WorldWCR — the existing gender+quality gate already covers this
+  const fromRank = CATEGORY_RANK[fromCategoryKey] ?? 2;
+  const toRank = CATEGORY_RANK[toCategoryKey] ?? 2;
+  if (toRank > fromRank) {
+    const gap = toRank - fromRank;
+    const floor = 45 + gap * 14;
+    return overallRating(rider) >= floor || (rider.potential ?? 0) >= floor + 8;
+  }
+  if (toRank < fromRank) return (rider.prestige ?? 60) < 65;
+  return true; // same rank (e.g. Moto2 <-> Superbikes) — a genuine lateral move, no extra bar
+}
+
 /** How good a rider from a NON-feeder ladder would have to be to even
  * be considered for MotoGP/Moto2/Superbikes — deliberately far higher
  * than crossoverPotentialFloor's own values, since jumping ladders

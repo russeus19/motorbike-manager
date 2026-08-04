@@ -1534,13 +1534,48 @@ export default function MotorbikeManager() {
     });
     const rivalsAfterWeekly = rivalTeams.map((t) => processTeamWeeklyProgress(t, category, { isPlayer: false, scale }, notifQueue).team);
 
+    // Bug fixed: market negotiations — new rumors, AI-vs-AI dealing,
+    // incoming offers for the player, pending negotiations reaching
+    // their resolution round — only ever ticked forward inside runRace,
+    // exactly the same gap warehouse/R&D had. A rest week is still a
+    // real week passing; the transfer market doesn't pause just because
+    // this category's own category has no race this particular week.
+    const marketTick = tickMarket(
+      { marketRumors, marketNegotiations },
+      {
+        playerTeam: playerAfterWeekly, rivalTeams: rivalsAfterWeekly, otherCategories: nextOther,
+        freeAgents: poolRef.pool, category, round, totalRounds: CIRCUITS.length, seasonNumber, scale,
+        riderStandings,
+        findTeam: findTeamById, findRider: findRiderById,
+      }
+    );
+    marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
+
+    const renewalsByCategory = {};
+    marketTick.justConfirmedRenewals.forEach((r) => {
+      (renewalsByCategory[r.categoryKey] ||= []).push(r);
+    });
+    const playerAfterRenewals = applyRenewalsToTeam(playerAfterWeekly, renewalsByCategory[category] || []);
+    const rivalsAfterRenewals = rivalsAfterWeekly.map((t) => applyRenewalsToTeam(t, renewalsByCategory[category] || []));
+    const nextOtherAfterRenewals = { ...nextOther };
+    Object.keys(nextOtherAfterRenewals).forEach((key) => {
+      const catRenewals = renewalsByCategory[key] || [];
+      if (!catRenewals.length) return;
+      nextOtherAfterRenewals[key] = {
+        ...nextOtherAfterRenewals[key],
+        teams: nextOtherAfterRenewals[key].teams.map((t) => applyRenewalsToTeam(t, catRenewals)),
+      };
+    });
+
     poolRef.pool = poolRef.pool.map(decrementFreeAgentInjury);
     setGame((g) => (g ? {
       ...g,
-      playerTeam: playerAfterWeekly,
-      rivalTeams: rivalsAfterWeekly,
-      otherCategories: nextOther,
+      playerTeam: playerAfterRenewals,
+      rivalTeams: rivalsAfterRenewals,
+      otherCategories: nextOtherAfterRenewals,
       freeAgents: poolRef.pool,
+      marketRumors: marketTick.marketRumors,
+      marketNegotiations: marketTick.marketNegotiations,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
       lastResult: { ...(g.lastResult || {}), arrivals: playerArrivals },
     } : g));
@@ -2549,7 +2584,18 @@ export default function MotorbikeManager() {
         freeAgentNotifs.push({ type: "market", category: lastCat, riderId: photoIdFor(bumped), text: `${bumped.name} anuncia su retirada tras no encontrar equipo.` });
         return;
       }
-      const { rider: evolved } = evolveRider(bumped, { idleMultiplier: 0.35, scale: 1 });
+      // Bug fixed: this hardcoded scale: 1 (MotoGP) for every single
+      // free agent in the pool, regardless of which category they
+      // actually belong to — a WorldWCR-tier rider sitting unsigned for
+      // a season or more would have her marketValue/salary silently
+      // recalculated at MotoGP's scale each time this ran, inflating
+      // her value roughly 6-7x with no visible cause. Prefer the
+      // rider's own explicit scale (hand-authored free agents carry
+      // this), then whichever category she last actually raced in, and
+      // only fall back to a modest default — never straight to
+      // MotoGP's — if neither is known.
+      const idleScale = bumped.scale ?? CATEGORY_DATA[bumped._fromCategoryKey]?.scale ?? 0.32;
+      const { rider: evolved } = evolveRider(bumped, { idleMultiplier: 0.35, scale: idleScale });
       nextFreeAgents.push(evolved);
     });
 

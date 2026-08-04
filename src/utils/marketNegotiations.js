@@ -1,6 +1,6 @@
-import { CATEGORY_ORDER } from "../data/categories.js";
+import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { clamp, pick } from "./random.js";
-import { categoryRankDelta, computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor } from "./riders.js";
+import { categoryRankDelta, computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, isPlausibleCrossoverSuitor, overallRating, passesCrossoverGate, photoIdFor } from "./riders.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
@@ -481,9 +481,55 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
  * Rarer than a plain rumor: this is a real, actionable offer, not just
  * gossip.
  */
-export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, marketNegotiations) {
+export function maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, marketNegotiations, otherCategories = {}) {
   const heat = marketHeat(round, totalRounds);
-  if (!rivalTeams.length || Math.random() > heat * 0.85) return null;
+  if (Math.random() > heat * 0.85) return null;
+
+  // Bug fixed: the suitor here was always drawn from rivalTeams — this
+  // category's OWN rivals, nothing else. Any other category can, in
+  // principle, take an interest in a rider — a struggling MotoGP rider
+  // getting a look from Superbikes, a standout Sportbike rider getting
+  // chased by Moto2, a female rider anywhere drawing WorldWCR interest
+  // if she isn't thriving where she is. isPlausibleCrossoverSuitor
+  // decides which direction actually makes sense for THIS rider's own
+  // level, rather than a fixed list of "this category can only ever
+  // hear from that one specific neighbor".
+  if (Math.random() < 0.25) {
+    const candidateCats = CATEGORY_ORDER.filter((ck) => ck !== category && (otherCategories[ck]?.teams || []).length);
+    const eligibleByCategory = {};
+    candidateCats.forEach((ck) => {
+      const candidates = playerTeam.riders.filter((r) => (r.contractYears ?? 0) > 0 && !(r.injury && r.injury.sidelined)
+        && isPlausibleCrossoverSuitor(r, category, ck, seasonNumber)
+        && !(marketNegotiations || []).some((n) => n.riderId === r.id && n.categoryKey === ck && !["failed", "withdrawn"].includes(n.status)));
+      if (candidates.length) eligibleByCategory[ck] = candidates;
+    });
+    const viableCats = Object.keys(eligibleByCategory);
+    if (viableCats.length) {
+      const targetCat = pick(viableCats);
+      const targetTeams = otherCategories[targetCat]?.teams || [];
+      const eligibleCandidates = eligibleByCategory[targetCat];
+      const suitor = pick(targetTeams);
+      const rider = pick(eligibleCandidates);
+      const targetScale = CATEGORY_DATA[targetCat]?.scale ?? scale;
+      const marketValue = computeMarketValue(rider, targetScale);
+      const needsComp = needsTeamCompensation(rider, playerTeam.id, suitor.id);
+      const teamOfferAmount = needsComp ? Math.round(marketValue * (0.9 + Math.random() * 0.4)) : null;
+      const fairSalary = computeSalary(rider, targetScale);
+      const riderTerms = {
+        salary: Math.round(fairSalary * (1 + Math.random() * 0.3)),
+        years: 1 + Math.round(Math.random() * 2),
+        winBonus: 0,
+        titleBonus: 0,
+      };
+      return createNegotiation({
+        kind: "signing", rider, categoryKey: targetCat, fromTeam: playerTeam,
+        toTeamId: suitor.id, toTeamName: teamDisplayName(suitor),
+        teamOfferAmount, riderTerms, round, seasonNumber,
+      });
+    }
+  }
+
+  if (!rivalTeams.length) return null;
   const suitor = pick(rivalTeams);
   // A rider already being chased by a DIFFERENT rival no longer rules
   // them out for this one too — a real bidding war now, resolved by
@@ -1257,7 +1303,7 @@ export function tickMarket({ marketRumors, marketNegotiations }, { playerTeam, r
   const notifications = firstPass.notifications;
   let justConfirmedRenewals = firstPass.justConfirmedRenewals;
 
-  const incomingOffer = maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, firstPass.negotiations);
+  const incomingOffer = maybeGenerateIncomingOffer(playerTeam, rivalTeams, category, round, totalRounds, seasonNumber, scale, firstPass.negotiations, otherCategories);
   let withIncoming = incomingOffer ? [...firstPass.negotiations, incomingOffer] : firstPass.negotiations;
   if (incomingOffer) notifications.push({ text: `${incomingOffer.toTeamName} presenta una oferta por ${incomingOffer.riderName}.`, categoryKey: incomingOffer.categoryKey });
 
