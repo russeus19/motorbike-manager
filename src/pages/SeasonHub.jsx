@@ -142,25 +142,25 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
   return (
     <div className="max-w-5xl mx-auto px-6 pt-6" style={{ paddingBottom: 96 }}>
-      {seasonTab === "inicio" && <div className="mb-6"><CheckerStrip accent={accent} solid /></div>}
+      {seasonTab === "inicio" && <div className="mb-3"><CheckerStrip accent={accent} solid /></div>}
       {seasonTab === "inicio" ? (
         <>
           <div className="text-xs uppercase tracking-[0.15em] mb-3" style={{ color: COLORS.muted, wordBreak: "break-word" }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
-              <TeamLogo team={playerTeam} sizeClassName="w-11 h-11 sm:w-[72px] sm:h-[72px]" className="rounded-lg flex-shrink-0" />
-              <div className="text-base sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
+              <TeamLogo team={playerTeam} sizeClassName="w-9 h-9 sm:w-[72px] sm:h-[72px]" className="rounded-lg flex-shrink-0" />
+              <div className="text-sm sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
             </div>
             <div className="flex-shrink-0">{renderBudget(false)}</div>
           </div>
 
-          <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="flex items-center justify-between mb-3 gap-3">
             {renderBell()}
             {renderSimularButton(false)}
           </div>
 
           {!canRace && (
-            <p className="text-xs mb-4" style={{ color: COLORS.danger }}>
+            <p className="text-xs mb-3" style={{ color: COLORS.danger }}>
               No podés disputar el Gran Premio: faltan {missingParts.map((p) => WAREHOUSE_LABELS[p].toLowerCase()).join(", ")}. Fabricá (o fabricá con urgencia) desde Escudería → Almacén.
             </p>
           )}
