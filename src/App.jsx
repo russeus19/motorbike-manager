@@ -1388,9 +1388,20 @@ export default function MotorbikeManager() {
         if (r.injuryResult) injuriesById[r.id] = { ...r.injuryResult, sidelined: true, deferSubstituteDecision: true };
       });
       let riders = t.riders.map((r) => (injuriesById[r.id] ? { ...r, injury: injuriesById[r.id] } : r));
+      // Bug fixed: this only ever applied injury updates to a
+      // substitute's own entry, never bumpCareerStats — meaning any
+      // Sprint (MotoGP) or Race 1 (Superbikes/Supersport/Sportbike/
+      // WorldWCR) a substitute actually raced never counted toward her
+      // OWN careerRaces/careerPodiums/careerWins at all, even for a
+      // rider who spent half a season (or more) covering an injury.
+      // That's exactly the kind of gap that made a rider's own
+      // Trayectoria/Historial de temporadas look like she hadn't
+      // raced, despite genuinely having done so.
       const substitutes = { ...(t.substitutes || {}) };
       Object.entries(substitutes).forEach(([ownerId, sub]) => {
         if (injuriesById[sub.id]) substitutes[ownerId] = { ...sub, injury: injuriesById[sub.id] };
+        const subResult = teamResults.find((x) => x.id === sub.id);
+        if (subResult) substitutes[ownerId] = bumpCareerStats(substitutes[ownerId], categoryKey, subResult.position, subResult.crashed, subResult.points, isSprintStyle);
       });
 
       riders = riders.map((r) => {
@@ -1508,7 +1519,7 @@ export default function MotorbikeManager() {
         const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
         teamsNext.push(processTeamAfterRace(t, catResults, key, {
           isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
-          excludeSponsorNames,
+          excludeSponsorNames, marketNegotiations,
         }, poolRef, notifQueue));
       });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
@@ -1858,7 +1869,7 @@ export default function MotorbikeManager() {
     const { results, poleRiderId, fastestLapRiderId } = simulateRound(playerTeam, rivalTeams, circuitProfile, isWet, roundsLeft, gridByCategory[category]);
 
     let newPendingSub = pendingSubstitution;
-    const playerCtx = { isPlayer: true, scale, setPendingSub: (info) => { newPendingSub = info; } };
+    const playerCtx = { isPlayer: true, scale, marketNegotiations, setPendingSub: (info) => { newPendingSub = info; } };
     // Bug fixed: this used to call advanceTeamProjects/processApprovedPackages/
     // advanceFacilityUpgrades directly here, THEN hand the already-advanced
     // team into processTeamAfterRace — which (now that it also has to run
@@ -1885,7 +1896,7 @@ export default function MotorbikeManager() {
       const excludeSponsorNames = collectActiveSponsorNames([playerTeam, ...rivalsProcessed, ...rivalTeams.slice(i + 1)]);
       rivalsProcessed.push(processTeamAfterRace(t, results, category, {
         isPlayer: false, position: posMap[t.id] || rivalTeams.length + 1, totalTeams: rivalTeams.length + 1, roundIndex: round, totalRounds: CIRCUITS.length, scale,
-        excludeSponsorNames,
+        excludeSponsorNames, marketNegotiations,
       }, poolRef, notifQueue));
     });
 
@@ -2010,7 +2021,7 @@ export default function MotorbikeManager() {
         const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
         teamsNext.push(processTeamAfterRace(t, catResults, key, {
           isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
-          excludeSponsorNames,
+          excludeSponsorNames, marketNegotiations,
         }, poolRef, notifQueue));
       });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
@@ -2477,6 +2488,16 @@ export default function MotorbikeManager() {
       ctxTeamStandings, ctxCategory
     );
     const evolvedOwn = combinedPlayedCategory[0].riders;
+    // Bug fixed: recordSeasonHistory (just above) correctly builds a
+    // history entry for the player's own substitute too — she raced
+    // real Grands Prix this season, same as anyone else — but only
+    // .riders ever got read back out of its result. .substitutes was
+    // silently discarded, so whatever the new season carried forward
+    // was the OLD, pre-history substitute — her entire season covering
+    // for an injured teammate never actually landed in her own
+    // Trayectoria/Historial de temporadas, even though she'd genuinely
+    // raced it.
+    const evolvedOwnSubstitutes = combinedPlayedCategory[0].substitutes;
     // Sponsors renew here too, right alongside prestige — same moment,
     // same freshly-evolved prestige value. The player gets candidate
     // offers to choose from later (surfaced once the new season is
@@ -2660,7 +2681,7 @@ export default function MotorbikeManager() {
       const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale, key);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
     });
-    const { team: repairedPlayerTeam } = validateAndRepairTeam({ ...rolledPlayerTeam, riders: finalRoster }, scale, { padRosterTo2: false });
+    const { team: repairedPlayerTeam } = validateAndRepairTeam({ ...rolledPlayerTeam, riders: finalRoster, substitutes: evolvedOwnSubstitutes }, scale, { padRosterTo2: false });
     const finalRosterValidated = repairedPlayerTeam.riders;
 
     // --- Fresh season expectations for every team and rider ---

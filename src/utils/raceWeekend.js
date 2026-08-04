@@ -144,7 +144,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: ownerId, riderName: originalName });
           } else {
-            const newSub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
+            const newSub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);
             if (newSub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== newSub.id);
               substitutes[ownerId] = { ...newSub, isNewTeamThisSeason: true };
@@ -182,7 +182,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
-            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
+            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);
             if (sub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };
@@ -232,7 +232,7 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
-            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team);
+            const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);
             if (sub) {
               poolRef.pool = poolRef.pool.filter((x) => x.id !== sub.id);
               substitutes[next.id] = { ...sub, isNewTeamThisSeason: true };

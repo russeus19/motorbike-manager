@@ -163,6 +163,18 @@ export function isPlausibleCrossoverSuitor(rider, fromCategoryKey, toCategoryKey
   const fromRank = CATEGORY_RANK[fromCategoryKey] ?? 2;
   const toRank = CATEGORY_RANK[toCategoryKey] ?? 2;
   if (toRank > fromRank) {
+    // Bug fixed: MotoGP/Moto2/Superbikes are the three categories with
+    // their own dedicated, carefully calibrated bar (see
+    // naturalFeederPotentialFloor/offLadderPotentialFloor below) —
+    // reusing passesCrossoverGate for them, exactly like the
+    // season-end promotion pass already does, instead of the generic
+    // gap-based formula below. That generic formula was never meant to
+    // stand in for those three specifically: a Superbikes rider is
+    // only really one "rank" below MotoGP by this scale, so the
+    // generic floor came out far too low for what should be the most
+    // exclusive seat in the whole sport — a CA 61, potential-under-70
+    // rider had no business getting signed there, and did.
+    if (NATURAL_FEEDER[toCategoryKey]) return passesCrossoverGate({ ...rider, _fromCategoryKey: fromCategoryKey }, toCategoryKey, seasonNumber);
     const gap = toRank - fromRank;
     const floor = 45 + gap * 14;
     return overallRating(rider) >= floor || (rider.potential ?? 0) >= floor + 8;
@@ -213,7 +225,18 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
   const naturalFeeder = NATURAL_FEEDER[targetCategoryKey];
   if (naturalFeeder) {
     const fromCat = rider._fromCategoryKey;
-    if (fromCat && fromCat !== targetCategoryKey && fromCat !== naturalFeeder) {
+    // Bug fixed: this treated ANYTHING other than the single hardcoded
+    // natural feeder as a full off-ladder jump — meaning even a
+    // genuine star from Superbikes (rank-wise just as close to MotoGP
+    // as Moto2 is) got held to the same near-impossible bar as someone
+    // coming from WorldWCR or Sportbike. Real rank distance (already
+    // used everywhere else, like categoryRankDelta) is the fairer test
+    // — a category one rank away is a real, if uncommon, pathway;
+    // two or more ranks away is the genuinely rare jump that deserves
+    // the much higher bar.
+    const rankGap = fromCat ? Math.abs((CATEGORY_RANK[targetCategoryKey] ?? 2) - (CATEGORY_RANK[fromCat] ?? 2)) : 0;
+    const isCloseEnough = fromCat === targetCategoryKey || fromCat === naturalFeeder || rankGap <= 1;
+    if (fromCat && !isCloseEnough) {
       return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
     }
     // Bug fixed: even THROUGH the natural feeder, there was no quality
@@ -225,7 +248,7 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
     // might become, not what he is right now, and a team calling
     // someone up cares about CURRENT form (his overall rating, 63) at
     // least as much as future promise. Both need to clear the bar.
-    if (fromCat === naturalFeeder) {
+    if (fromCat && isCloseEnough && fromCat !== targetCategoryKey) {
       const floor = naturalFeederPotentialFloor(targetCategoryKey, seasonNumber);
       if ((rider.potential ?? 0) < floor || overallRating(rider) < floor) return false;
     }

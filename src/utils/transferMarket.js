@@ -732,9 +732,23 @@ export function findBestReplacement(lowerTeams, freeAgentsPool) {
 /* ---------------------------------------------------------------------- */
 
 
-export function pickBestFreeAgentSub(pool, categoryKey, budget, scale, team) {
+export function pickBestFreeAgentSub(pool, categoryKey, budget, scale, team, marketNegotiations = []) {
   if (!pool || !pool.length) return null;
-  const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && substituteHireCost(r, scale) <= (budget ?? 0) && !(r.injury && r.injury.sidelined && r.injury.gpRemaining > 0));
+  // Bug fixed: a rider with an already-confirmed (or still-pending)
+  // negotiation to join a DIFFERENT team next season could still get
+  // picked up as a substitute for someone else entirely in the
+  // meantime — pickBestFreeAgentSub had no idea she was already
+  // spoken for. Once picked as a sub she's removed from the pool and
+  // tucked away in a team's substitutes slot, which
+  // applyConfirmedNegotiations never looks inside — so when the
+  // season transition came to actually move her onto the team she'd
+  // agreed to join, it couldn't find her anywhere and the whole
+  // signing quietly fell through, leaving her free again as if
+  // nothing had ever been agreed.
+  const spokenForIds = new Set((marketNegotiations || [])
+    .filter((n) => !["failed", "withdrawn"].includes(n.status))
+    .map((n) => n.riderId));
+  const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && substituteHireCost(r, scale) <= (budget ?? 0) && !(r.injury && r.injury.sidelined && r.injury.gpRemaining > 0) && !spokenForIds.has(r.id));
   if (!eligible.length) return null;
   const scored = eligible.map((r) => ({
     r,
@@ -805,7 +819,13 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   for (const { r: better } of ranked) {
     const sCost = Math.round(overallRating(better) * 5000);
     if (fCost + sCost > teamBudget) continue;
-    const offeredSalary = Math.round(computeSalary(better, ctx.scale ?? 1) * (1.05 + Math.random() * 0.2));
+    // Bug fixed: this used ctx.scale ?? 1 even though categoryKey — the
+    // correct source of truth for scale — is already a direct parameter
+    // of this function. If ctx.scale ever came through missing (this
+    // runs from the live, mid-season tick, not the season-end engine),
+    // the offered salary silently defaulted to MotoGP's scale for
+    // whatever category this actually was.
+    const offeredSalary = Math.round(computeSalary(better, CATEGORY_DATA[categoryKey]?.scale ?? ctx.scale ?? 1) * (1.05 + Math.random() * 0.2));
     const accepted = wouldRiderJoin(better, team, categoryKey, offeredSalary, {
       fromCategoryKey: better._fromCategoryKey || categoryKey, bikeAvgOffered: bikeAvgVal, currentBikeAvg: better._fromBikeAvg ?? bikeAvgVal,
       isUnemployed: true, seasonsUnsigned: better.seasonsUnsigned || 0,
