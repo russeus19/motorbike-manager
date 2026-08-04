@@ -149,7 +149,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-3 min-w-0">
               <TeamLogo team={playerTeam} sizeClassName="w-9 h-9 sm:w-[72px] sm:h-[72px]" className="rounded-lg flex-shrink-0" />
-              <div className="text-sm sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
+              <div className="text-[16.1px] sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
             </div>
             <div className="flex-shrink-0">{renderBudget(false)}</div>
           </div>
