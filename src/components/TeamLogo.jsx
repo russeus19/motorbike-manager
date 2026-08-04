@@ -21,8 +21,13 @@ const DEFAULT_LOGO = `${LOGO_BASE}/default.png`;
  *
  * Usage: <TeamLogo team={playerTeam} size={56} />
  * or:    <TeamLogo logoId={team.logoId} size={48} />
+ * or, for a size that needs to differ by breakpoint (mobile vs
+ * desktop): <TeamLogo team={playerTeam} sizeClassName="w-14 h-14 sm:w-[72px] sm:h-[72px]" />
+ * — sizeClassName takes over from the fixed size prop entirely when
+ * given, since Tailwind's responsive classes can't win against a fixed
+ * inline width/height.
  */
-export function TeamLogo({ team, logoId, size = 48, className = "", alt }) {
+export function TeamLogo({ team, logoId, size = 48, sizeClassName, className = "", alt }) {
   const resolvedId = logoId || team?.logoId || null;
   const initialSrc = resolvedId ? `${LOGO_BASE}/${resolvedId}.png` : DEFAULT_LOGO;
   const [src, setSrc] = useState(initialSrc);
@@ -38,12 +43,11 @@ export function TeamLogo({ team, logoId, size = 48, className = "", alt }) {
     <img
       src={src}
       alt={alt || (team?.name ? `Logo de ${teamDisplayName(team)}` : "Logo del equipo")}
-      width={size}
-      height={size}
+      {...(sizeClassName ? {} : { width: size, height: size })}
       loading="lazy"
       decoding="async"
-      className={className}
-      style={{ width: size, height: size, objectFit: "contain", flexShrink: 0 }}
+      className={`${sizeClassName || ""} ${className}`}
+      style={sizeClassName ? { objectFit: "contain", flexShrink: 0 } : { width: size, height: size, objectFit: "contain", flexShrink: 0 }}
       onError={() => {
         // Avoid an infinite loop if default.png itself is ever missing.
         if (src !== DEFAULT_LOGO) setSrc(DEFAULT_LOGO);
