@@ -8,7 +8,7 @@ function Row({ label, value, accent, bold }) {
   return (
     <div className="flex items-center justify-between text-xs py-0.5">
       <span style={{ color: bold ? COLORS.text : COLORS.muted }}>{label}</span>
-      <span className="font-mono" style={{ color: bold ? (positive ? accent : COLORS.danger) : COLORS.text, fontWeight: bold ? 700 : 400 }}>
+      <span className="font-mono" style={{ color: bold ? (positive ? COLORS.success : COLORS.danger) : COLORS.text, fontWeight: bold ? 700 : 400 }}>
         {positive ? "+" : ""}€{value.toLocaleString()}
       </span>
     </div>
@@ -64,7 +64,7 @@ export function EconomyPanel({ lastEconomySummary, seasonEconomyTotals, economyL
           {seasonEconomyTotals && (
             <div className="rounded-md p-2.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
               <div className="text-xs font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-                {seasonEconomyTotals.net >= 0 ? <TrendingUp size={12} style={{ color: accent }} /> : <TrendingDown size={12} style={{ color: COLORS.danger }} />}
+                {seasonEconomyTotals.net >= 0 ? <TrendingUp size={12} style={{ color: COLORS.success }} /> : <TrendingDown size={12} style={{ color: COLORS.danger }} />}
                 Acumulado de la temporada
               </div>
               <Row label="Premios de carrera" value={seasonEconomyTotals.prize} accent={accent} />
@@ -89,7 +89,7 @@ export function EconomyPanel({ lastEconomySummary, seasonEconomyTotals, economyL
                       {entry.label}
                       <span style={{ color: COLORS.muted }}> · T{entry.seasonNumber ?? "?"} R{(entry.round ?? 0) + 1}</span>
                     </span>
-                    <span className="font-mono flex-shrink-0" style={{ color: entry.amount >= 0 ? accent : COLORS.danger }}>
+                    <span className="font-mono flex-shrink-0" style={{ color: entry.amount >= 0 ? COLORS.success : COLORS.danger }}>
                       {entry.amount >= 0 ? "+" : ""}€{entry.amount.toLocaleString()}
                     </span>
                   </div>

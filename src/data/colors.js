@@ -6,6 +6,7 @@ export const COLORS = {
   text: "#E8E6E1",
   muted: "#8B92A0",
   danger: "#D64545",
+  success: "#4CAF7D",
   gold: "#E3A427",
   ice: "#5FA8D3",
 };

@@ -99,7 +99,7 @@ export function SportingDirectorPanel({ playerTeam, budget, onStartUpgrade, onCa
                   </div>
                   <div style={{ color: COLORS.muted }}>Moral: {report.moraleValue != null ? report.moraleValue : "? (informe caducado)"}</div>
                   <ul className="mt-1 space-y-0.5" style={{ color: COLORS.muted }}>
-                    {report.attributeHints.map((h, i) => <li key={i}>{h}</li>)}
+                    {report.assessment.map((h, i) => <li key={i}>{h}</li>)}
                   </ul>
                 </div>
               ))}

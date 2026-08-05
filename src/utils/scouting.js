@@ -14,7 +14,7 @@ import { overallRating } from "./riders.js";
  * team.sportingDirector = { level, upgrading }             — same shape as factory/staff
  * team.scoutingMissions = [{ riderId, categoryKey, weeksRemaining, totalWeeks }]
  * team.scoutReports = { [riderId]: { potentialRange: [lo, hi], reportsCount,
- *                                     moraleValue, moraleSeason, attributeHints: [text] } }
+ *                                     moraleValue, moraleSeason, assessment: [text] } }
  */
 
 export const SPORTING_DIRECTOR_TIERS = [
@@ -174,49 +174,71 @@ export function generateScoutReport(rider, team, priorReport, categoryKey = null
     reportsCount: priorReportsCount + 1,
     moraleValue: rider.morale ?? 60,
     moraleSeason: team.seasonNumberForScouting ?? null,
-    attributeHints: buildAttributeHints(rider, tier),
+    assessment: buildTeamFitAssessment(rider, team, tier),
   };
 }
 
-const ATTRIBUTE_LABELS = {
-  tecnica: "su técnica", ritmo: "su ritmo", adelantamientos: "los adelantamientos",
-  mental: "la cabeza", adaptabilidad: "la adaptabilidad", fisico: "el físico",
-};
-const ATTRIBUTE_KEYS = Object.keys(ATTRIBUTE_LABELS);
-
-const STRONG_PHRASES = {
-  precise: (label) => `${cap(label)} es su punto fuerte, muy por encima de la media.`,
-  vague: (label) => `Dicen que destaca en algo relacionado con ${label}.`,
-};
-const WEAK_PHRASES = {
-  precise: (label) => `${cap(label)} es claramente su punto débil.`,
-  vague: (label) => `Parece flojear en algo, quizá relacionado con ${label}.`,
-};
-const GENERIC_PHRASES = ["Parece tener margen de mejora.", "Un piloto correcto, sin nada que destaque especialmente.", "Cuesta sacar conclusiones claras todavía."];
-
-function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-/** Precision (how likely the hint is to be TRUE, not just how it's
- * worded) scales with tier — Muy bajo can occasionally point at the
- * wrong attribute entirely, Muy alto essentially never does. Wording
- * also gets vaguer at low tiers, on top of sometimes being wrong. */
-function buildAttributeHints(rider, tier) {
-  const values = ATTRIBUTE_KEYS.map((k) => ({ key: k, value: rider[k] ?? 50 }));
-  const sorted = [...values].sort((a, b) => b.value - a.value);
-  const strongest = sorted[0];
-  const weakest = sorted[sorted.length - 1];
+/** Bug fixed / redesigned: this used to describe attribute spread
+ * (technique, pace...), which is interesting trivia but doesn't
+ * actually help decide anything. What a real scout report should
+ * answer is the practical question a manager actually has: does this
+ * rider fit here, are they better than what I've got, will they keep
+ * developing, is this worth pursuing at all, and would they even say
+ * yes. Each verdict is checked against the rider's TRUE numbers, then
+ * — same idea as before — has a chance of coming back wrong at low
+ * Sporting Director tiers, and is essentially always right at Muy
+ * alto. */
+function buildTeamFitAssessment(rider, team, tier) {
   const tierIndex = SPORTING_DIRECTOR_TIERS.indexOf(tier);
   const accuracy = 0.55 + tierIndex * 0.11; // Muy bajo ~0.55, Muy alto ~0.99
-  const isPrecise = tierIndex >= 3; // Alto/Muy alto word it plainly; below that, vague wording
-  const hints = [];
-  [{ pick: strongest, phrases: STRONG_PHRASES }, { pick: weakest, phrases: WEAK_PHRASES }].forEach(({ pick: p, phrases }) => {
-    const correct = Math.random() < accuracy;
-    const attr = correct ? p.key : pick(ATTRIBUTE_KEYS.filter((k) => k !== p.key));
-    hints.push(isPrecise ? phrases.precise(ATTRIBUTE_LABELS[attr]) : phrases.vague(ATTRIBUTE_LABELS[attr]));
-  });
-  if (tierIndex === 0 && Math.random() < 0.3) hints.push(pick(GENERIC_PHRASES));
-  return hints;
+  const hedge = tierIndex >= 3 ? "" : "hedge"; // low tiers hedge their wording, high tiers state it plainly
+
+  const trueCA = overallRating(rider);
+  const truePA = rider.pa ?? rider.potential ?? trueCA;
+  const teamRiders = (team.riders || []).filter((r) => r.id !== rider.id);
+  const teamCAs = teamRiders.map((r) => overallRating(r));
+  const teamAvgCA = teamCAs.length ? teamCAs.reduce((a, b) => a + b, 0) / teamCAs.length : trueCA;
+  const betterThanCount = teamCAs.filter((ca) => trueCA > ca).length;
+  const hasGrowth = (truePA - trueCA) >= 8;
+  const isYoung = (rider.age ?? 25) <= 24;
+  const openness = clamp(1 - (rider.prestige ?? 60) / 100 + (teamAvgCA - trueCA) / 120, 0.05, 0.95);
+
+  const verdicts = [
+    pickVerdict(accuracy, hedge, [
+      { test: trueCA >= teamAvgCA + 8, plain: "Está claramente por encima del nivel de tu equipo actual.", hedged: "Parece estar por encima del nivel de tu equipo, aunque conviene confirmarlo." },
+      { test: trueCA <= teamAvgCA - 8, plain: "Está por debajo del nivel que necesita tu equipo ahora mismo.", hedged: "Podría quedarse corta para lo que necesita tu equipo." },
+      { test: true, plain: "Encaja bien con el nivel actual de tu equipo.", hedged: "Parece encajar más o menos con el nivel de tu equipo." },
+    ]),
+    pickVerdict(accuracy, hedge, [
+      { test: teamCAs.length > 0 && betterThanCount === teamCAs.length, plain: `Sería mejor que ${teamCAs.length === 1 ? "tu piloto actual" : "tus pilotos actuales"}.`, hedged: "Podría ser una mejora sobre lo que ya tienes." },
+      { test: teamCAs.length > 0 && betterThanCount === 0, plain: "No superaría a ninguno de tus pilotos actuales.", hedged: "No parece que vaya a superar a tus pilotos actuales." },
+      { test: true, plain: "Superaría a alguno de tus pilotos actuales, pero no a todos.", hedged: "Podría superar a alguno de tus pilotos, aunque no está claro a cuál." },
+    ]),
+    pickVerdict(accuracy, hedge, [
+      { test: hasGrowth && isYoung, plain: "Todavía tiene mucho margen real para crecer.", hedged: "Da la impresión de tener margen para crecer." },
+      { test: hasGrowth && !isYoung, plain: "Le queda algo de margen, aunque ya no es precisamente joven.", hedged: "Podría mejorar todavía un poco." },
+      { test: true, plain: "Ya está cerca de su techo — no esperes mucho más desarrollo.", hedged: "No parece que le quede mucho margen de mejora." },
+    ]),
+    pickVerdict(accuracy, hedge, [
+      { test: isYoung && hasGrowth, plain: "Es una apuesta a largo plazo, con proyección real.", hedged: "Podría ser una apuesta de futuro, aunque es pronto para saberlo." },
+      { test: trueCA >= teamAvgCA - 4, plain: "Podría encajar ya mismo en tu equipo, sin más rodeos.", hedged: "Podría valer para el equipo ya, aunque conviene no confiarse." },
+      { test: true, plain: "Mejor descártala — no aporta nada a tu proyecto ahora mismo.", hedged: "No parece que vaya a aportar demasiado a tu proyecto." },
+    ]),
+    pickVerdict(accuracy, hedge, [
+      { test: openness >= 0.6, plain: "Se mostraría receptiva a una oferta tuya.", hedged: "Podría estar abierta a escuchar una oferta." },
+      { test: openness <= 0.3, plain: "Muy improbable que acepte — está muy a gusto donde está o le queda grande tu proyecto.", hedged: "No parece muy probable que aceptase, aunque nunca se sabe." },
+      { test: true, plain: "Costaría convencerla, pero no es una causa perdida.", hedged: "Podría costar convencerla, aunque no es descartable." },
+    ]),
+  ];
+  return verdicts;
 }
+
+function pickVerdict(accuracy, hedge, options) {
+  const correctOption = options.find((o) => o.test) || options[options.length - 1];
+  const chosen = Math.random() < accuracy ? correctOption : pick(options.filter((o) => o !== correctOption));
+  return hedge ? chosen.hedged : chosen.plain;
+}
+
 
 /** What the AI sees instead of a rider's real potential when
  * evaluating someone outside its own roster — never the true number,

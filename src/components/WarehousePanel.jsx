@@ -44,12 +44,7 @@ export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentP
                   </span>
                   <span className="font-mono text-sm" style={{ color: stockColor }}>{p.stock} en stock</span>
                 </div>
-                {p.orders.length > 0 && (
-                  <div className="text-xs mb-2" style={{ color: COLORS.muted }}>
-                    {p.orders.length} en fabricación · llega{p.orders.length === 1 ? "" : "n"} tras este Gran Premio
-                  </div>
-                )}
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   <button onClick={() => onProduce(part)} disabled={normalCost > budget}
                     className="flex-1 text-xs px-2 py-1.5 rounded disabled:opacity-30"
                     style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
@@ -61,6 +56,11 @@ export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentP
                     Urgente · €{urgentCost.toLocaleString()}
                   </button>
                 </div>
+                {p.orders.length > 0 && (
+                  <div className="text-xs" style={{ color: COLORS.muted }}>
+                    {p.orders.length} en fabricación · llega{p.orders.length === 1 ? "" : "n"} tras este Gran Premio
+                  </div>
+                )}
               </div>
             );
           })}

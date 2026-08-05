@@ -256,28 +256,6 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               Prestigio: <span style={{ color: COLORS.text, fontWeight: 600 }}>{Number.isFinite(rider.prestige) ? `${rider.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
             </div>
 
-            {!isOwnRider && (
-              <div className="mb-4 rounded-md p-2.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Informe de ojeo</div>
-                {scoutReport ? (
-                  <ul className="text-xs space-y-1 mb-2" style={{ color: COLORS.text }}>
-                    {scoutReport.attributeHints.map((h, i) => <li key={i}>{h}</li>)}
-                  </ul>
-                ) : (
-                  <p className="text-xs mb-2" style={{ color: COLORS.muted }}>Sin ojear todavía. No conoces su potencial real ni cómo reparte sus atributos.</p>
-                )}
-                {activeScoutMission ? (
-                  <div className="text-xs" style={{ color: accent }}>Ojeador en misión — informe en {activeScoutMission.weeksRemaining} semana{activeScoutMission.weeksRemaining === 1 ? "" : "s"}.</div>
-                ) : (
-                  <button disabled={!canScout} onClick={() => onSendScout(rider, categoryKey)}
-                    className="text-xs px-3 py-1.5 rounded disabled:opacity-30"
-                    style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
-                    Enviar ojeador{scoutCost > 0 ? ` (€${scoutCost.toLocaleString()})` : " (gratis, misma categoría)"}
-                  </button>
-                )}
-              </div>
-            )}
-
             {rider.injury && rider.injury.gpRemaining > 0 && (
               <div className="mb-4 rounded-md p-2.5 text-xs flex items-center gap-2" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger }}>
                 <AlertTriangle size={14} />
@@ -305,6 +283,28 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
         {profileTab === "contrato" && (
           <>
+            {!isOwnRider && (
+              <div className="mb-4 rounded-md p-2.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Informe de ojeo</div>
+                {scoutReport ? (
+                  <ul className="text-xs space-y-1 mb-2" style={{ color: COLORS.text }}>
+                    {scoutReport.assessment.map((h, i) => <li key={i}>{h}</li>)}
+                  </ul>
+                ) : (
+                  <p className="text-xs mb-2" style={{ color: COLORS.muted }}>Sin ojear todavía. No sabes si encajaría en tu equipo, ni si estaría interesada en fichar.</p>
+                )}
+                {activeScoutMission ? (
+                  <div className="text-xs" style={{ color: accent }}>Ojeador en misión — informe en {activeScoutMission.weeksRemaining} semana{activeScoutMission.weeksRemaining === 1 ? "" : "s"}.</div>
+                ) : (
+                  <button disabled={!canScout} onClick={() => onSendScout(rider, categoryKey)}
+                    className="text-xs px-3 py-1.5 rounded disabled:opacity-30"
+                    style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                    Enviar ojeador{scoutCost > 0 ? ` (€${scoutCost.toLocaleString()})` : " (gratis, misma categoría)"}
+                  </button>
+                )}
+              </div>
+            )}
+
             {!isFreeAgent && currentTeam && (
               <button onClick={() => onOpenTeamProfile?.(currentTeam, categoryKey)}
                 className="w-full mb-4 text-left rounded-md p-3 flex items-center gap-3 hover:opacity-80"
