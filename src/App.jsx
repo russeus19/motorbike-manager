@@ -99,6 +99,11 @@ import { buildClassificationDisplay, buildEntries, bumpCareerStats, findInTeamRo
 import { buildGpHistoryEntry } from "./utils/raceHistory.js";
 import { acceptCounterOffer, applyConfirmedNegotiations, applyReleasedAtSeasonEnd, applyRenewalsToTeam, buildMarketSummaryByCategory, createNegotiation, modifyOffer, needsTeamCompensation, nextSeasonCommittedRiderCount, resolvePendingNegotiations, tickMarket, withdrawOffer } from "./utils/marketNegotiations.js";
 import { processTeamAfterRace, processTeamWeeklyProgress } from "./utils/raceWeekend.js";
+import {
+  advanceScoutMissions, advanceSportingDirectorUpgrade, canStartScoutMission, canStartSportingDirectorUpgrade,
+  cancelScoutMission, expireStaleScoutMorale, SCOUT_OUT_OF_CATEGORY_COST, startScoutMission,
+  startSportingDirectorUpgrade as startSportingDirectorUpgrade_,
+} from "./utils/scouting.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
@@ -373,6 +378,17 @@ export default function MotorbikeManager() {
     const found = findRiderInCategory(catKey, riderId);
     if (found) return found.rider;
     return freeAgents.find((r) => r.id === riderId) || null;
+  }
+
+  // Sporting Director upgrades and scouting missions both tick forward
+  // every week, exactly like Factory/Staff/R&D — a rest week is no
+  // different from a race week for either. Shared here since every
+  // caller of processTeamWeeklyProgress (player, rivals, background
+  // categories) needs the exact same two steps run right alongside it.
+  function withScoutingAdvanced(team) {
+    const { team: afterUpgrade, arrival } = advanceSportingDirectorUpgrade(team);
+    const { team: afterMissions } = advanceScoutMissions(afterUpgrade, findRiderById);
+    return { team: afterMissions, sportingDirectorArrival: arrival };
   }
 
   /* Opens a rider's profile purely from an id + category — shared by the
@@ -1020,6 +1036,23 @@ export default function MotorbikeManager() {
     setPlayerTeam((t) => startFacilityUpgrade(t, "staff", spec));
   }
 
+  function startSportingDirectorUpgrade() {
+    const spec = canStartSportingDirectorUpgrade(playerTeam, budget, scale);
+    if (!spec) return;
+    logMoneyMovement("Ampliación del Director Deportivo", -spec.money);
+    setPlayerTeam((t) => startSportingDirectorUpgrade_(t, spec));
+  }
+
+  function sendScout(rider, riderCategoryKey) {
+    if (!canStartScoutMission(playerTeam, rider.id, riderCategoryKey)) return;
+    if (riderCategoryKey !== category) logMoneyMovement(`Ojeador enviado: ${rider.name}`, -SCOUT_OUT_OF_CATEGORY_COST);
+    setPlayerTeam((t) => startScoutMission(t, rider, riderCategoryKey));
+  }
+
+  function cancelScout(riderId) {
+    setPlayerTeam((t) => cancelScoutMission(t, riderId));
+  }
+
   // Reducing infrastructure, unlike building it, is instant — there's
   // no GP timer to wait out, just an immediate refund and a lower level.
   function startFactoryDowngrade() {
@@ -1476,7 +1509,7 @@ export default function MotorbikeManager() {
       // while MotoGP/Moto2/Moto3 (racing every week) never lost any.
       if (isSbkCalendarCategory(key) && !isCategoryRaceWeek(key, round)) {
         const catScale = CATEGORY_DATA[key].scale;
-        const weeklyTeams = catState.teams.map((t) => processTeamWeeklyProgress(t, key, { isPlayer: false, scale: catScale }, notifQueue).team);
+        const weeklyTeams = catState.teams.map((t) => withScoutingAdvanced(processTeamWeeklyProgress(t, key, { isPlayer: false, scale: catScale }, notifQueue).team).team);
         nextOther[key] = { ...catState, teams: weeklyTeams };
         return;
       }
@@ -1517,10 +1550,10 @@ export default function MotorbikeManager() {
       const teamsNext = [];
       raceTeams.forEach((t, i) => {
         const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
-        teamsNext.push(processTeamAfterRace(t, catResults, key, {
+        teamsNext.push(withScoutingAdvanced(processTeamAfterRace(t, catResults, key, {
           isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
           excludeSponsorNames, marketNegotiations,
-        }, poolRef, notifQueue));
+        }, poolRef, notifQueue)).team);
       });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
 
@@ -1543,7 +1576,9 @@ export default function MotorbikeManager() {
       const label = a.kind === "factory" ? "Fábrica" : "Staff técnico";
       notifQueue.push({ type: "dev", category, text: `Mejora de ${label} completada: nivel ${a.newLevel}.` });
     });
-    const rivalsAfterWeekly = rivalTeams.map((t) => processTeamWeeklyProgress(t, category, { isPlayer: false, scale }, notifQueue).team);
+    const { team: playerAfterScouting, sportingDirectorArrival } = withScoutingAdvanced(playerAfterWeekly);
+    if (sportingDirectorArrival) notifQueue.push({ type: "dev", category, text: `Mejora del Director Deportivo completada: nivel ${sportingDirectorArrival.newLevel}.` });
+    const rivalsAfterWeekly = rivalTeams.map((t) => withScoutingAdvanced(processTeamWeeklyProgress(t, category, { isPlayer: false, scale }, notifQueue).team).team);
 
     // Bug fixed: market negotiations — new rumors, AI-vs-AI dealing,
     // incoming offers for the player, pending negotiations reaching
@@ -1554,7 +1589,7 @@ export default function MotorbikeManager() {
     const marketTick = tickMarket(
       { marketRumors, marketNegotiations },
       {
-        playerTeam: playerAfterWeekly, rivalTeams: rivalsAfterWeekly, otherCategories: nextOther,
+        playerTeam: playerAfterScouting, rivalTeams: rivalsAfterWeekly, otherCategories: nextOther,
         freeAgents: poolRef.pool, category, round, totalRounds: CIRCUITS.length, seasonNumber, scale,
         riderStandings,
         findTeam: findTeamById, findRider: findRiderById,
@@ -1566,7 +1601,7 @@ export default function MotorbikeManager() {
     marketTick.justConfirmedRenewals.forEach((r) => {
       (renewalsByCategory[r.categoryKey] ||= []).push(r);
     });
-    const playerAfterRenewals = applyRenewalsToTeam(playerAfterWeekly, renewalsByCategory[category] || []);
+    const playerAfterRenewals = applyRenewalsToTeam(playerAfterScouting, renewalsByCategory[category] || []);
     const rivalsAfterRenewals = rivalsAfterWeekly.map((t) => applyRenewalsToTeam(t, renewalsByCategory[category] || []));
     const nextOtherAfterRenewals = { ...nextOther };
     Object.keys(nextOtherAfterRenewals).forEach((key) => {
@@ -1883,6 +1918,8 @@ export default function MotorbikeManager() {
       const label = a.kind === "factory" ? "Fábrica" : "Staff técnico";
       notifQueue.push({ type: "dev", category, text: `Mejora de ${label} completada: nivel ${a.newLevel}.` });
     });
+    const { team: playerAfterScouting, sportingDirectorArrival } = withScoutingAdvanced(playerProcessed);
+    if (sportingDirectorArrival) notifQueue.push({ type: "dev", category, text: `Mejora del Director Deportivo completada: nivel ${sportingDirectorArrival.newLevel}.` });
 
     const rows = [
       { id: "player", points: teamStandings.player || 0 },
@@ -1894,10 +1931,10 @@ export default function MotorbikeManager() {
     const rivalsProcessed = [];
     rivalTeams.forEach((t, i) => {
       const excludeSponsorNames = collectActiveSponsorNames([playerTeam, ...rivalsProcessed, ...rivalTeams.slice(i + 1)]);
-      rivalsProcessed.push(processTeamAfterRace(t, results, category, {
+      rivalsProcessed.push(withScoutingAdvanced(processTeamAfterRace(t, results, category, {
         isPlayer: false, position: posMap[t.id] || rivalTeams.length + 1, totalTeams: rivalTeams.length + 1, roundIndex: round, totalRounds: CIRCUITS.length, scale,
         excludeSponsorNames, marketNegotiations,
-      }, poolRef, notifQueue));
+      }, poolRef, notifQueue)).team);
     });
 
     const riderStandingsNext = { ...riderStandings };
@@ -1910,7 +1947,7 @@ export default function MotorbikeManager() {
     results.forEach((r) => { teamStandingsNext[r.teamId] = (teamStandingsNext[r.teamId] || 0) + r.points; });
 
     const [playerWithMorale, ...rivalsWithMorale] = applyMoraleToCategoryTeams(
-      [playerProcessed, ...rivalsProcessed], riderStandingsNext, teamStandingsNext, riderWinsNext, riderPodiumsNext, scale
+      [playerAfterScouting, ...rivalsProcessed], riderStandingsNext, teamStandingsNext, riderWinsNext, riderPodiumsNext, scale
     );
 
     const playerResults = results.filter((r) => r.teamId === "player");
@@ -2019,10 +2056,10 @@ export default function MotorbikeManager() {
       const teamsNext = [];
       raceTeams.forEach((t, i) => {
         const excludeSponsorNames = collectActiveSponsorNames([...teamsNext, ...raceTeams.slice(i + 1)]);
-        teamsNext.push(processTeamAfterRace(t, catResults, key, {
+        teamsNext.push(withScoutingAdvanced(processTeamAfterRace(t, catResults, key, {
           isPlayer: false, position: catPosMap[t.id] || raceTeams.length, totalTeams: raceTeams.length, roundIndex: round, totalRounds: CIRCUITS.length, scale: catScale,
           excludeSponsorNames, marketNegotiations,
-        }, poolRef, notifQueue));
+        }, poolRef, notifQueue)).team);
       });
       const teamsWithMorale = applyMoraleToCategoryTeams(teamsNext, rS, tS, rW, rP, catScale);
 
@@ -2681,7 +2718,7 @@ export default function MotorbikeManager() {
       const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale, key);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
     });
-    const { team: repairedPlayerTeam } = validateAndRepairTeam({ ...rolledPlayerTeam, riders: finalRoster, substitutes: evolvedOwnSubstitutes }, scale, { padRosterTo2: false });
+    const { team: repairedPlayerTeam } = validateAndRepairTeam(expireStaleScoutMorale({ ...rolledPlayerTeam, riders: finalRoster, substitutes: evolvedOwnSubstitutes }), scale, { padRosterTo2: false });
     const finalRosterValidated = repairedPlayerTeam.riders;
 
     // --- Fresh season expectations for every team and rider ---
@@ -2846,6 +2883,8 @@ export default function MotorbikeManager() {
           onOpenTeamProfile={openTeamProfile}
           onStartFactoryUpgrade={startFactoryUpgrade}
           onStartStaffUpgrade={startStaffUpgrade}
+          onStartSportingDirectorUpgrade={startSportingDirectorUpgrade}
+          onCancelScout={cancelScout}
           onStartFactoryDowngrade={startFactoryDowngrade}
           onStartStaffDowngrade={startStaffDowngrade}
           onChooseSponsorOffer={chooseSponsorOffer}
@@ -2929,6 +2968,7 @@ export default function MotorbikeManager() {
         onAcceptCounterOffer={phase === "complete-roster" ? acceptRosterCompletionCounter : acceptCounterOfferAction}
         onModifyOffer={phase === "complete-roster" ? modifyRosterCompletionOffer : modifyPlayerOffer}
         onWithdrawOffer={withdrawPlayerOffer}
+        onSendScout={sendScout}
         scale={scale}
         onOpenTeamProfile={openTeamProfile}
         onTop={topProfileModal === "rider"}

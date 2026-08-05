@@ -1,6 +1,7 @@
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { clamp, pick } from "./random.js";
 import { categoryRankDelta, computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, isPlausibleCrossoverSuitor, overallRating, passesCrossoverGate, photoIdFor } from "./riders.js";
+import { perceivedRiderForAI } from "./scouting.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
@@ -341,13 +342,13 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     if (buyer.riders.length + seatsTaken >= 2) return;
 
     const ambition = buyerAmbition(buyer);
-    const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, seasonNumber));
+    const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, buyer), categoryKey, seasonNumber));
     const useFreeAgent = eligibleFreeAgents.length > 0 && Math.random() < 0.4;
 
     let rider = null;
     let fromTeam = null;
     if (useFreeAgent) {
-      rider = weightedPickFromArray(eligibleFreeAgents, (r) => candidateFitForBuyer(r, ambition, categoryKey));
+      rider = weightedPickFromArray(eligibleFreeAgents, (r) => candidateFitForBuyer(perceivedRiderForAI(r, buyer), ambition, categoryKey));
     } else {
       const sellers = teams.filter((t) => t.id !== buyer.id && t.riders.length);
       if (!sellers.length) return;
@@ -364,7 +365,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
       // separate eligibility restriction is needed on top of that.
       const candidates = seller.riders.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
       if (!candidates.length) return;
-      rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(r, ambition, categoryKey));
+      rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(perceivedRiderForAI(r, buyer), ambition, categoryKey));
       fromTeam = seller;
     }
     if (!rider) return;

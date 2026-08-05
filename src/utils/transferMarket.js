@@ -3,6 +3,7 @@ import { clamp } from "./random.js";
 import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
 import { assignUniqueNumber, categoryRankDelta, computeSalary, crossoverCandidatePoolSize, crossoverPotentialFloor, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor, substituteHireCost } from "./riders.js";
+import { perceivedRiderForAI } from "./scouting.js";
 import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 import { teamDisplayName } from "./teamNaming.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
@@ -232,7 +233,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       const eligiblePool = pool.filter((p) => isFreeAgentEligibleForCategory(p, ck));
       const ownScore = scoreCandidateForTeam(r, t, { categoryKey: ck, teamBudget: t.budget });
       const bestOutside = eligiblePool
-        .map((p) => ({ p, score: scoreCandidateForTeam(p, t, { categoryKey: ck, teamBudget: t.budget }) }))
+        .map((p) => ({ p, score: scoreCandidateForTeam(perceivedRiderForAI(p, t), t, { categoryKey: ck, teamBudget: t.budget }) }))
         .sort((a, b) => b.score - a.score)[0];
 
       if (bestOutside && bestOutside.score > ownScore + MARKET_SWAP_MARGIN) {
@@ -393,7 +394,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       let liveTeam = findTeam(teamsByCategory, higher, teamId);
       while (liveTeam && liveTeam.riders.length < 2 && candidatePool.length) {
         const scored = candidatePool
-          .map((c, idx) => ({ idx, score: scoreCandidateForTeam(c.rider, liveTeam, { categoryKey: higher, teamBudget: liveTeam.budget }) }))
+          .map((c, idx) => ({ idx, score: scoreCandidateForTeam(perceivedRiderForAI(c.rider, liveTeam), liveTeam, { categoryKey: higher, teamBudget: liveTeam.budget }) }))
           .sort((a, b) => b.score - a.score);
         let signedIdx = null, signedSalary = null;
         for (const { idx } of scored) {
@@ -443,10 +444,10 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
     // female free agent bypass this entirely. A genuinely capable
     // woman should still be able to find a seat elsewhere; one filling
     // gaps only because nobody else was available should not.
-    const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, seasonNumber));
+    const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, team), categoryKey, seasonNumber));
     const bikeAvgOffered = bikeAvgOf(team);
     const ranked = eligible
-      .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))
+      .map((r) => ({ r, score: scoreCandidateForTeam(perceivedRiderForAI(r, team), team, { categoryKey, teamBudget: team.budget }) }))
       .sort((a, b) => b.score - a.score);
 
     let signed = null;
@@ -549,8 +550,8 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         // sitting in the free-agent pool) never carries — so it's set
         // here explicitly for the check alone.
         const bestFeeder = feederCandidates
-          .filter(({ r }) => passesCrossoverGate({ ...r, _fromCategoryKey: feeder }, categoryKey, seasonNumber))
-          .map(({ r, teamId: ftId }) => ({ r, teamId: ftId, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget: team.budget }) }))
+          .filter(({ r }) => passesCrossoverGate(perceivedRiderForAI({ ...r, _fromCategoryKey: feeder }, team), categoryKey, seasonNumber))
+          .map(({ r, teamId: ftId }) => ({ r, teamId: ftId, score: scoreCandidateForTeam(perceivedRiderForAI(r, team), team, { categoryKey, teamBudget: team.budget }) }))
           .sort((a, b) => b.score - a.score)[0];
         if (bestFeeder) { forced = bestFeeder.r; forcedFromTeamId = bestFeeder.teamId; }
       }
@@ -600,7 +601,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       let changed = true;
       while (changed) {
         changed = false;
-        const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck) && passesCrossoverGate(r, ck, seasonNumber));
+        const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck) && passesCrossoverGate(perceivedRiderForAI(r, liveTeam), ck, seasonNumber));
         if (!eligible.length) break;
         const teamBudget = liveTeam.budget;
         const riderScores = liveTeam.riders.map((r) => scoreCandidateForTeam(r, liveTeam, { categoryKey: ck, teamBudget }));
@@ -610,7 +611,7 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         const weakestScore = riderScores[weakestIdx];
 
         const ranked = eligible
-          .map((r) => ({ r, score: scoreCandidateForTeam(r, liveTeam, { categoryKey: ck, teamBudget }) }))
+          .map((r) => ({ r, score: scoreCandidateForTeam(perceivedRiderForAI(r, liveTeam), liveTeam, { categoryKey: ck, teamBudget }) }))
           .filter(({ score }) => score > weakestScore + UPGRADE_MARGIN)
           .sort((a, b) => b.score - a.score);
 
@@ -807,9 +808,9 @@ export function aiMaybeFireRider(team, categoryKey, ctx, poolRef, notifQueue) {
   const weakest = team.riders[weakestIdx];
   if (weakest.injury && weakest.injury.sidelined) return team; // never mid-treatment
 
-  const eligiblePool = poolRef.pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(r, categoryKey, ctx.seasonNumber));
+  const eligiblePool = poolRef.pool.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, team), categoryKey, ctx.seasonNumber));
   const ranked = eligiblePool
-    .map((r) => ({ r, score: scoreCandidateForTeam(r, team, { categoryKey, teamBudget }) }))
+    .map((r) => ({ r, score: scoreCandidateForTeam(perceivedRiderForAI(r, team), team, { categoryKey, teamBudget }) }))
     .filter(({ score }) => score > scored[weakestIdx] + 15)
     .sort((a, b) => b.score - a.score);
   if (!ranked.length) return team;

@@ -10,6 +10,7 @@ import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
 import { teamDisplayName } from "../utils/teamNaming.js";
 import { StaffPanel } from "../components/StaffPanel.jsx";
+import { SportingDirectorPanel } from "../components/SportingDirectorPanel.jsx";
 import { SponsorsPanel } from "../components/SponsorsPanel.jsx";
 import { EconomyPanel } from "../components/EconomyPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
@@ -33,7 +34,7 @@ import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onStartSportingDirectorUpgrade, onCancelScout, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
   const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike" || category === "worldwcr";
   // WorldWCR races on a narrower 6-round subset of Superbikes' own
@@ -403,6 +404,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} onSearchSponsor={onSearchSponsor} onCancelSearchSponsor={onCancelSearchSponsor} onCancelSponsorContract={onCancelSponsorContract} accent={accent} />
           <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
           <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
+          <SportingDirectorPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartSportingDirectorUpgrade} onCancelScout={onCancelScout} onOpenRiderProfileById={onOpenRiderProfileById} accent={accent} scale={scale} />
           <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} />
         </div>
       )}

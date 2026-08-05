@@ -11,6 +11,7 @@ import { badgeEmoji, computeMarketValue, computeReleaseAtSeasonEndCost, computeS
 import { teamDisplayName } from "../utils/teamNaming.js";
 import { nextSeasonCommittedRiderCount } from "../utils/marketNegotiations.js";
 import { moraleTierInfo } from "../utils/riderMorale.js";
+import { canStartScoutMission, SCOUT_OUT_OF_CATEGORY_COST } from "../utils/scouting.js";
 import { clamp } from "../utils/random.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 
@@ -45,7 +46,7 @@ function tagLabel(tag) {
   return tag.label || "Habilidad especial";
 }
 
-export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, scale, onOpenTeamProfile, onTop = true }) {
+export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, onSendScout, scale, onOpenTeamProfile, onTop = true }) {
   const [confirmFire, setConfirmFire] = useState(false);
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [teamOfferAmount, setTeamOfferAmount] = useState(0);
@@ -92,6 +93,12 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   const hasVacancy = !!(playerTeam && playerTeam.riders.length < 2);
   const signEligible = isFreeAgent && hasVacancy && !isOwnRider && isFreeAgentEligibleForCategory(rider, category);
   const signCost = Math.round(overallRating(rider) * 5000);
+  const scoutReport = playerTeam?.scoutReports?.[rider.id];
+  const knowsPotential = isOwnRider || !!scoutReport;
+  const knowsMorale = isOwnRider || !!scoutReport?.moraleValue;
+  const activeScoutMission = (playerTeam?.scoutingMissions || []).find((m) => m.riderId === rider.id);
+  const scoutCost = categoryKey === category ? 0 : SCOUT_OUT_OF_CATEGORY_COST;
+  const canScout = !isOwnRider && !!playerTeam && !activeScoutMission && canStartScoutMission(playerTeam, rider.id, categoryKey);
 
   // Live transfer market (utils/marketNegotiations.js): is there already
   // a negotiation in progress or confirmed for this rider WITH US
@@ -227,7 +234,11 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Potencial (PA)</div>
-                <div className="text-3xl font-mono" style={{ color: COLORS.text }}>{rider.pa}</div>
+                {knowsPotential ? (
+                  <div className="text-3xl font-mono" style={{ color: COLORS.text }}>{isOwnRider ? rider.pa : `${scoutReport.potentialRange[0]}–${scoutReport.potentialRange[1]}`}</div>
+                ) : (
+                  <div className="text-3xl font-mono" style={{ color: COLORS.muted }}>?</div>
+                )}
               </div>
             </div>
 
@@ -237,11 +248,35 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               </div>
             )}
             <div className="text-xs mb-1" style={{ color: COLORS.muted }}>
-              Moral: <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
+              Moral: {knowsMorale
+                ? <span style={{ color: moraleTierInfo(rider.moraleState?.tier).color, fontWeight: 600 }}>{moraleTierInfo(rider.moraleState?.tier).label}</span>
+                : <span style={{ color: COLORS.muted }}>?</span>}
             </div>
             <div className="text-xs mb-4" style={{ color: COLORS.muted }}>
               Prestigio: <span style={{ color: COLORS.text, fontWeight: 600 }}>{Number.isFinite(rider.prestige) ? `${rider.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
             </div>
+
+            {!isOwnRider && (
+              <div className="mb-4 rounded-md p-2.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Informe de ojeo</div>
+                {scoutReport ? (
+                  <ul className="text-xs space-y-1 mb-2" style={{ color: COLORS.text }}>
+                    {scoutReport.attributeHints.map((h, i) => <li key={i}>{h}</li>)}
+                  </ul>
+                ) : (
+                  <p className="text-xs mb-2" style={{ color: COLORS.muted }}>Sin ojear todavía. No conoces su potencial real ni cómo reparte sus atributos.</p>
+                )}
+                {activeScoutMission ? (
+                  <div className="text-xs" style={{ color: accent }}>Ojeador en misión — informe en {activeScoutMission.weeksRemaining} semana{activeScoutMission.weeksRemaining === 1 ? "" : "s"}.</div>
+                ) : (
+                  <button disabled={!canScout} onClick={() => onSendScout(rider, categoryKey)}
+                    className="text-xs px-3 py-1.5 rounded disabled:opacity-30"
+                    style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                    Enviar ojeador{scoutCost > 0 ? ` (€${scoutCost.toLocaleString()})` : " (gratis, misma categoría)"}
+                  </button>
+                )}
+              </div>
+            )}
 
             {rider.injury && rider.injury.gpRemaining > 0 && (
               <div className="mb-4 rounded-md p-2.5 text-xs flex items-center gap-2" style={{ background: "rgba(214,69,69,0.12)", border: `1px solid ${COLORS.danger}`, color: COLORS.danger }}>
