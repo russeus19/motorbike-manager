@@ -54,7 +54,19 @@ function nextMarketId(prefix) {
 export function needsTeamCompensation(rider, fromTeamId, toTeamId) {
   if (!fromTeamId) return false;
   if (fromTeamId === toTeamId) return false;
-  return (rider.contractYears ?? 0) > 1;
+  // Bug fixed: this required MORE than 1 year left (`> 1`), so a rider
+  // with exactly 1 year still on their contract — an entirely normal,
+  // common state, not some edge case — was treated as if they had no
+  // contract at all. That skipped teamOfferAmount straight to null,
+  // which skips the whole "does the selling team accept compensation"
+  // step in resolvePendingNegotiations and jumps directly to the
+  // rider's own decision — meaning a rider genuinely still under
+  // contract could get poached with no offer ever reaching the
+  // selling team, no message, and no compensation, as if they'd
+  // already been a free agent. Any contract still in effect (> 0
+  // years) needs a release fee; only a rider with zero years left is
+  // actually free to go.
+  return (rider.contractYears ?? 0) > 0;
 }
 
 /* How "hot" the market is at this point in the season — the single

@@ -537,9 +537,18 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         // Fase 2.5's own promotion pass — this "urgent call-up"
         // fallback had the identical gap and was never covered by that
         // earlier fix.
+        // Bug fixed: this never excluded riders who'd already been
+        // placed somewhere else THIS SAME transition (isNewTeamThisSeason)
+        // — meaning a rider freshly promoted one category up (Fase 2.5,
+        // just above) could immediately get swept up AGAIN by this urgent
+        // call-up fallback into a completely different team, silently
+        // undoing the promotion she'd just been given moments earlier in
+        // the exact same market resolution pass. Fase 2.5's own candidate
+        // gathering already excludes isNewTeamThisSeason for this exact
+        // reason; this fallback had the identical gap.
         const feederCandidates = feederTeams
           .filter((t) => t.id !== categoriesData[feeder]?.excludeTeamId)
-          .flatMap((t) => t.riders.map((r) => ({ r, teamId: t.id })));
+          .flatMap((t) => t.riders.filter((r) => !r.isNewTeamThisSeason).map((r) => ({ r, teamId: t.id })));
         // Bug fixed: this picked the single best-scoring rider out of
         // the ENTIRE feeder category with no quality floor at all —
         // "best of whoever's left" isn't the same as "actually good
@@ -571,9 +580,15 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
         }
         applyRiderToTeam(teamsByCategory, categoryKey, teamId, newRider);
         const fromCat = _fromCategoryKey || (forcedFromTeamId ? CATEGORY_DATA[categoryKey].lower : null);
+        // Bug fixed: this told the player outright that the signing only
+        // happened because "nadie más disponible en el mercado" — an
+        // internal detail about HOW the AI resolved an otherwise-empty
+        // seat, not something any real team would ever announce about
+        // its own signing. Worded now exactly like any other promotion/
+        // signing announcement elsewhere in this same summary.
         const text = fromCat && fromCat !== categoryKey
-          ? `${newRider.name} sube de urgencia de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)}), sin nadie más disponible en el mercado`
-          : `${newRider.name} ficha por ${teamDisplayName(team)} de urgencia, sin nadie más disponible en el mercado`;
+          ? `${newRider.name} asciende de ${CATEGORY_DATA[fromCat].label} a ${CATEGORY_DATA[categoryKey].label} (${teamDisplayName(team)})`
+          : `${newRider.name} ficha por ${teamDisplayName(team)}`;
         log[categoryKey].push({ type: "ascenso", riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text, category: CATEGORY_DATA[categoryKey].label });
       }
       // If there's truly nobody anywhere — an extreme edge case this

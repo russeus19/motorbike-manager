@@ -1238,6 +1238,20 @@ export default function MotorbikeManager() {
      own counter figure outright, moving the negotiation one step
      forward exactly as described in the design. */
   function acceptCounterOfferAction(negotiationId) {
+    // Bug fixed: accepting a rider's counter-offer only ever updated
+    // the negotiation's own status to "confirmed" — the message
+    // correctly said "aceptado", but nothing ever actually applied the
+    // new terms to the roster. Renewals are meant to land immediately
+    // (see applyRenewalsToTeam / tickMarket's "applied" status), but
+    // that immediate application only ever ran from INSIDE tickMarket's
+    // own resolution pass — a renewal accepted directly here, straight
+    // from the player's own click, never passed through that pass at
+    // all, so contractYears just sat there unchanged forever, one year
+    // short, no matter how many times the player "accepted" it.
+    const neg = (marketNegotiations || []).find((n) => n.id === negotiationId);
+    if (neg && neg.kind === "renewal" && neg.status === "rider_countered" && neg.toTeamId === "player") {
+      setPlayerTeam((t) => applyRenewalsToTeam(t, [{ teamId: t.id, riderId: neg.riderId, riderName: neg.riderName, years: neg.riderTerms.years, salary: neg.riderTerms.salary }]));
+    }
     setMarketNegotiations((prev) => acceptCounterOffer(prev, negotiationId, round));
   }
 
