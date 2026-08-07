@@ -24,8 +24,16 @@ function CircuitBackgroundPhoto({ ladder, index }) {
   if (failed) {
     return <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #1a1d24, #0e1014)" }} />;
   }
+  // Bug fixed: this used loading="lazy", meant for images below the
+  // fold that the browser can safely defer. This one is the opposite
+  // — it's the very first thing on screen the instant Inicio opens,
+  // so "lazy" only adds delay: the browser has to run its visibility
+  // check before it even starts the request, right when it should be
+  // starting immediately. fetchpriority="high" pushes it further,
+  // telling the browser to prioritize this fetch over any lower-value
+  // requests competing for the same connection.
   return (
-    <img src={src} alt="" loading="lazy" decoding="async"
+    <img src={src} alt="" loading="eager" fetchpriority="high" decoding="async"
       className="absolute inset-0 w-full h-full object-cover"
       onError={() => setFailed(true)} />
   );
@@ -43,7 +51,7 @@ function CircuitOutlineOverlay({ ladder, index }) {
   useEffect(() => setFailed(false), [src]);
   if (failed) return null;
   return (
-    <img src={src} alt="" loading="lazy" decoding="async"
+    <img src={src} alt="" loading="eager" decoding="async"
       className="absolute right-3 bottom-3 w-24 h-24 object-contain opacity-90"
       style={{ filter: "brightness(0) invert(1)" }}
       onError={() => setFailed(true)} />

@@ -7,6 +7,7 @@ import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { countryIdFromEmoji } from "../data/countryFlags.js";
 import { isFreeAgentEligibleForCategory, lastTeamName, overallRating } from "../utils/riders.js";
+import { knownPotentialLabel, matchesPotentialFilter } from "../utils/scouting.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
 /** Nationality filter — a real dropdown of its own instead of a native
@@ -52,7 +53,7 @@ function NationalityPicker({ value, options, accent }) {
   );
 }
 
-export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
+export function FreeAgentsPanel({ freeAgents, playerTeam, category, accent, openProfile }) {
   const [expanded, setExpanded] = useState(false);
   const eligible = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, category));
   const sorted = [...eligible].sort((a, b) => overallRating(b) - overallRating(a));
@@ -93,7 +94,7 @@ export function FreeAgentsPanel({ freeAgents, category, accent, openProfile }) {
                       {r.name}
                       <OverallBadge value={overallRating(r)} accent={accent} />
                     </div>
-                    <div className="text-xs truncate mt-0.5" style={{ color: COLORS.muted }}>{r.age} años · PA {r.pa} · antes en {lastTeamName(r)}</div>
+                    <div className="text-xs truncate mt-0.5" style={{ color: COLORS.muted }}>{r.age} años · PA {knownPotentialLabel(r, playerTeam)} · antes en {lastTeamName(r)}</div>
                   </div>
                 </div>
                 <div className="text-xs font-mono" style={{ color: COLORS.muted }}>Valor: <span style={{ color: COLORS.text }}>€{(r.marketValue || 0).toLocaleString()}</span></div>
@@ -142,21 +143,21 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   const [minPA, setMinPA] = useState(0);
   const [maxPA, setMaxPA] = useState(100);
 
-  function teamEntries(t, categoryKey) {
+  function teamEntries(t, categoryKey, isOwn = false) {
     return [
-      ...t.riders.map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey })),
-      ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey })),
+      ...t.riders.map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey, isOwn })),
+      ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey, isOwn })),
     ];
   }
 
   const currentCategoryEntries = [
-    ...teamEntries(playerTeam, category),
+    ...teamEntries(playerTeam, category, true),
     ...rivalTeams.flatMap((t) => teamEntries(t, category)),
   ];
   const otherCategoryEntries = Object.entries(otherCategories || {}).flatMap(([key, catState]) =>
     (catState.teams || []).flatMap((t) => teamEntries(t, key))
   );
-  const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: null }));
+  const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: null, isOwn: false }));
   const allEntries = [...currentCategoryEntries, ...otherCategoryEntries, ...freeAgentEntries];
 
   // Every nationality actually present in the current search pool, so the
@@ -177,7 +178,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
     const ca = overallRating(r);
     if (r.age < minAge || r.age > maxAge) return false;
     if (ca < minCA || ca > maxCA) return false;
-    if (r.pa < minPA || r.pa > maxPA) return false;
+    if (!matchesPotentialFilter(r, playerTeam, e.isOwn, minPA, maxPA)) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const teamNameForSearch = e.teamName || lastTeamName(r);
@@ -247,10 +248,10 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
               <input type="number" value={maxCA} onChange={(e) => setMaxCA(Number(e.target.value))} className="px-2 py-1.5 rounded-lg" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
             </label>
             <div />
-            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>PA mín.
+            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>PA mín. (conocido)
               <input type="number" value={minPA} onChange={(e) => setMinPA(Number(e.target.value))} className="px-2 py-1.5 rounded-lg" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
             </label>
-            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>PA máx.
+            <label className="flex flex-col gap-1" style={{ color: COLORS.muted }}>PA máx. (conocido)
               <input type="number" value={maxPA} onChange={(e) => setMaxPA(Number(e.target.value))} className="px-2 py-1.5 rounded-lg" style={{ background: COLORS.panel2, color: COLORS.text, border: `1px solid ${COLORS.rule}` }} />
             </label>
           </div>
@@ -274,7 +275,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
                 </span>
               </span>
             </span>
-            <span className="text-xs font-mono flex-shrink-0 ml-2" style={{ color: COLORS.muted }}>PA {e.rider.pa} · {e.rider.age}a</span>
+            <span className="text-xs font-mono flex-shrink-0 ml-2" style={{ color: COLORS.muted }}>PA {knownPotentialLabel(e.rider, playerTeam, e.isOwn)} · {e.rider.age}a</span>
           </button>
         ))}
         {filtered.length === 0 && <p className="text-sm" style={{ color: COLORS.muted }}>Ningún piloto coincide con la búsqueda/filtros.</p>}

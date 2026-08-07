@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Flag, Medal, Trophy, X } from "lucide-react";
+import { AlertTriangle, Flag, Info, Medal, Trophy, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { RiderNumber } from "./RiderNumber.jsx";
@@ -43,7 +43,29 @@ function historyStepLabel(h) {
 function tagLabel(tag) {
   if (tag.type === "favoriteCircuit") return `Especialista en ${tag.circuitLabel || tag.circuit}`;
   if (tag.type === "wetSpecialist") return "Especialista en lluvia";
+  if (tag.type === "sprintSpecialist") return "Especialista en sprints";
+  if (tag.type === "qualifyingSpecialist") return "Clasificador nato";
+  if (tag.type === "mentalLimit") return "Al límite mental";
+  if (tag.type === "comeback") return "De menos a más";
+  if (tag.type === "regularidad") return "Míster Regularidad";
   return tag.label || "Habilidad especial";
+}
+
+/** The actual mechanical effect behind each tag — every one of these
+ * adds a flat +4% to the rider's effective performance (see
+ * tagBonusMultiplier in utils/riders.js), only in the specific
+ * situation named. Kept right next to tagLabel so the two can never
+ * drift out of sync with each other or with what the sim actually
+ * does. */
+function tagDescription(tag) {
+  if (tag.type === "favoriteCircuit") return `+4% de rendimiento en ${tag.circuitLabel || tag.circuit}. No afecta en el resto de circuitos.`;
+  if (tag.type === "wetSpecialist") return "+4% de rendimiento en carreras con lluvia. No afecta en seco.";
+  if (tag.type === "sprintSpecialist") return "+4% de rendimiento en el Sprint (o la Superpole Race en Superbikes). No afecta en la carrera principal.";
+  if (tag.type === "qualifyingSpecialist") return "+4% de rendimiento en la clasificación. No afecta en carrera.";
+  if (tag.type === "mentalLimit") return "+5% de probabilidad de caída cuando su moral esté Baja o Muy baja. Sin efecto con la moral en Normal o por encima.";
+  if (tag.type === "comeback") return "Cuanto peor sale de parrilla, mejor remonta: hasta +5% de rendimiento en carrera si sale muy atrás. Sin efecto si sale entre las 3 primeras posiciones.";
+  if (tag.type === "regularidad") return "-4% de probabilidad de caída cuando su moral esté Normal, Alta o Muy alta. Sin efecto con la moral en Baja o Muy baja.";
+  return tag.description || "Aporta una ventaja concreta en una situación determinada.";
 }
 
 export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, onSendScout, scale, onOpenTeamProfile, onTop = true }) {
@@ -55,6 +77,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   const [offerWinBonus, setOfferWinBonus] = useState(0);
   const [offerTitleBonus, setOfferTitleBonus] = useState(0);
   const [profileTab, setProfileTab] = useState("personal");
+  const [expandedTag, setExpandedTag] = useState(null);
 
   // Resets the offer form to sensible suggested values every time a
   // different rider's profile is opened — unless there's already an
@@ -80,6 +103,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
     setShowOfferForm(false);
     setConfirmFire(false);
     setProfileTab("personal");
+    setExpandedTag(null);
   }, [target?.rider?.id, scale]);
 
   if (!target) return null;
@@ -230,14 +254,14 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
             <div className="flex gap-6 mb-4">
               <div>
                 <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Media (CA)</div>
-                <div className="text-3xl font-mono" style={{ color: accent }}>{overall}</div>
+                <div className="text-3xl font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{overall}</div>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Potencial (PA)</div>
                 {knowsPotential ? (
-                  <div className="text-3xl font-mono" style={{ color: COLORS.text }}>{isOwnRider ? rider.pa : `${scoutReport.potentialRange[0]}–${scoutReport.potentialRange[1]}`}</div>
+                  <div className="text-3xl font-bold" style={{ color: COLORS.text, fontFamily: "Rajdhani, sans-serif" }}>{isOwnRider ? rider.pa : `${scoutReport.potentialRange[0]}–${scoutReport.potentialRange[1]}`}</div>
                 ) : (
-                  <div className="text-3xl font-mono" style={{ color: COLORS.muted }}>?</div>
+                  <div className="text-3xl font-bold" style={{ color: COLORS.muted, fontFamily: "Rajdhani, sans-serif" }}>?</div>
                 )}
               </div>
             </div>
@@ -268,14 +292,28 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
 
             {rider.tags && rider.tags.length > 0 && (
               <div className="mt-4">
-                <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Habilidades especiales</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {rider.tags.map((tag, i) => (
-                    <span key={i} className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ background: "rgba(227,164,39,0.14)", border: `1px solid ${accent}`, color: accent }}>
-                      {tagLabel(tag)}
-                    </span>
-                  ))}
+                <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: COLORS.muted }}>
+                  Habilidades especiales <Info size={11} />
                 </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {rider.tags.map((tag, i) => {
+                    const isRisk = tag.type === "mentalLimit";
+                    const tagColor = isRisk ? COLORS.danger : accent;
+                    return (
+                      <button key={i} onClick={() => setExpandedTag(expandedTag === i ? null : i)}
+                        className="text-xs px-2.5 py-1 rounded-full font-semibold transition-opacity"
+                        style={{ background: expandedTag === i ? tagColor : `${tagColor}24`, border: `1px solid ${tagColor}`, color: expandedTag === i ? COLORS.bg : tagColor }}>
+                        {tagLabel(tag)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {expandedTag !== null && rider.tags[expandedTag] && (
+                  <div className="mt-2 rounded-md p-2.5 text-xs flex items-start gap-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
+                    <Info size={13} style={{ color: rider.tags[expandedTag].type === "mentalLimit" ? COLORS.danger : accent, flexShrink: 0, marginTop: 1 }} />
+                    {tagDescription(rider.tags[expandedTag])}
+                  </div>
+                )}
               </div>
             )}
           </>

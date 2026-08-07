@@ -298,3 +298,42 @@ export function expireStaleScoutMorale(team) {
   });
   return { ...team, scoutReports: next };
 }
+
+/** Single source of truth for "what does the player actually know
+ * about this rider's potential" — reused by the rider profile, the
+ * Sporting Director panel, and both rider-search screens, so a rider
+ * never shows her real PA in one place and a "?" in another. Own
+ * riders (or riders on the player's own roster) are always known in
+ * full; anyone else is only known once genuinely scouted. */
+export function knownPotential(rider, playerTeam, isOwnRider = false) {
+  if (isOwnRider || (playerTeam?.riders || []).some((r) => r.id === rider.id)) {
+    return { known: true, exact: true, value: rider.pa ?? rider.potential };
+  }
+  const report = playerTeam?.scoutReports?.[rider.id];
+  if (report) return { known: true, exact: false, range: report.potentialRange };
+  return { known: false };
+}
+
+export function knownPotentialLabel(rider, playerTeam, isOwnRider = false) {
+  const kp = knownPotential(rider, playerTeam, isOwnRider);
+  if (!kp.known) return "?";
+  return kp.exact ? String(kp.value) : `${kp.range[0]}–${kp.range[1]}`;
+}
+
+/** Bug fixed: the free-agent search screens filtered by PA min/max
+ * against the rider's REAL potential, exactly the number the whole
+ * Sporting Director system exists to hide — narrowing min and max to
+ * the same value and checking who's still in the results turns the
+ * filter into a way to read off a rider's true potential without
+ * ever sending a scout, defeating the entire point of the system. An
+ * unscouted rider now always passes the filter regardless of where
+ * it's set (their PA genuinely isn't known, so it can't meaningfully
+ * be excluded one way or the other); a scouted rider passes if her
+ * reported RANGE overlaps the filter at all, never her hidden exact
+ * number. */
+export function matchesPotentialFilter(rider, playerTeam, isOwnRider, minPA, maxPA) {
+  const kp = knownPotential(rider, playerTeam, isOwnRider);
+  if (!kp.known) return true;
+  if (kp.exact) return kp.value >= minPA && kp.value <= maxPA;
+  return kp.range[1] >= minPA && kp.range[0] <= maxPA;
+}

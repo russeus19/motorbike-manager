@@ -49,7 +49,7 @@ export function RosterCompletionScreen({ playerTeam, freeAgents, category, accen
       </div>
 
       <div className="mb-6">
-        <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
+        <FreeAgentsPanel freeAgents={freeAgents} playerTeam={playerTeam} category={category} accent={accent} openProfile={openProfile} />
       </div>
 
       <button disabled={!canContinue} onClick={onContinue}

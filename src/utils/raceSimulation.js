@@ -7,6 +7,31 @@ import { moraleSkillMultiplier } from "./riderMorale.js";
 import { riderSkill, wetRiderSkill } from "./riders.js";
 import { teamDisplayName } from "./teamNaming.js";
 
+/** "Al límite mental" special-skill tag: a rider who thrives on nerve
+ * alone rides right at the edge of control — brilliant when things are
+ * going well, but when morale drops low, that same edge tips into real
+ * risk. Flat +5 percentage points added straight onto dnfChance,
+ * exactly like the other tags' flat +4% bonus is added onto skill —
+ * only while morale sits at "Baja" or "Muy baja"; a normal or good
+ * mood carries no penalty at all. */
+function hasMentalLimitPenalty(rider) {
+  if (!(rider.tags || []).some((t) => t.type === "mentalLimit")) return false;
+  const tier = rider.moraleState?.tier;
+  return tier === "baja" || tier === "muy_baja";
+}
+
+/** "Míster Regularidad" special-skill tag: the mirror image of "Al
+ * límite mental" — a rider whose composure holds steady rather than
+ * needing a great mood to perform, but does need at LEAST a normal
+ * mood: -4 percentage points off dnfChance whenever morale sits at
+ * Normal, Alta, or Muy alta, with no bonus at all once it actually
+ * drops to Baja or Muy baja (regularity only goes so far). */
+function hasRegularidadBonus(rider) {
+  if (!(rider.tags || []).some((t) => t.type === "regularidad")) return false;
+  const tier = rider.moraleState?.tier;
+  return tier === "normal" || tier === "alta" || tier === "muy_alta";
+}
+
 /* How much a grid position alone is worth in perf-units, added to a
    rider's race preRoll. Calibrated by Monte Carlo against an idealized
    equal-skill grid so that, all else being equal, P1 wins ~40% of the
@@ -149,9 +174,11 @@ export function estimateLapSeconds(circuit, categoryKey, isQualifying = false) {
 export function simulateQualifying(entries, circuit, isWet, roundsLeftInSeason, categoryKey) {
   const rolled = entries.map((r) => {
     const wetPenaltyMult = isWet ? 1.4 + (60 - r.adaptabilidad) / 100 : 1;
+    const mentalLimitBonus = hasMentalLimitPenalty(r) ? 0.05 : 0;
+    const regularidadBonus = hasRegularidadBonus(r) ? 0.04 : 0;
     const dnfChance = clamp(
-      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * 0.35,
-      0.005, 0.16
+      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * 0.35 + mentalLimitBonus - regularidadBonus,
+      0.005, 0.21
     );
     const crashed = Math.random() < dnfChance;
     const skill = (isWet ? wetRiderSkill(r, circuit, false, true) : riderSkill(r, circuit, false, true)) * moraleSkillMultiplier(r);
@@ -233,12 +260,14 @@ export function simulateEntries(entries, circuit, isWet, roundsLeftInSeason, gri
     // 15-25% of the field), and the untuned numbers here (≈3% for a
     // top rider, ≈7-8% for a middling one in the dry) landed well
     // under that across a full season.
+    const mentalLimitBonus = hasMentalLimitPenalty(r) ? 0.05 : 0;
+    const regularidadBonus = hasRegularidadBonus(r) ? 0.04 : 0;
     const dnfChance = clamp(
-      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * dnfScale * 1.6,
-      0.02 * dnfScale * 1.6, 0.45
+      (((100 - r.mental) / 100) * 0.15 + (r.adelantamientos / 100) * 0.08 - (r.fisico / 100) * 0.06) * wetPenaltyMult * dnfScale * 1.6 + mentalLimitBonus - regularidadBonus,
+      0.02 * dnfScale * 1.6, 0.5
     );
     const crashed = Math.random() < dnfChance;
-    const skill = (isWet ? wetRiderSkill(r, circuit, isSprint) : riderSkill(r, circuit, isSprint)) * moraleSkillMultiplier(r);
+    const skill = (isWet ? wetRiderSkill(r, circuit, isSprint, false, gridPositionById?.[r.id]) : riderSkill(r, circuit, isSprint, false, gridPositionById?.[r.id])) * moraleSkillMultiplier(r);
 
     let circuitMod = 0;
     if (circuit) {

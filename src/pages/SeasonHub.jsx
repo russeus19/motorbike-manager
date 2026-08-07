@@ -375,7 +375,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} />
           </div>
 
-          <FreeAgentsPanel freeAgents={freeAgents} category={category} accent={accent} openProfile={openProfile} />
+          <FreeAgentsPanel freeAgents={freeAgents} playerTeam={playerTeam} category={category} accent={accent} openProfile={openProfile} />
           <AdvancedFreeAgentSearch freeAgents={freeAgents} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} category={category} accent={accent} openProfile={openProfile} />
         </div>
       )}

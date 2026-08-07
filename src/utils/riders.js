@@ -410,19 +410,31 @@ export function initRiderPotentialFields(r) {
    is simulated the same way a sprint is), and qualifyingSpecialist
    (needs `isQualifying`). Every context flag is optional — a caller
    that can't supply one simply can't trigger that tag, but nothing
-   breaks either way. */
-function tagBonusMultiplier(rider, circuit, isWet, isSprint, isQualifying) {
+   breaks either way.
+
+   "comeback" ("De menos a más") is a fifth type, different in shape
+   from the rest: instead of a flat +4% in a fixed context, it scales
+   continuously with how bad the starting grid position is — nothing
+   at the front (P1-3), ramping up to the full +5% by roughly P15 and
+   staying there for anything worse. There's no real lap-by-lap race
+   simulation to hook a genuine "second half" into, so this is the
+   honest version of that idea within the model that actually exists:
+   a rider who's genuinely dangerous starting from the back, not one
+   who mysteriously speeds up partway through an otherwise single
+   dice-roll race. */
+function tagBonusMultiplier(rider, circuit, isWet, isSprint, isQualifying, gridPosition) {
   let mult = 1;
   (rider.tags || []).forEach((tag) => {
     if (tag.type === "favoriteCircuit" && circuit && circuit.round === tag.round) mult += 0.04;
     if (tag.type === "wetSpecialist" && isWet) mult += 0.04;
     if (tag.type === "sprintSpecialist" && isSprint) mult += 0.04;
     if (tag.type === "qualifyingSpecialist" && isQualifying) mult += 0.04;
+    if (tag.type === "comeback" && Number.isFinite(gridPosition)) mult += 0.05 * clamp((gridPosition - 3) / 12, 0, 1);
   });
   return mult;
 }
 
-export function riderSkill(r, circuit = null, isSprint = false, isQualifying = false) {
+export function riderSkill(r, circuit = null, isSprint = false, isQualifying = false, gridPosition = null) {
   const base = (
     r.tecnica * 0.20 +
     r.ritmo * 0.30 +
@@ -431,14 +443,14 @@ export function riderSkill(r, circuit = null, isSprint = false, isQualifying = f
     r.adaptabilidad * 0.12 +
     r.fisico * 0.08
   );
-  return base * tagBonusMultiplier(r, circuit, false, isSprint, isQualifying);
+  return base * tagBonusMultiplier(r, circuit, false, isSprint, isQualifying, gridPosition);
 }
 
 /* In the rain, adaptability and mental composure matter far more than raw
    pace or overtaking bravado. */
 
 
-export function wetRiderSkill(r, circuit = null, isSprint = false, isQualifying = false) {
+export function wetRiderSkill(r, circuit = null, isSprint = false, isQualifying = false, gridPosition = null) {
   const base = (
     r.tecnica * 0.15 +
     r.ritmo * 0.18 +
@@ -447,7 +459,7 @@ export function wetRiderSkill(r, circuit = null, isSprint = false, isQualifying 
     r.adaptabilidad * 0.30 +
     r.fisico * 0.09
   );
-  return base * tagBonusMultiplier(r, circuit, true, isSprint, isQualifying);
+  return base * tagBonusMultiplier(r, circuit, true, isSprint, isQualifying, gridPosition);
 }
 
 /* How well a bike's 5 categories match what this circuit rewards, versus

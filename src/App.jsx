@@ -2977,6 +2977,7 @@ export default function MotorbikeManager() {
         target={resolveLiveTeamProfileTarget()}
         onClose={() => setTeamProfileTarget(null)}
         onOpenRiderProfile={openProfile}
+        playerTeam={playerTeam}
         onTop={topProfileModal === "team"}
       />
       {openPackageId && playerTeam && (

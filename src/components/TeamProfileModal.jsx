@@ -12,6 +12,7 @@ import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { bikeAvg, ensureRD } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
+import { knownPotentialLabel } from "../utils/scouting.js";
 
 /**
  * Team profile — same shell/behavior as RiderProfileModal (fixed header,
@@ -19,12 +20,13 @@ import { overallRating } from "../utils/riders.js";
  * CountryFlag, RiderNameButton and TeamLogo instead of duplicating any of
  * that rendering logic.
  */
-export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = true }) {
+export function TeamProfileModal({ target, onClose, onOpenRiderProfile, playerTeam, onTop = true }) {
   if (!target) return null;
   const { team, categoryKey } = target;
   const accent = team.color || COLORS.gold;
   const devAvg = Math.round(bikeAvg(team.bike));
   const { factory, staff } = ensureRD(team);
+  const isOwnTeam = playerTeam && team.id === playerTeam.id;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
@@ -86,7 +88,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onTop = 
                       {r.name}
                     </div>
                     <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-                      <CountryFlag nat={r.nat} width={16} /> {r.age} años · CA {overallRating(r)} · PA {r.pa} · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}
+                      <CountryFlag nat={r.nat} width={16} /> {r.age} años · CA {overallRating(r)} · PA {knownPotentialLabel(r, playerTeam, isOwnTeam)} · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}
                     </div>
                     {r.injury && r.injury.gpRemaining > 0 && (
                       <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: COLORS.danger }}>
