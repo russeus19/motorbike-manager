@@ -337,3 +337,35 @@ export function matchesPotentialFilter(rider, playerTeam, isOwnRider, minPA, max
   if (kp.exact) return kp.value >= minPA && kp.value <= maxPA;
   return kp.range[1] >= minPA && kp.range[0] <= maxPA;
 }
+
+/** How many of THIS category's rookie class (5 per category — see
+ * generateRookieClass in utils/riderGeneration.js) a given Sporting
+ * Director tier can currently see. A clean 1-per-tier progression,
+ * since there are exactly 5 tiers and exactly 5 rookies per category
+ * — Muy bajo catches only a glimpse, Muy alto sees the whole class. */
+const ROOKIE_CLASS_VISIBLE_BY_TIER = [1, 2, 3, 4, 5];
+
+/** The Sporting Director panel's own curated slice of this season's
+ * rookie class for the team's own category — not a separate pool
+ * (see generateRookieClass's own doc comment), just a partially-
+ * revealed view onto the same free agents anyone could also find
+ * through the ordinary search screens. Sorted by id for a stable,
+ * consistent "which N are visible" across renders rather than
+ * reshuffling every time the panel opens. Each visible entry's
+ * potential is narrowed by the same tier-based half-width the scout
+ * report system already uses (never the exact hidden number) — CA is
+ * always shown in full, same as any other rider in the game. */
+export function rookieClassVisibleSlice(freeAgents, categoryKey, seasonNumber, directorLevel) {
+  const thisClass = (freeAgents || [])
+    .filter((r) => r._rookieClassSeason === seasonNumber && r._rookieClassCategory === categoryKey)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const tierIndex = SPORTING_DIRECTOR_TIERS.indexOf(sportingDirectorTierFor(directorLevel));
+  const visibleCount = ROOKIE_CLASS_VISIBLE_BY_TIER[tierIndex] ?? 1;
+  const halfWidth = SPORTING_DIRECTOR_TIERS[tierIndex].initialHalfWidth;
+  return thisClass.slice(0, visibleCount).map((r) => {
+    const truePotential = r.pa ?? r.potential ?? overallRating(r);
+    const lo = clamp(Math.round(truePotential - halfWidth), 1, 100);
+    const hi = clamp(Math.round(truePotential + halfWidth), 1, 100);
+    return { rider: r, ca: overallRating(r), potentialRange: [lo, hi] };
+  });
+}

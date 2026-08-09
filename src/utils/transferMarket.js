@@ -722,7 +722,7 @@ export function releaseSubstitutesToPool(teams, freeAgentPool, log, categoryLabe
     if (!subs.length) return t;
     subs.forEach((sub) => {
       pool.push({ ...sub, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 });
-      if (log) log.push({ type: "salida", riderId: photoIdFor(sub), text: `${sub.name} finaliza su cesión temporal en ${teamDisplayName(t)} y vuelve a agentes libres`, category: categoryLabel });
+      if (log) log.push({ type: "salida", riderId: photoIdFor(sub), personId: sub.id, riderName: sub.name, text: `${sub.name} finaliza su cesión temporal en ${teamDisplayName(t)} y vuelve a agentes libres`, category: categoryLabel });
     });
     return { ...t, substitutes: {} };
   });

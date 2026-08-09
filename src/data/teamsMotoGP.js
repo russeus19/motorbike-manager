@@ -3,7 +3,7 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Ducati Lenovo Team", nameTemplate: "Ducati {sponsor} Team", logoId: "ducati_lenovo", tier: "Fábrica", slots: 2, manufacturer: "Ducati", color: "#CC0000",
     bike: { aero: 90, chasis: 91, motor: 90, freno: 89, electronica: 90 }, budget: 5000000,
     riders: [
-      { name: "Marc Márquez", photoId: 1, nat: "🇪🇸", age: 33, potential: 45, tecnica: 99, ritmo: 98, adelantamientos: 99, mental: 95, adaptabilidad: 96, fisico: 83, prestige: 195 , number: 93,
+      { name: "Marc Márquez", photoId: 1, nat: "🇪🇸", age: 33, potential: 45, tecnica: 97, ritmo: 97, adelantamientos: 98, mental: 95, adaptabilidad: 96, fisico: 83, prestige: 195 , number: 93,
         tags: [
           { type: "favoriteCircuit", round: 10, circuitLabel: "Sachsenring", label: "Maestro de Sachsenring" },
           { type: "favoriteCircuit", round: 13, circuitLabel: "Misano", label: "Maestro de Misano" },
@@ -12,7 +12,7 @@ export const MOTOGP_TEAMS_DATA = [
           { type: "mentalLimit" },
           { type: "sprintSpecialist" },
         ] },
-      { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 90, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63,
+      { name: "Francesco Bagnaia", photoId: 2, nat: "🇮🇹", age: 29, potential: 58, tecnica: 88, ritmo: 88, adelantamientos: 80, mental: 72, adaptabilidad: 84, fisico: 82, prestige: 170 , number: 63,
         tags: [
           { type: "favoriteCircuit", round: 6, circuitLabel: "Mugello", label: "Maestro de Mugello" },
           { type: "qualifyingSpecialist", label: "Clasificador nato" },
@@ -23,7 +23,7 @@ export const MOTOGP_TEAMS_DATA = [
     name: "BK8 Gresini Racing MotoGP", nameTemplate: "{sponsor} Gresini Racing MotoGP", logoId: "gresini", tier: "Satélite", slots: 1, manufacturer: "Ducati", color: "#9BAEE4",
     bike: { aero: 84, chasis: 85, motor: 85, freno: 83, electronica: 84 }, budget: 3000000,
     riders: [
-      { name: "Álex Márquez", photoId: 3, nat: "🇪🇸", age: 30, potential: 55, tecnica: 91, ritmo: 88, adelantamientos: 85, mental: 83, adaptabilidad: 86, fisico: 83, prestige: 182 , number: 73 },
+      { name: "Álex Márquez", photoId: 3, nat: "🇪🇸", age: 30, potential: 55, tecnica: 89, ritmo: 87, adelantamientos: 85, mental: 83, adaptabilidad: 85, fisico: 83, prestige: 182 , number: 73 },
       { name: "Fermín Aldeguer", photoId: 4, nat: "🇪🇸", age: 21, potential: 90, tecnica: 85, ritmo: 84, adelantamientos: 83, mental: 68, adaptabilidad: 75, fisico: 79, prestige: 166 , number: 54 },
     ],
   },
@@ -31,18 +31,18 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Pertamina Enduro VR46 Racing Team", nameTemplate: "{sponsor} VR46 Racing Team", logoId: "vr46", tier: "Satélite", slots: 1, manufacturer: "Ducati", color: "#e0f300",
     bike: { aero: 82, chasis: 82, motor: 83, freno: 81, electronica: 83 }, budget: 3000000,
     riders: [
-      { name: "Fabio Di Giannantonio", photoId: 5, nat: "🇮🇹", age: 27, potential: 68, tecnica: 88, ritmo: 87, adelantamientos: 83, mental: 78, adaptabilidad: 80, fisico: 82, prestige: 169 , number: 49,
+      { name: "Fabio Di Giannantonio", photoId: 5, nat: "🇮🇹", age: 27, potential: 68, tecnica: 91, ritmo: 89, adelantamientos: 84, mental: 79, adaptabilidad: 81, fisico: 83, prestige: 169 , number: 49,
         tags: [{ type: "qualifyingSpecialist" }] },
-      { name: "Franco Morbidelli", photoId: 6, nat: "🇮🇹", age: 31, potential: 40, tecnica: 81, ritmo: 76, adelantamientos: 72, mental: 74, adaptabilidad: 75, fisico: 72, prestige: 165 , number: 21 },
+      { name: "Franco Morbidelli", photoId: 6, nat: "🇮🇹", age: 31, potential: 40, tecnica: 84, ritmo: 78, adelantamientos: 73, mental: 75, adaptabilidad: 76, fisico: 73, prestige: 165 , number: 21 },
     ],
   },
   {
     name: "Aprilia Racing", nameTemplate: "{sponsor} Aprilia Racing", logoId: "aprilia_racing", tier: "Fábrica", slots: 2, manufacturer: "Aprilia", color: "#5A2D82",
     bike: { aero: 92, chasis: 91, motor: 92, freno: 90, electronica: 92 }, budget: 5000000,
     riders: [
-      { name: "Jorge Martín", photoId: 7, nat: "🇪🇸", age: 28, potential: 66, tecnica: 93, ritmo: 96, adelantamientos: 92, mental: 83, adaptabilidad: 89, fisico: 87, prestige: 175 , number: 89,
+      { name: "Jorge Martín", photoId: 7, nat: "🇪🇸", age: 28, potential: 66, tecnica: 97, ritmo: 100, adelantamientos: 96, mental: 85, adaptabilidad: 93, fisico: 90, prestige: 175 , number: 89,
         tags: [{ type: "sprintSpecialist", label: "Especialista en Sprint" }, { type: "mentalLimit" }] },
-      { name: "Marco Bezzecchi", photoId: 8, nat: "🇮🇹", age: 28, potential: 70, tecnica: 94, ritmo: 95, adelantamientos: 92, mental: 82, adaptabilidad: 90, fisico: 87, prestige: 179 , number: 72,
+      { name: "Marco Bezzecchi", photoId: 8, nat: "🇮🇹", age: 28, potential: 70, tecnica: 98, ritmo: 99, adelantamientos: 96, mental: 84, adaptabilidad: 94, fisico: 90, prestige: 179 , number: 72,
         tags: [{ type: "favoriteCircuit", round: 9, circuitLabel: "Assen", label: "Maestro de Assen" }, { type: "mentalLimit" }] },
     ],
   },
@@ -50,9 +50,9 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Trackhouse MotoGP Team", nameTemplate: "{sponsor} Trackhouse MotoGP Team", logoId: "trackhouse", tier: "Satélite", slots: 1, manufacturer: "Aprilia", color: "#0190f8",
     bike: { aero: 85, chasis: 85, motor: 86, freno: 84, electronica: 86 }, budget: 3000000,
     riders: [
-      { name: "Raúl Fernández", photoId: 9, nat: "🇪🇸", age: 25, potential: 85, tecnica: 83, ritmo: 82, adelantamientos: 84, mental: 72, adaptabilidad: 78, fisico: 81, prestige: 152 , number: 25,
+      { name: "Raúl Fernández", photoId: 9, nat: "🇪🇸", age: 25, potential: 85, tecnica: 86, ritmo: 85, adelantamientos: 87, mental: 74, adaptabilidad: 80, fisico: 83, prestige: 152 , number: 25,
         tags: [{ type: "sprintSpecialist" }, { type: "regularidad" }] },
-      { name: "Ai Ogura", photoId: 10, nat: "🇯🇵", age: 26, potential: 88, tecnica: 87, ritmo: 86, adelantamientos: 79, mental: 78, adaptabilidad: 81, fisico: 81, prestige: 160 , number: 79,
+      { name: "Ai Ogura", photoId: 10, nat: "🇯🇵", age: 26, potential: 88, tecnica: 90, ritmo: 89, adelantamientos: 81, mental: 80, adaptabilidad: 84, fisico: 83, prestige: 160 , number: 79,
         tags: [{ type: "comeback" }] },
     ],
   },
@@ -78,7 +78,7 @@ export const MOTOGP_TEAMS_DATA = [
     name: "Red Bull KTM Factory Racing", nameTemplate: "{sponsor} KTM Factory Racing", logoId: "redbull_ktm_factory", tier: "Fábrica", slots: 2, manufacturer: "KTM", color: "#FF6600",
     bike: { aero: 77, chasis: 77, motor: 78, freno: 76, electronica: 79 }, budget: 5000000,
     riders: [
-      { name: "Pedro Acosta", photoId: 15, nat: "🇪🇸", age: 22, potential: 87, tecnica: 89, ritmo: 88, adelantamientos: 90, mental: 74, adaptabilidad: 82, fisico: 85, prestige: 170 , number: 37,
+      { name: "Pedro Acosta", photoId: 15, nat: "🇪🇸", age: 22, potential: 87, tecnica: 88, ritmo: 88, adelantamientos: 89, mental: 74, adaptabilidad: 82, fisico: 85, prestige: 170 , number: 37,
         tags: [{ type: "mentalLimit" }] },
       { name: "Brad Binder", photoId: 16, nat: "🇿🇦", age: 30, potential: 52, tecnica: 77, ritmo: 75, adelantamientos: 80, mental: 71, adaptabilidad: 73, fisico: 80, prestige: 150 , number: 33,
         tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }] },

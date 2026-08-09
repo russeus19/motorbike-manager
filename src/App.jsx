@@ -110,7 +110,7 @@ import { computeJoinScore, computeTeamAcceptScore, riderPersonality } from "./ut
 import { isNegotiationOnCooldown, NEGOTIATION_COOLDOWN_ROUNDS, negotiationPatience, negotiationThermometer, pickNegotiationLine, teamNegotiationThermometer } from "./utils/negotiationDialogue.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
-import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
+import { generateRookieClass, instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeMarketValue, computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
@@ -172,6 +172,12 @@ export default function MotorbikeManager() {
   const [saveOk, setSaveOk] = useState(false);
   const [profileTarget, setProfileTarget] = useState(null);
   const [negotiationTarget, setNegotiationTarget] = useState(null); // { rider, categoryKey } | null
+  // Debug tool for a manager named "admin" — jumps straight to the
+  // final round of the season by auto-advancing every intermediate
+  // Grand Prix, useful for testing season-transition behavior without
+  // manually clicking through 20+ rounds first. Holds the target round
+  // to stop at (the last one), or null while inactive.
+  const [adminAutoSimTarget, setAdminAutoSimTarget] = useState(null);
   const [teamNegotiationTarget, setTeamNegotiationTarget] = useState(null); // { rider, categoryKey, sellingTeam } | null
   const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
@@ -1011,6 +1017,38 @@ export default function MotorbikeManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, round, budget]);
 
+  // Chains through every intermediate step of a race weekend on its
+  // own (qualifying → sprint/superpole if the category has one →
+  // main race → result → next round), the exact same functions the
+  // player's own clicks already call — just triggered automatically,
+  // a beat apart, instead of waiting for a tap each time. Stops on its
+  // own once `round` reaches the target (the season's last round), or
+  // if it runs into a phase that genuinely needs the player's own
+  // decision (an injury substitute, an incomplete roster) rather than
+  // risk guessing on their behalf.
+  useEffect(() => {
+    if (adminAutoSimTarget == null) return;
+    if (phase === "season" && round >= adminAutoSimTarget) { setAdminAutoSimTarget(null); return; }
+    if (phase === "substitute-select" || phase === "complete-roster") {
+      pushNotifications([{ type: "dev", category, text: "Simulación automática detenida: hace falta que decidas algo (sustituto o plantilla) antes de seguir." }]);
+      setAdminAutoSimTarget(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (phase === "season") startWeekend();
+      else if (phase === "qualifying") {
+        if (category === "motogp") runSprint();
+        else if (isSbkCalendarCategory(category)) runSuperbikesRace1();
+        else runRace();
+      } else if (phase === "live-race") finishLiveRace();
+      else if (phase === "sprint") runRace();
+      else if (phase === "worldsbk-race1") { if (category === "superbikes") runSuperpoleRace(); else runRace(); }
+      else if (phase === "worldsbk-superpole") runRace();
+      else if (phase === "result") continueAfterResult();
+    }, 20);
+    return () => clearTimeout(timer);
+  }, [adminAutoSimTarget, phase, round, category]);
+
   function startProject(area, kind) {
     const spec = canStartProject(playerTeam, area, kind, budget, scale);
     if (!spec) return;
@@ -1246,6 +1284,26 @@ export default function MotorbikeManager() {
         // "transfer window" to wait for, so it lands immediately,
         // exactly like acceptCounterOfferAction already does.
         setPlayerTeam((t) => applyRenewalsToTeam(t, [{ teamId: t.id, riderId: rider.id, riderName: rider.name, years: riderTerms.years, salary: riderTerms.salary }]));
+      } else if (phase === "complete-roster") {
+        // Bug fixed: a favorable signing from the "Completar plantilla"
+        // screen fell into the exact same branch as every other
+        // signing below — deferred as a "confirmed" negotiation,
+        // waiting for a season transition to actually apply it. But
+        // roster completion happens BEFORE the season it's for has
+        // even started; there is no upcoming transition to catch it,
+        // so the negotiation just sat there forever. The player saw
+        // "ha firmado por tu equipo" and the rider never actually
+        // showed up on the roster — stuck at 1 rider, with no way to
+        // ever unlock "Empezar la temporada". This mirrors the
+        // "dudoso" branch's own complete-roster special case just
+        // below: apply it right here, right now, exactly like
+        // createRosterCompletionOffer used to for this same screen.
+        setGame((g) => {
+          if (!g || !g.playerTeam || g.playerTeam.riders.length >= 2) return g;
+          const nextFreeAgents = (g.freeAgents || []).filter((r) => r.id !== rider.id);
+          const signedRider = { ...rider, contractYears: riderTerms.years, salary: riderTerms.salary, isNewTeamThisSeason: true };
+          return { ...g, playerTeam: { ...g.playerTeam, riders: [...g.playerTeam.riders, signedRider] }, freeAgents: nextFreeAgents };
+        });
       } else {
         // Bug fixed: this used to apply the signing immediately via
         // applyConfirmedNegotiations, moving the rider onto the
@@ -2853,6 +2911,7 @@ export default function MotorbikeManager() {
       poolFreeAgents = released.pool;
     });
 
+    // The season's fresh rookie class — 20 genuine prospects (15 male
     // The whole season-end market — continuity/renewal, then every
     // vacancy across all three categories resolved together as one
     // cross-category pool with a domino effect, instead of a strict
@@ -2899,6 +2958,32 @@ export default function MotorbikeManager() {
       const { rider: evolved } = evolveRider(bumped, { idleMultiplier: 0.35, scale: idleScale });
       nextFreeAgents.push(evolved);
     });
+
+    // The season's fresh rookie class — 20 genuine prospects (15 male
+    // across Moto3/Supersport/Sportbike, 5 female for WorldWCR) —
+    // added only now, after both the AI's own vacancy-filling above
+    // AND the idle-pool aging pass right above this comment have
+    // already run. Bug fixed: this used to run BEFORE
+    // resolveSeasonMarketAcrossCategories, meaning every fresh rookie
+    // sat in the exact same shared pool Fase 3 draws AI signings
+    // from — with Moto3 alone fielding 13 teams and several genuine
+    // vacancies most seasons, the AI could (and reliably did) sign
+    // every single rookie in the very same transition that created
+    // them, before the player ever got a real look through the
+    // Sporting Director panel. The whole point was giving the player
+    // first sight of this year's prospects — instead the class was
+    // routinely gone before the new season had even started. It also
+    // used to run before the aging pass, which bumped every rookie's
+    // own seasonsUnsigned to 1 and ran them through evolveRider on the
+    // very same transition they were born — a brand new 16-18 year
+    // old prospect briefly flagged as having just "lost their seat"
+    // and evolving as if they'd already spent a season unsigned. Now
+    // the class survives fully intact and untouched into the new
+    // season; AI teams can still go after them same as any other free
+    // agent, but only through the ordinary mid-season market from here
+    // on (maybeGenerateAIInitiatedNegotiations), not an instant sweep
+    // or a phantom season of aging in the same breath they're born.
+    nextFreeAgents.push(...generateRookieClass(seasonNumber + 1));
 
     // This used to be five separate hardcoded `if (ctxCategory === "x")
     // evolvedRivals = catTeams.x;` lines — one per category that
@@ -3082,6 +3167,18 @@ export default function MotorbikeManager() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold"
             style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
             <LogOut size={14} /> Salir de la partida
+          </button>
+        </div>
+      )}
+
+      {managerName.toLowerCase() === "admin" && phase === "season" && (
+        <div className="fixed top-4 left-4 z-50">
+          <button
+            onClick={() => setAdminAutoSimTarget(CIRCUITS.length - 1)}
+            disabled={adminAutoSimTarget != null || round >= CIRCUITS.length - 1}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold disabled:opacity-40 shadow-lg"
+            style={{ background: COLORS.gold, color: COLORS.bg }}>
+            {adminAutoSimTarget != null ? `Simulando... ronda ${round + 1}/${CIRCUITS.length}` : "Admin: saltar al último GP"}
           </button>
         </div>
       )}

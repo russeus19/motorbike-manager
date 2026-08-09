@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Timer, Eye, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Timer, Eye, Sparkles, X } from "lucide-react";
 import { Panel } from "./UIPrimitives.jsx";
 import { COLORS } from "../data/colors.js";
-import { sportingDirectorTierFor, ensureSportingDirector, sportingDirectorUpgradeSpecFor, canStartSportingDirectorUpgrade } from "../utils/scouting.js";
+import { sportingDirectorTierFor, ensureSportingDirector, sportingDirectorUpgradeSpecFor, canStartSportingDirectorUpgrade, rookieClassVisibleSlice } from "../utils/scouting.js";
+
+const ROOKIE_CLASS_CATEGORIES = ["moto3", "worldwcr", "supersport", "sportbike"];
 
 /**
  * Director Deportivo: decide cuántos ojeadores tienes a la vez, cuánto
@@ -10,7 +12,7 @@ import { sportingDirectorTierFor, ensureSportingDirector, sportingDirectorUpgrad
  * Mismo patrón de nivel/mejora que Fábrica y Staff — sin retroceso,
  * ya que no tiene sentido "despedir" ojeadores.
  */
-export function SportingDirectorPanel({ playerTeam, budget, onStartUpgrade, onCancelScout, onOpenRiderProfileById, accent, scale }) {
+export function SportingDirectorPanel({ playerTeam, categoryKey, seasonNumber, freeAgents, budget, onStartUpgrade, onCancelScout, onOpenRiderProfileById, accent, scale }) {
   const [expanded, setExpanded] = useState(false);
   const sd = ensureSportingDirector(playerTeam);
   const tier = sportingDirectorTierFor(sd.level);
@@ -81,6 +83,32 @@ export function SportingDirectorPanel({ playerTeam, budget, onStartUpgrade, onCa
               ))}
             </div>
           )}
+
+          {ROOKIE_CLASS_CATEGORIES.includes(categoryKey) && (() => {
+            const visibles = rookieClassVisibleSlice(freeAgents, categoryKey, seasonNumber, sd.level);
+            return (
+              <div className="mb-4">
+                <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
+                  <Sparkles size={12} /> Nueva hornada de rookies ({visibles.length}/5 detectados)
+                </div>
+                {visibles.length === 0 ? (
+                  <p className="text-xs mb-1" style={{ color: COLORS.muted }}>Con este nivel de Director Deportivo todavía no detectáis a ningún debutante de la nueva hornada.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {visibles.map(({ rider, ca, potentialRange }) => (
+                      <div key={rider.id} className="flex items-center justify-between text-xs px-3 py-2 rounded" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+                        <button className="text-left hover:underline" style={{ color: COLORS.text }} onClick={() => onOpenRiderProfileById(rider.id, categoryKey)}>
+                          {rider.name}
+                        </button>
+                        <span className="font-mono" style={{ color: COLORS.muted }}>CA {ca} · PA {potentialRange[0]}–{potentialRange[1]}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs mt-1.5" style={{ color: COLORS.muted }}>Libres para fichar por cualquier equipo de cara a la próxima temporada. Si nadie los ficha, pasarán a agentes libres normales.</p>
+              </div>
+            );
+          })()}
 
           <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>
             Pilotos ojeados ({scoutedEntries.length})

@@ -33,6 +33,25 @@ export function evolveRider(r, ctx) {
   const { seasonPoints = 0, wins = 0, fieldAvg = 0, teamBikeAvgVal = 70, idleMultiplier = 1 } = ctx;
   const events = [];
 
+  // Bug fixed: performance-driven growth (`perf`, below) had no
+  // relationship at all to how much room a rider still had to grow.
+  // A rider already near the top of the talent pool got the exact
+  // same reward for a strong season as a genuine up-and-comer — which
+  // created a runaway loop for anyone already good: strong season →
+  // higher potential → even stronger next season (since a higher
+  // ceiling raises every attribute toward it) → same reward again,
+  // with nothing standing in the way except the hard 100 clamp. Over
+  // several simulated seasons this dragged the WHOLE population's
+  // average rating upward with no real ceiling in practice, until
+  // MotoGP itself was full of 90+ riders. eliteDamping shrinks as PA
+  // approaches 100 — a rider with real room left (PA around 60-70)
+  // grows at full pace off a good season, same as before; one already
+  // near the very top gets a fraction of that same reward, since there
+  // isn't much real "better than this" left for a strong season to
+  // prove. Explosion events (further below) get the same treatment —
+  // a talent explosion at PA 95 doesn't really mean much.
+  const eliteDamping = clamp((100 - r.pa) / 35, 0.1, 1);
+
   let perf = 0;
   if (fieldAvg > 0) {
     if (seasonPoints > fieldAvg * 1.6) perf += 2;
@@ -41,6 +60,10 @@ export function evolveRider(r, ctx) {
   }
   if (wins >= 3) perf += 1;
   else if (wins >= 1) perf += 0.5;
+  // Only the UPSIDE gets damped — a bad season should still sting a
+  // near-elite rider exactly as much as anyone else; it's growing
+  // even further that gets harder near the top, not falling back down.
+  if (perf > 0) perf *= eliteDamping;
 
   const env = teamBikeAvgVal >= 82 ? 1 : teamBikeAvgVal <= 62 ? -1 : 0;
   const moraleFactor = r.morale >= 75 ? 1 : r.morale <= 30 ? -1 : 0;
@@ -55,7 +78,7 @@ export function evolveRider(r, ctx) {
   let ritmoHit = 0;
 
   const isYoungExplosive = (r.growthProfile === "explosivo" || r.growthProfile === "precoz") && r.age <= 23;
-  if (Math.random() < (isYoungExplosive ? 0.06 : 0.03) * idleMultiplier) {
+  if (Math.random() < (isYoungExplosive ? 0.06 : 0.03) * idleMultiplier * eliteDamping) {
     const d = randInt(4, 8);
     eventDelta += d;
     events.push(`Explosión de talento (+${d} potencial)`);

@@ -147,6 +147,43 @@ export function makeRookie(scale, categoryKey, gender = "M") {
   return { ...finalized, prestige: initialRiderPrestige(finalized, resolvedCategoryKey) };
 }
 
+/** The season's fresh rookie class — genuinely new prospects, free to
+ * sign for any team in the four entry categories (Moto3/WorldWCR/
+ * WorldSSP/WorldSPB), not tied to any one team's vacancy. Generated
+ * once per season transition and dropped straight into the free-agent
+ * pool alongside everyone else — the Sporting Director panel is just
+ * a curated, partially-revealed VIEW onto this same group (see
+ * rookieClassVisibleSlice in utils/scouting.js), not a separate pool.
+ * A member nobody signs before the season starts simply keeps
+ * existing as an ordinary free agent from then on — _rookieClassSeason
+ * just stops matching the CURRENT season, so the panel naturally stops
+ * treating them as "this year's class" without anything needing to
+ * actively clear the tag.
+ *
+ * ~15 male prospects split evenly across Moto3/Supersport/Sportbike
+ * (the three categories a male rookie can debut in), ~5 female
+ * prospects for WorldWCR (the one category where being female isn't
+ * just allowed but required). This is deliberately separate from (and
+ * on top of) the older single-vacancy rookie fallback further down
+ * this file's caller in transferMarket.js, which stays exactly as it
+ * was — a genuine last resort for whatever the market (now including
+ * this fresh class) still doesn't manage to place. */
+export function generateRookieClass(seasonNumber) {
+  const maleCategories = ["moto3", "supersport", "sportbike"];
+  const rookies = [];
+  maleCategories.forEach((categoryKey) => {
+    for (let i = 0; i < 5; i++) {
+      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey, "M");
+      rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassCategory: categoryKey });
+    }
+  });
+  for (let i = 0; i < 5; i++) {
+    const rookie = makeRookie(CATEGORY_DATA.worldwcr.scale, "worldwcr", "F");
+    rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassCategory: "worldwcr" });
+  }
+  return rookies;
+}
+
 
 export function makeLegend(base) {
   const withId = { ...base, id: nextId(), seasonPoints: 0, number: Number.isFinite(base.number) ? base.number : assignUniqueNumber([]) };
