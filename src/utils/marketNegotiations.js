@@ -5,7 +5,7 @@ import { perceivedRiderForAI } from "./scouting.js";
 import { bikeAvg } from "./bikeDevelopment.js";
 import { moraleTierInfo } from "./riderMorale.js";
 import { riderPrestigeInterest, teamPrestigeAppeal } from "./prestige.js";
-import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears } from "./marketAI.js";
+import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, scoreCandidateForTeam } from "./marketAI.js";
 import { teamDisplayName } from "./teamNaming.js";
 import { buildSeasonHistoryEntry, teamExpectationTier } from "./seasonHistory.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
@@ -341,17 +341,52 @@ function weightedPickFromArray(items, weightFn) {
 }
 
 export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents, round, totalRounds, seasonNumber, scale, marketNegotiations) {
+  // Same bar Fase 3.5 (utils/transferMarket.js) already holds a
+  // season-end roster swap to — kept in sync deliberately, so "is this
+  // genuinely worth bumping one of my own riders for" means the same
+  // thing whether it happens live, mid-season, or at the transition.
+  const UPGRADE_MARGIN = 15;
   const heat = marketHeat(round, totalRounds);
   const created = [];
 
   CATEGORY_ORDER.forEach((categoryKey) => {
     const teams = (teamsByCategory[categoryKey] || []).filter((t) => t.id !== "player");
-    if (teams.length < 2 || Math.random() > heat * 0.9) return;
+    if (teams.length < 2) return;
 
-    const buyer = pick(teams);
+    // Bug fixed: this picked ONE random team per category per week and
+    // gave only THAT team a shot at a move — with ~11 MotoGP teams,
+    // any specific team only got a real chance roughly one week in
+    // eleven, on top of every filter already stacked below it
+    // (heat, the free-agent/rival split, the upgrade margin, budget).
+    // The combined effect was a same-category market that barely ever
+    // moved. Every team now gets its own independent shot each week —
+    // the heat gate and every quality/budget filter below are
+    // unchanged, so this doesn't loosen WHO can move, only how many
+    // teams get a chance to try in the first place.
+    teams.forEach((buyer) => {
+      if (Math.random() > heat * 0.42) return;
+
     const seatsTaken = marketNegotiations.filter((n) => n.toTeamId === buyer.id && n.categoryKey === categoryKey && n.status !== "failed").length
       + created.filter((n) => n.toTeamId === buyer.id && n.categoryKey === categoryKey).length;
-    if (buyer.riders.length + seatsTaken >= 2) return;
+    // Bug fixed: this refused to even consider a move unless the buyer
+    // already had an empty seat — meaning this whole mechanism could
+    // only ever fire for the rare mid-season vacancy, never for the far
+    // more common real-world case of a team going after a rival's rider
+    // specifically to upgrade on one of their own two. With rosters
+    // almost always full, that made same-category movement between
+    // teams (Álex Márquez leaving Gresini for Red Bull KTM, someone
+    // going after Pedro Acosta) all but impossible mid-season — the
+    // only real chance for that kind of movement was the once-a-year
+    // market swap at the season transition, and only interest in moving
+    // UP a category (Fase 2.5) ever showed real activity. A full roster
+    // no longer blocks the approach outright; it just means the
+    // candidate has to actually be a clear upgrade over the buyer's
+    // own weakest rider (UPGRADE_MARGIN, the same bar Fase 3.5 already
+    // holds a season-end swap to) rather than any warm body being
+    // enough. applyConfirmedNegotiations already knows how to bump that
+    // weakest rider aside once a deal like this actually confirms.
+    const hasOpenSeat = buyer.riders.length + seatsTaken < 2;
+    const weakestOwnScore = hasOpenSeat ? -Infinity : Math.min(...buyer.riders.map((r) => scoreCandidateForTeam(r, buyer, { categoryKey, teamBudget: buyer.budget })));
 
     const ambition = buyerAmbition(buyer);
     const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, buyer), categoryKey, seasonNumber));
@@ -360,7 +395,8 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     let rider = null;
     let fromTeam = null;
     if (useFreeAgent) {
-      rider = weightedPickFromArray(eligibleFreeAgents, (r) => candidateFitForBuyer(perceivedRiderForAI(r, buyer), ambition, categoryKey));
+      const pool = hasOpenSeat ? eligibleFreeAgents : eligibleFreeAgents.filter((r) => scoreCandidateForTeam(perceivedRiderForAI(r, buyer), buyer, { categoryKey, teamBudget: buyer.budget }) > weakestOwnScore + UPGRADE_MARGIN);
+      rider = pool.length ? weightedPickFromArray(pool, (r) => candidateFitForBuyer(perceivedRiderForAI(r, buyer), ambition, categoryKey)) : null;
     } else {
       const sellers = teams.filter((t) => t.id !== buyer.id && t.riders.length);
       if (!sellers.length) return;
@@ -375,7 +411,8 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
       // nearly out of contract anyway. needsTeamCompensation already
       // prices the fee correctly for however many years are left; no
       // separate eligibility restriction is needed on top of that.
-      const candidates = seller.riders.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+      let candidates = seller.riders.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey));
+      if (!hasOpenSeat) candidates = candidates.filter((r) => scoreCandidateForTeam(perceivedRiderForAI(r, buyer), buyer, { categoryKey, teamBudget: buyer.budget }) > weakestOwnScore + UPGRADE_MARGIN);
       if (!candidates.length) return;
       rider = weightedPickFromArray(candidates, (r) => candidateFitForBuyer(perceivedRiderForAI(r, buyer), ambition, categoryKey));
       fromTeam = seller;
@@ -412,6 +449,7 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
       toTeamId: buyer.id, toTeamName: teamDisplayName(buyer),
       teamOfferAmount, riderTerms, round, seasonNumber,
     }));
+    });
   });
 
   return created;
@@ -598,9 +636,9 @@ function finalizeStrandedHistory(rider, standingsByCategory, categoryKey, season
   return { ...clean, history: [...(clean.history || []), entry] };
 }
 
-export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations, standingsByCategory = {} }) {
+export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCategories, category, marketNegotiations, standingsByCategory = {}, freeAgents = [] }) {
   const confirmed = (marketNegotiations || []).filter((n) => n.status === "confirmed");
-  if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
+  if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, freeAgents, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
 
   const nextPlayerRiders = [...playerTeam.riders];
   const nextRivals = rivalTeams.map((t) => ({ ...t, riders: [...t.riders] }));
@@ -608,6 +646,16 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   Object.entries(otherCategories || {}).forEach(([k, v]) => {
     nextOther[k] = { ...v, teams: v.teams.map((t) => ({ ...t, riders: [...t.riders] })) };
   });
+  // Bug fixed: a confirmed negotiation for a genuine free agent (never
+  // on ANY team's roster — that's the whole point of being a free
+  // agent) always came back stranded here, because removeFromEverywhere
+  // only ever searched actual team rosters. A player who signed a free
+  // agent for next season would see their own negotiation screen say
+  // "confirmado" all season, only for that exact rider to still be
+  // sitting untouched in the pool once the transition ran — free for
+  // literally any AI team to pick up in the very same pass, with
+  // nothing ever explaining why the player's own signing evaporated.
+  let nextFreeAgents = [...freeAgents];
   const appliedIds = [];
   // Nobody should ever have two confirmed negotiations to begin with —
   // maybeGenerateIncomingOffer and every AI-initiated path now check for
@@ -635,15 +683,23 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
         const idx = t.riders.findIndex((r) => r.id === riderId);
         if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t), fromTeamObj: t };
       }
-      return { rider: null, fromTeamName: null, fromTeamObj: null };
+      return removeFromPool(riderId);
     }
     const catState = nextOther[categoryKey];
-    if (!catState) return { rider: null, fromTeamName: null, fromTeamObj: null };
-    for (const t of catState.teams) {
-      const idx = t.riders.findIndex((r) => r.id === riderId);
-      if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t), fromTeamObj: t };
+    if (catState) {
+      for (const t of catState.teams) {
+        const idx = t.riders.findIndex((r) => r.id === riderId);
+        if (idx >= 0) return { rider: t.riders.splice(idx, 1)[0], fromTeamName: teamDisplayName(t), fromTeamObj: t };
+      }
     }
-    return { rider: null, fromTeamName: null, fromTeamObj: null };
+    return removeFromPool(riderId);
+  }
+
+  function removeFromPool(riderId) {
+    const idx = nextFreeAgents.findIndex((r) => r.id === riderId);
+    if (idx < 0) return { rider: null, fromTeamName: null, fromTeamObj: null };
+    const [rider] = nextFreeAgents.splice(idx, 1);
+    return { rider, fromTeamName: null, fromTeamObj: null };
   }
 
   function findTeamInCategory(teamId, categoryKey) {
@@ -738,7 +794,15 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
         const bumped = destTeam.riders.splice(bumpIdx, 1)[0];
         destTeam.riders.push(signedRider);
         placed = true;
-        strandedRiders.push(finalizeStrandedHistory({ ...bumped, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0, _fromCategoryKey: neg.categoryKey, _fromBikeAvg: bikeAvg(destTeam.bike) }, standingsByCategory, neg.categoryKey, neg.createdSeason));
+        // Bug fixed: unlike the other two finalizeStrandedHistory call
+        // sites in this same function, the bumped rider's object here
+        // never carried _racedForTeamName — they'd been sitting on
+        // destTeam's own roster all season, but nothing said so. That
+        // sent them straight into the "—" fallback inside
+        // finalizeStrandedHistory instead of crediting the real team
+        // they raced for, showing up as a blank dash in the rider's own
+        // season-history screen instead of destTeam's actual name.
+        strandedRiders.push(finalizeStrandedHistory({ ...bumped, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0, _fromCategoryKey: neg.categoryKey, _fromBikeAvg: bikeAvg(destTeam.bike), _racedForTeamName: teamDisplayName(destTeam) }, standingsByCategory, neg.categoryKey, neg.createdSeason));
       }
       if (placed) {
         // Only ever mutates AI-vs-AI budgets directly here — the
@@ -775,6 +839,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
     playerTeam: { ...playerTeam, riders: nextPlayerRiders },
     rivalTeams: nextRivals,
     otherCategories: nextOther,
+    freeAgents: nextFreeAgents,
     appliedIds,
     strandedRiders,
     strandedNegotiationIds,

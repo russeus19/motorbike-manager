@@ -146,8 +146,21 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       {seasonTab === "inicio" && <div className="mb-3"><CheckerStrip accent={accent} solid /></div>}
       {seasonTab === "inicio" ? (
         <>
-          <div className="text-xs uppercase tracking-[0.15em] mb-3" style={{ color: COLORS.muted, wordBreak: "break-word" }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
-          <div className="flex items-center justify-between gap-3 mb-3">
+          {/* Staggered entrance — same pattern as MainMenu/TeamPickCard
+              (fade + slide up, each block a little later than the last).
+              CircuitHero goes last on purpose: its background photo is
+              the slowest thing on this screen to actually finish
+              loading, so giving it the longest delay means it's already
+              had time to load underneath by the time its own fade-in
+              plays, instead of popping in abruptly mid-animation. */}
+          <style>{`
+            @keyframes seasonHubIn {
+              from { opacity: 0; transform: translateY(14px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+          <div className="text-xs uppercase tracking-[0.15em] mb-3" style={{ color: COLORS.muted, wordBreak: "break-word", animation: "seasonHubIn 0.45s ease-out both" }}>{CATEGORY_DATA[category].label} · Temporada {seasonNumber} · Ronda {round + 1} / {CIRCUITS.length}</div>
+          <div className="flex items-center justify-between gap-3 mb-3" style={{ animation: "seasonHubIn 0.45s ease-out both", animationDelay: "50ms" }}>
             <div className="flex items-center gap-3 min-w-0">
               <TeamLogo team={playerTeam} sizeClassName="w-9 h-9 sm:w-[72px] sm:h-[72px]" className="rounded-lg flex-shrink-0" />
               <div className="text-[16.1px] sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
@@ -155,7 +168,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             <div className="flex-shrink-0">{renderBudget(false)}</div>
           </div>
 
-          <div className="flex items-center justify-between mb-3 gap-3">
+          <div className="flex items-center justify-between mb-3 gap-3" style={{ animation: "seasonHubIn 0.45s ease-out both", animationDelay: "100ms" }}>
             {renderBell()}
             {renderSimularButton(false)}
           </div>
@@ -167,16 +180,18 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           )}
 
           {circuit && (
-            <CircuitHero
-              gpName={circuit.split("—")[0].trim()}
-              circuitName={(circuit.split("—")[1] || "").trim()}
-              circuitProfile={circuitProfile}
-              ladder={isSbkCalendarCategory ? "superbikes" : "motogp"}
-              assetIndex={isSbkCalendarCategory ? SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay] : round}
-              accent={accent}
-              laps={circuitProfile?.records?.[category]?.laps}
-              daysLabel={daysUntilNextRace != null ? (daysUntilNextRace <= 0 ? "Esta semana" : daysUntilNextRace === 1 ? "Mañana" : `Quedan ${daysUntilNextRace} días`) : null}
-            />
+            <div style={{ animation: "seasonHubIn 0.55s ease-out both", animationDelay: "160ms" }}>
+              <CircuitHero
+                gpName={circuit.split("—")[0].trim()}
+                circuitName={(circuit.split("—")[1] || "").trim()}
+                circuitProfile={circuitProfile}
+                ladder={isSbkCalendarCategory ? "superbikes" : "motogp"}
+                assetIndex={isSbkCalendarCategory ? SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay] : round}
+                accent={accent}
+                laps={circuitProfile?.records?.[category]?.laps}
+                daysLabel={daysUntilNextRace != null ? (daysUntilNextRace <= 0 ? "Esta semana" : daysUntilNextRace === 1 ? "Mañana" : `Quedan ${daysUntilNextRace} días`) : null}
+              />
+            </div>
           )}
         </>
       ) : (

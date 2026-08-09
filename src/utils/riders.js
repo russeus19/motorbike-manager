@@ -32,12 +32,9 @@ export function makeAffinity() {
 
 
 /* Age limit for a free agent to sign or substitute in a given category.
-   MotoGP, Superbikes and Supersport have no limit at all. Moto3 keeps
-   the original 27-or-under restriction. Moto2 is more permissive: up
-   to and including 30. Sportbike (WorldSPB) isn't listed explicitly —
-   it falls through to the same <=25 default as Moto3, which matches
-   its real newcomer age cap closely enough without modeling the
-   real-world "28 if already experienced" exception separately. */
+   MotoGP, Superbikes, Supersport and Sportbike have no limit at all.
+   Moto3 keeps the 25-or-under restriction. Moto2 is more permissive:
+   up to and including 30. */
 export function isFreeAgentEligibleForCategory(rider, categoryKey) {
   // WorldWCR is the only competition in the game with a gender
   // requirement — every rider in the game carries a `gender` field
@@ -48,7 +45,12 @@ export function isFreeAgentEligibleForCategory(rider, categoryKey) {
   // this behaves like the age-unrestricted top tier below, not like
   // Moto3's youth cutoff.
   if (categoryKey === "worldwcr") return (rider.gender || "M") === "F";
-  if (categoryKey === "motogp" || categoryKey === "superbikes" || categoryKey === "supersport") return true;
+  // Bug fixed: Sportbike had no entry of its own here, so it silently
+  // fell through to the same <=25 default Moto3 uses below — an age
+  // cap nobody ever actually decided on for Sportbike specifically,
+  // just an accident of not being listed. Sportbike is meant to carry
+  // no age restriction at all, same as MotoGP/Superbikes/Supersport.
+  if (categoryKey === "motogp" || categoryKey === "superbikes" || categoryKey === "supersport" || categoryKey === "sportbike") return true;
   if (categoryKey === "moto2") return rider.age <= 30;
   return rider.age <= 25;
 }
@@ -236,7 +238,25 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
     // the much higher bar.
     const rankGap = fromCat ? Math.abs((CATEGORY_RANK[targetCategoryKey] ?? 2) - (CATEGORY_RANK[fromCat] ?? 2)) : 0;
     const isCloseEnough = fromCat === targetCategoryKey || fromCat === naturalFeeder || rankGap <= 1;
-    if (fromCat && !isCloseEnough) {
+    // Bug fixed: when _fromCategoryKey was simply never set on the
+    // candidate — which turned out to be true at several call sites
+    // across transferMarket.js/marketNegotiations.js (Fase 3, Fase 3.5,
+    // the mid-season roster upgrade, and AI-initiated free-agent
+    // signings all evaluated a rider straight out of the free-agent
+    // pool without ever tagging where she came from) — fromCat came
+    // back falsy, both branches below were skipped entirely, and the
+    // function fell all the way through to `return true` with NO
+    // quality floor applied whatsoever. That's exactly how a weak
+    // Supersport/Sportbike rider, or someone who finished near the
+    // back of Moto2, kept slipping into MotoGP every season: not
+    // because they cleared a real bar, but because nothing ever
+    // checked one. An unknown origin is the worst case to assume, not
+    // the best — it now fails exactly like a genuine off-ladder jump
+    // would, never like a free pass.
+    if (!fromCat) {
+      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
+    }
+    if (!isCloseEnough) {
       return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
     }
     // Bug fixed: even THROUGH the natural feeder, there was no quality
@@ -248,7 +268,7 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
     // might become, not what he is right now, and a team calling
     // someone up cares about CURRENT form (his overall rating, 63) at
     // least as much as future promise. Both need to clear the bar.
-    if (fromCat && isCloseEnough && fromCat !== targetCategoryKey) {
+    if (fromCat !== targetCategoryKey) {
       const floor = naturalFeederPotentialFloor(targetCategoryKey, seasonNumber);
       if ((rider.potential ?? 0) < floor || overallRating(rider) < floor) return false;
     }

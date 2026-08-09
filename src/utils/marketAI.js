@@ -1,5 +1,6 @@
 import { clamp, randInt } from "./random.js";
-import { categoryRankDelta, overallRating } from "./riders.js";
+import { PERSONALITIES } from "../data/personalities.js";
+import { categoryRankDelta, computeMarketValue, overallRating } from "./riders.js";
 import { evaluateRiderSeason } from "./seasonHistory.js";
 
 /**
@@ -31,14 +32,27 @@ function hashString(s) {
 }
 
 const TEAM_PERSONALITIES = ["juventud", "experiencia", "rendimiento", "potencial"];
-const RIDER_PERSONALITIES = ["titulos", "salario", "estabilidad", "protagonismo"];
 
 export function teamPersonality(team) {
   return TEAM_PERSONALITIES[hashString(String(team.id ?? team.name ?? "")) % TEAM_PERSONALITIES.length];
 }
 
+// Bug fixed: this used to hash into its own separate 4-trait set
+// ("titulos"/"salario"/"estabilidad"/"protagonismo"), completely
+// disconnected from rider.personality — the same
+// Ambicioso/Profesional/Tranquilo/Temperamental/Trabajador tag already
+// shown on every rider's profile. A rider could show as "Temperamental"
+// on screen while scoring offers internally as "estabilidad" or
+// whatever the hash landed on — two unrelated personalities, one
+// visible, one actually driving the math. Now it's the same one both
+// places: what the player sees is exactly what's deciding how the
+// rider reacts. The hash fallback only matters for a rider somehow
+// missing the field entirely (older data, hand-authored entries that
+// slipped through) — every rider created through the normal pipeline
+// already has one.
 export function riderPersonality(rider) {
-  return RIDER_PERSONALITIES[hashString(String(rider.id ?? rider.name ?? "")) % RIDER_PERSONALITIES.length];
+  if (rider.personality && PERSONALITIES.includes(rider.personality)) return rider.personality;
+  return PERSONALITIES[hashString(String(rider.id ?? rider.name ?? "")) % PERSONALITIES.length];
 }
 
 /* ------------------------------------------------------------------ */
@@ -157,9 +171,10 @@ export function riderWantsToStay(rider, team, categoryKey) {
   const gap = riderPrestige - teamPrestige;
   if (gap >= 50) chance -= 0.35; // clearly outgrown the project
   else if (gap >= 24) chance -= 0.15;
-  if (personality === "titulos" && gap >= 20) chance -= 0.15;
-  if (personality === "estabilidad") chance += 0.15;
-  if (personality === "protagonismo" && team.riders?.some((r) => r.id !== rider.id && (r.prestige ?? 0) > riderPrestige + 20)) chance -= 0.15;
+  if (personality === "Ambicioso" && gap >= 20) chance -= 0.15;
+  if (personality === "Tranquilo") chance += 0.15;
+  if (personality === "Trabajador" && team.riders?.some((r) => r.id !== rider.id && (r.prestige ?? 0) > riderPrestige + 20)) chance -= 0.15;
+  if (personality === "Temperamental") chance = 0.78 + (chance - 0.78) * 1.35;
   if ((rider.moraleState?.tier ?? "normal") === "muy_baja") chance -= 0.2;
   else if ((rider.moraleState?.tier ?? "normal") === "baja") chance -= 0.1;
   return Math.random() < clamp(chance, 0.15, 0.97);
@@ -243,13 +258,32 @@ export function scoreCandidateForTeam(rider, team, ctx) {
  * expectativas del piloto, y solo entonces pregunta "¿tendría sentido
  * esto en el paddock real?"
  */
-export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}) {
-  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60, isUnemployed = false, seasonsUnsigned = 0 } = ctx;
+/** The deterministic score behind wouldRiderJoin, exposed on its own —
+ * used by the negotiation screen's live thermometer, which needs the
+ * actual number (to place a needle, to bucket into frío/dudoso/
+ * favorable) rather than a single random yes/no roll. wouldRiderJoin
+ * itself is untouched below: every existing caller throughout the
+ * game keeps behaving exactly as before. */
+export function computeJoinScore(rider, team, categoryKey, offeredSalary, ctx = {}) {
+  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60, isUnemployed = false, seasonsUnsigned = 0, isRenewal = false } = ctx;
   const personality = riderPersonality(rider);
   const riderPrestige = rider.prestige ?? 60;
   const teamPrestige = team.prestige ?? 60;
 
   let score = 0.15;
+  // Bug fixed (feature): a renewal was scored with the exact same math
+  // as approaching a rider fresh — every gap/bike/category term still
+  // applies (a rider who's outgrown their own team's prestige is
+  // genuinely still less eager to just re-sign, same as it would be
+  // for anyone luring them elsewhere), but staying somewhere familiar
+  // carries none of the real uncertainty of switching teams: no new
+  // garage to learn, no new teammate to adjust to, no risk the new
+  // project turns out worse than promised. A flat bonus captures that
+  // lower switching friction, on top of everything else already
+  // driving the score — without this, "renovar con tu propio equipo,
+  // sin cambiar nada" needed almost the same premium a rival team
+  // would need to poach the same rider away, which never felt right.
+  if (isRenewal) score += 0.16;
 
   // Brecha de prestigio: el factor más determinante, pero nunca el único.
   // Sin equipo, esa brecha pesa mucho menos — la alternativa real no es
@@ -317,14 +351,28 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
   // llega.
   if (isUnemployed) score += clamp(0.25 + seasonsUnsigned * 0.15, 0.25, 0.7);
 
-  // Personalidad del piloto.
-  if (personality === "titulos") score += clamp(gap * 0.005, -0.15, 0.15);
-  else if (personality === "salario") score += clamp((salaryRatio - 1) * 0.35, -0.15, 0.3);
-  else if (personality === "estabilidad") score -= 0.1;
-  else if (personality === "protagonismo") {
+  // Personalidad del piloto — el mismo rasgo visible en su ficha
+  // (Ambicioso/Profesional/Tranquilo/Temperamental/Trabajador), no un
+  // sistema interno aparte. Ambicioso hereda el peso extra a la brecha
+  // de prestigio que antes tenía "titulos"; Profesional, el peso extra
+  // a que las condiciones económicas sean justas que antes tenía
+  // "salario"; Tranquilo, la resistencia a moverse de "estabilidad".
+  // Trabajador reutiliza la idea de "protagonismo" (sentirse el piloto
+  // de referencia del equipo) pero reorientada hacia el reconocimiento
+  // al esfuerzo, no solo el puesto en la parrilla interna. Temperamental
+  // es el único genuinamente nuevo: en vez de un sesgo fijo, amplifica
+  // lo que el resto de factores ya apuntaban — una oferta que ya pintaba
+  // mal le repele más todavía, una que ya pintaba bien le entusiasma más.
+  if (personality === "Ambicioso") score += clamp(gap * 0.005, -0.15, 0.15);
+  else if (personality === "Profesional") score += clamp((salaryRatio - 1) * 0.35, -0.15, 0.3);
+  else if (personality === "Tranquilo") score -= 0.1;
+  else if (personality === "Trabajador") {
     const currentTopRating = (team.riders && team.riders.length) ? Math.max(...team.riders.map(overallRating)) : overallRating(rider);
     const wouldBeTopSeat = overallRating(rider) >= currentTopRating - 3;
     score += wouldBeTopSeat ? 0.12 : -0.12;
+  } else if (personality === "Temperamental") {
+    const neutral = 0.15; // the same value score starts from, above
+    score = neutral + (score - neutral) * 1.35;
   }
 
   // Comprobación de realismo final: un campeón de prestigio muy alto no
@@ -337,7 +385,32 @@ export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}
     score -= 0.4;
   }
 
-  return Math.random() < clamp(score, 0.03, 0.95);
+  return clamp(score, 0.03, 0.95);
+}
+
+export function wouldRiderJoin(rider, team, categoryKey, offeredSalary, ctx = {}) {
+  return Math.random() < computeJoinScore(rider, team, categoryKey, offeredSalary, ctx);
+}
+
+/** The selling team's own side of a release-fee negotiation — same
+ * shape and philosophy as computeJoinScore (base 0.15, clamped to
+ * 0.03-0.95), but scoring whether THIS team wants to let the rider go
+ * for the money on the table, not whether the rider wants to join
+ * somewhere new. The offer relative to the rider's real market value
+ * is the main driver; a rider who's clearly their team's standout (not
+ * just adequate, genuinely better than their teammate) is harder to
+ * prise loose than a squad's weaker seat, even at a fair price. */
+export function computeTeamAcceptScore(rider, team, offerAmount, scale) {
+  const marketValue = computeMarketValue(rider, scale);
+  const ratio = offerAmount / Math.max(1, marketValue);
+  let score = 0.15;
+  score += clamp((ratio - 1) * 0.6, -0.4, 0.55);
+
+  const teammates = (team.riders || []).filter((r) => r.id !== rider.id);
+  const teammateCA = teammates.length ? Math.max(...teammates.map(overallRating)) : overallRating(rider);
+  if (overallRating(rider) > teammateCA + 5) score -= 0.15; // their own standout, harder to release regardless of price
+
+  return clamp(score, 0.03, 0.95);
 }
 
 /** Contract length for a fresh signing — varies with age and how much

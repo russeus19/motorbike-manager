@@ -68,9 +68,8 @@ function tagDescription(tag) {
   return tag.description || "Aporta una ventaja concreta en una situación determinada.";
 }
 
-export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, onCreateOffer, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, onSendScout, scale, onOpenTeamProfile, onTop = true }) {
+export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireRider, playerTeam, category, onSignFreeAgent, marketNegotiations, canStartNewOffer, onMarkReleaseAtSeasonEnd, onAcceptCounterOffer, onModifyOffer, onWithdrawOffer, onSendScout, onOpenNegotiation, scale, onOpenTeamProfile, onTop = true }) {
   const [confirmFire, setConfirmFire] = useState(false);
-  const [showOfferForm, setShowOfferForm] = useState(false);
   const [teamOfferAmount, setTeamOfferAmount] = useState(0);
   const [offerSalary, setOfferSalary] = useState(0);
   const [offerYears, setOfferYears] = useState(2);
@@ -100,7 +99,6 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
       setOfferWinBonus(0);
       setOfferTitleBonus(0);
     }
-    setShowOfferForm(false);
     setConfirmFire(false);
     setProfileTab("personal");
     setExpandedTag(null);
@@ -153,8 +151,6 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
   // renewal (nobody to compensate) and never for a rider down to their
   // last contracted year, who behaves exactly like a free agent for
   // negotiation purposes.
-  const offerNeedsTeamDeal = !isOwnRider && contractYearsLeft > 1;
-  const offerLabel = isOwnRider ? "Iniciar renovación de contrato" : (offerNeedsTeamDeal ? "Hacer una oferta" : "Intentar contratar");
   // A renewal with their CURRENT team never blocks a competing offer —
   // only an actual signing elsewhere (a real, specific commitment to a
   // different team) takes them fully off the market. The rider still
@@ -444,30 +440,10 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               </div>
             )}
 
-            {offerEligible && !existingNegotiation && onCreateOffer && !showOfferForm && (
-              <RiderActionButton tone="green" onClick={() => setShowOfferForm(true)}>
-                {offerLabel}
+            {offerEligible && !existingNegotiation && onOpenNegotiation && (
+              <RiderActionButton tone="green" onClick={() => onOpenNegotiation(rider, categoryKey)}>
+                {isOwnRider ? "Iniciar renovación de contrato" : "Iniciar negociación para su fichaje"}
               </RiderActionButton>
-            )}
-
-            {offerEligible && !existingNegotiation && onCreateOffer && showOfferForm && (
-              <div className="mb-3 rounded-md p-3 text-xs space-y-2" style={{ background: COLORS.panel2, border: "1px solid #3F9142" }}>
-                {renderOfferFields(offerNeedsTeamDeal)}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={() => {
-                      onCreateOffer(rider, categoryKey, offerNeedsTeamDeal ? teamOfferAmount : null, { salary: offerSalary, years: offerYears, winBonus: offerWinBonus, titleBonus: offerTitleBonus });
-                      setShowOfferForm(false);
-                    }}
-                    className="flex-1 py-1.5 rounded font-semibold" style={{ background: "#3F9142", color: "#fff" }}>
-                    Enviar oferta
-                  </button>
-                  <button onClick={() => setShowOfferForm(false)} className="flex-1 py-1.5 rounded" style={{ background: COLORS.panel, color: COLORS.muted }}>
-                    Cancelar
-                  </button>
-                </div>
-                <p style={{ color: COLORS.muted }}>La respuesta llegará tras disputarse el próximo Gran Premio.</p>
-              </div>
             )}
 
             {signEligible && onSignFreeAgent && (

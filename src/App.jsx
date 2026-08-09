@@ -8,6 +8,8 @@ import { NotificationCenterModal } from "./components/NotificationCenter.jsx";
 import { RiderProfileModal } from "./components/RiderProfileModal.jsx";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
 import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
+import { NegotiationScreen } from "./components/NegotiationScreen.jsx";
+import { TeamNegotiationScreen } from "./components/TeamNegotiationScreen.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
 import { CIRCUITS, CIRCUIT_PROFILES } from "./data/circuits.js";
 import { SUPERBIKES_CIRCUITS, SUPERBIKES_CIRCUIT_PROFILES } from "./data/circuitsSuperbikes.js";
@@ -104,11 +106,13 @@ import {
   cancelScoutMission, expireStaleScoutMorale, SCOUT_OUT_OF_CATEGORY_COST, startScoutMission,
   startSportingDirectorUpgrade as startSportingDirectorUpgrade_,
 } from "./utils/scouting.js";
+import { computeJoinScore, computeTeamAcceptScore, riderPersonality } from "./utils/marketAI.js";
+import { isNegotiationOnCooldown, NEGOTIATION_COOLDOWN_ROUNDS, negotiationPatience, negotiationThermometer, pickNegotiationLine, teamNegotiationThermometer } from "./utils/negotiationDialogue.js";
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
-import { computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
+import { computeMarketValue, computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
 import { applyTeamPrestigeEvolution, ensureRiderPrestige, ensureTeamPrestige } from "./utils/prestige.js";
 import { advanceSponsorContractsForSeasonEnd, applySponsorRaceResult, cancelSponsorContract, cancelSponsorSearch, collectActiveSponsorNames, ensureSponsors, resolveAiSponsorOffers, seedInitialSponsors, signSponsorOffer, sponsorGpIncome, startSponsorSearch } from "./utils/sponsors.js";
@@ -167,6 +171,8 @@ export default function MotorbikeManager() {
   const [saveError, setSaveError] = useState(null);
   const [saveOk, setSaveOk] = useState(false);
   const [profileTarget, setProfileTarget] = useState(null);
+  const [negotiationTarget, setNegotiationTarget] = useState(null); // { rider, categoryKey } | null
+  const [teamNegotiationTarget, setTeamNegotiationTarget] = useState(null); // { rider, categoryKey, sellingTeam } | null
   const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
   const [topProfileModal, setTopProfileModal] = useState(null);
@@ -1208,6 +1214,201 @@ export default function MotorbikeManager() {
     setGame((g) => (g ? { ...g, marketNegotiations: [...(g.marketNegotiations || []), negotiation] } : g));
   }
 
+  /* The negotiation screen's own "send this offer" action — distinct
+     from createPlayerOffer above (which always just opens a pending
+     negotiation resolved at the next GP). Here the rider reacts to
+     THIS specific offer right now: a genuinely strong one closes the
+     deal on the spot, a genuinely weak one gets rejected on the spot,
+     and everything in between falls back to the same "lo pensaré,
+     te contesto en el próximo GP" pending flow createPlayerOffer
+     already uses — reusing that exact infrastructure rather than
+     building a second, parallel one. Returns the zone the offer
+     landed in, so the screen knows which of the three reactions to
+     show. */
+  function sendNegotiationOffer(rider, categoryKey, teamOfferAmount, riderTerms) {
+    if (!playerTeam) return "frio";
+    const fromTeam = findTeamOwningRider(rider.id, categoryKey);
+    const isRenewal = fromTeam?.id === "player";
+    const isUnemployed = !fromTeam;
+    const ctx = {
+      fromCategoryKey: rider._fromCategoryKey || categoryKey,
+      bikeAvgOffered: bikeAvg(playerTeam.bike),
+      currentBikeAvg: fromTeam ? bikeAvg(fromTeam.bike) : bikeAvg(playerTeam.bike),
+      isUnemployed,
+      seasonsUnsigned: rider.seasonsUnsigned || 0,
+      isRenewal,
+    };
+    const { zone } = negotiationThermometer(rider, playerTeam, categoryKey, riderTerms.salary, ctx);
+
+    if (zone === "favorable") {
+      if (isRenewal) {
+        // A renewal doesn't move anyone between rosters — there's no
+        // "transfer window" to wait for, so it lands immediately,
+        // exactly like acceptCounterOfferAction already does.
+        setPlayerTeam((t) => applyRenewalsToTeam(t, [{ teamId: t.id, riderId: rider.id, riderName: rider.name, years: riderTerms.years, salary: riderTerms.salary }]));
+      } else {
+        // Bug fixed: this used to apply the signing immediately via
+        // applyConfirmedNegotiations, moving the rider onto the
+        // player's roster and off their current one right there, mid-
+        // conversation — but a signing is only ever supposed to take
+        // effect once the transfer window actually opens at the season
+        // transition, exactly like every other signing in the game
+        // (createPlayerOffer → acceptCounterOfferAction never moves a
+        // signed rider immediately either, only a renewal does). The
+        // rider would vanish from their current team mid-SEASON,
+        // stop racing for them, and never actually land on the
+        // player's team either, since applyConfirmedNegotiations was
+        // never meant to run outside that one season-transition moment.
+        // "Favorable" here only means the negotiation itself is
+        // settled — no more back-and-forth needed — not that the
+        // transfer has already happened. The rider keeps racing for
+        // their current team as normal until the season actually ends.
+        // Bug fixed (feature): release compensation, if owed at all, was
+        // already paid or agreed separately BEFORE this screen is ever
+        // reached directly (the clause, or TeamNegotiationScreen's own
+        // offer) — charging it again here would double-pay the same fee.
+        const negotiation = {
+          ...createNegotiation({
+            kind: "signing", rider, categoryKey, fromTeam, toTeamId: "player", toTeamName: teamDisplayName(playerTeam),
+            teamOfferAmount: null, riderTerms, round, seasonNumber,
+          }),
+          status: "confirmed",
+        };
+        setGame((g) => (g ? { ...g, marketNegotiations: [...(g.marketNegotiations || []), negotiation] } : g));
+      }
+      return "favorable";
+    }
+
+    if (zone === "dudoso") {
+      if (phase === "complete-roster") {
+        // Bug fixed: this used to go through createRosterCompletionOffer,
+        // which forces a "dudoso" answer to resolve right away via
+        // resolveRosterNegotiationsNow — there's no next Grand Prix to
+        // wait for while stuck on this screen. Now that "Iniciar
+        // negociaciones" is the one path for every signing, including
+        // this one, it needs the exact same immediate-resolution rule,
+        // or a "dudoso" answer here would leave the player stranded
+        // waiting for a round that's never going to arrive.
+        setGame((g) => {
+          if (!g) return g;
+          const negotiation = createNegotiation({
+            kind: "signing", rider, categoryKey, fromTeam: null,
+            toTeamId: "player", toTeamName: teamDisplayName(playerTeam),
+            teamOfferAmount: null, riderTerms, round, seasonNumber,
+          });
+          return resolveRosterNegotiationsNow(g, [...(g.marketNegotiations || []), negotiation]);
+        });
+      } else {
+        createPlayerOffer(rider, categoryKey, teamOfferAmount, riderTerms);
+      }
+      return "dudoso";
+    }
+
+    return "frio";
+  }
+
+  /* Called once the conversation actually closes (patience ran out with
+     no pending offer left standing, or the rider rejected outright) —
+     the 3-GP cooldown lives on the player's own team, keyed by rider,
+     exactly like "se cansó de hablar contigo" would only ever apply to
+     THIS team's own approaches, not the rider in general. */
+  function startNegotiationCooldown(riderId) {
+    setPlayerTeam((t) => ({ ...t, negotiationCooldowns: { ...(t.negotiationCooldowns || {}), [riderId]: round + NEGOTIATION_COOLDOWN_ROUNDS } }));
+  }
+
+  function openNegotiationScreen(rider, categoryKey) {
+    if (isNegotiationOnCooldown(playerTeam?.negotiationCooldowns, rider.id, round)) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `${rider.name} todavía no quiere volver a hablar contigo — inténtalo más adelante.` }]);
+      return;
+    }
+    // Bug fixed: unlike createPlayerOffer (which already refuses to open
+    // a new negotiation once nextSeasonPlayerRiderCount reaches 2, since
+    // the season-end engine only ever expects the player's own roster
+    // decisions to already be settled by the time it runs), this screen
+    // had no equivalent guard — a "favorable" outcome applies the
+    // signing immediately, mid-season, which the underlying engine was
+    // never built to handle with a full roster. The rider got silently
+    // stranded: pulled off their old team, never actually added to the
+    // player's, and lost from the free-agent pool too. A renewal is
+    // exempt since it doesn't add a new body to the roster at all.
+    const sellingTeam = findTeamOwningRider(rider.id, categoryKey);
+    const isRenewal = sellingTeam?.id === "player";
+    if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `No podéis negociar con ${rider.name}: ya tenéis las dos plazas de la próxima temporada cubiertas.` }]);
+      return;
+    }
+    // A rider with more than a year still on their contract needs their
+    // CURRENT team's consent (a release fee) before the player ever
+    // gets to speak with them directly — same real-world logic
+    // needsTeamCompensation already uses elsewhere, but here it decides
+    // which SCREEN opens rather than which fields to show on one screen.
+    // Once the selling team has already agreed (immediately, or after
+    // thinking it over for a GP — see resolvePendingReleaseClearances),
+    // that clearance is remembered so reopening this same rider's
+    // profile skips straight to the rider conversation, exactly like
+    // point 3 of the design: no need to re-clear a deal already struck.
+    const alreadyCleared = playerTeam?.releaseClearances?.[rider.id];
+    const needsTeamStep = !isRenewal && sellingTeam && !alreadyCleared && (rider.contractYears ?? 0) > 1;
+    if (needsTeamStep) {
+      setTeamNegotiationTarget({ rider, categoryKey, sellingTeam });
+      return;
+    }
+    setNegotiationTarget({ rider, categoryKey });
+  }
+
+  function closeNegotiationScreen(riderId, endedInRejection) {
+    if (endedInRejection) startNegotiationCooldown(riderId);
+    setNegotiationTarget(null);
+  }
+
+  /* The team-negotiation screen's own "send this offer" action — same
+     three-way shape as sendNegotiationOffer, but scoring whether the
+     SELLING team accepts the release fee (computeTeamAcceptScore),
+     not whether the rider wants to join. */
+  function sendTeamNegotiationOffer(rider, categoryKey, sellingTeam, offerAmount) {
+    const { zone } = teamNegotiationThermometer(rider, sellingTeam, offerAmount, scale);
+    if (zone === "favorable") {
+      logMoneyMovement(`Compensación acordada: ${rider.name}`, -offerAmount);
+      setPlayerTeam((t) => ({ ...t, releaseClearances: { ...(t.releaseClearances || {}), [rider.id]: true } }));
+    } else if (zone === "dudoso") {
+      setGame((g) => (g ? {
+        ...g,
+        pendingReleaseClearances: [
+          ...(g.pendingReleaseClearances || []),
+          { id: `rc_${rider.id}_${round}`, riderId: rider.id, riderName: rider.name, categoryKey, sellingTeamId: sellingTeam.id, offerAmount, resolveAtRound: round + 1 },
+        ],
+      } : g));
+    } else {
+      startNegotiationCooldown(rider.id);
+    }
+    return zone;
+  }
+
+  /* Paying the release clause skips the team's own decision entirely —
+     an immediate clearance, same as a "favorable" team response,
+     just bought outright instead of persuaded. */
+  function payReleaseClause(rider, categoryKey, sellingTeam) {
+    const clauseAmount = Math.round(computeMarketValue(rider, scale) * 1.5);
+    if (clauseAmount > (budget || 0)) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `No tenéis presupuesto para pagar la cláusula de ${rider.name} (€${clauseAmount.toLocaleString()}).` }]);
+      return;
+    }
+    logMoneyMovement(`Cláusula de rescisión: ${rider.name}`, -clauseAmount);
+    setPlayerTeam((t) => ({ ...t, releaseClearances: { ...(t.releaseClearances || {}), [rider.id]: true } }));
+    setTeamNegotiationTarget(null);
+    setNegotiationTarget({ rider, categoryKey });
+  }
+
+  function closeTeamNegotiationScreen(outcome) {
+    const target = teamNegotiationTarget;
+    setTeamNegotiationTarget(null);
+    // Point 3 of the design: an immediate "favorable" answer advances
+    // straight into negotiating with the rider, in the same motion —
+    // a "dudoso" one closes here and waits for the next Grand Prix;
+    // the player comes back to the rider's own profile once resolved.
+    if (outcome === "favorable" && target) setNegotiationTarget({ rider: target.rider, categoryKey: target.categoryKey });
+  }
+
   /* The player's response to an unsolicited offer a rival has made for
      one of their own riders (section 14). Accepting only moves on to
      asking the rider themselves whether they actually want to leave —
@@ -1309,6 +1510,46 @@ export default function MotorbikeManager() {
     return (g.freeAgents || []).find((r) => r.id === riderId) || null;
   }
 
+  /* Resolves any release-clause request a selling team was still
+     "thinking over" once its own GP arrives — same weekly cadence as
+     tickMarket, called right alongside it. A team that hasn't decided
+     yet doesn't loop forever pondering: the same score that put it in
+     "dudoso" territory gets one real coin-flip here, exactly like a
+     rider's own pending offer is settled by resolvePendingNegotiations. */
+  function resolvePendingReleaseClearancesNow() {
+    setGame((g) => {
+      if (!g || !(g.pendingReleaseClearances || []).length) return g;
+      const stillPending = [];
+      const toNotify = [];
+      let nextPlayerTeam = g.playerTeam;
+      let budgetDelta = 0;
+      const newLogEntries = [];
+      g.pendingReleaseClearances.forEach((req) => {
+        if (req.resolveAtRound > g.round) { stillPending.push(req); return; }
+        const sellingTeam = findTeamInGame(g, req.sellingTeamId, req.categoryKey);
+        const rider = sellingTeam ? sellingTeam.riders.find((r) => r.id === req.riderId) : null;
+        if (!sellingTeam || !rider) return; // rider moved on some other way — quietly drop the stale request
+        const score = computeTeamAcceptScore(rider, sellingTeam, req.offerAmount, scale);
+        if (Math.random() < score) {
+          nextPlayerTeam = { ...nextPlayerTeam, releaseClearances: { ...(nextPlayerTeam.releaseClearances || {}), [req.riderId]: true } };
+          budgetDelta -= req.offerAmount;
+          newLogEntries.push({ round: g.round, seasonNumber: g.seasonNumber, label: `Compensación acordada: ${req.riderName}`, amount: -req.offerAmount });
+          toNotify.push({ type: "market", category: req.categoryKey, text: `${req.riderName}: su equipo acepta vuestra compensación. Ya podéis entrar en su perfil y negociar el fichaje directamente con él.` });
+        } else {
+          toNotify.push({ type: "market", category: req.categoryKey, text: `${req.riderName}: su equipo rechaza vuestra compensación.` });
+        }
+      });
+      if (toNotify.length) pushNotifications(toNotify);
+      return {
+        ...g,
+        playerTeam: nextPlayerTeam,
+        pendingReleaseClearances: stillPending,
+        budget: (g.budget || 0) + budgetDelta,
+        economyLog: newLogEntries.length ? [...(g.economyLog || []).slice(-99), ...newLogEntries].slice(-100) : g.economyLog,
+      };
+    });
+  }
+
   function resolveRosterNegotiationsNow(g, negotiations) {
     const TERMINAL = ["confirmed", "failed", "withdrawn", "applied"];
     // Every negotiation touched from the "Completar plantilla" screen is
@@ -1342,20 +1583,6 @@ export default function MotorbikeManager() {
       return n;
     });
     return { ...g, playerTeam: nextPlayerTeam, freeAgents: nextFreeAgents, marketNegotiations: finalNegotiations };
-  }
-
-  function createRosterCompletionOffer(rider, _categoryKey, _teamOfferAmount, riderTerms) {
-    setGame((g) => {
-      if (!g || !g.playerTeam || g.playerTeam.riders.length >= 2) return g;
-      const alreadyNegotiating = (g.marketNegotiations || []).some((n) => n.riderId === rider.id && !["failed", "withdrawn"].includes(n.status));
-      if (alreadyNegotiating) return g;
-      const negotiation = createNegotiation({
-        kind: "signing", rider, categoryKey: g.category, fromTeam: null,
-        toTeamId: "player", toTeamName: teamDisplayName(g.playerTeam),
-        teamOfferAmount: null, riderTerms, round: g.round, seasonNumber: g.seasonNumber,
-      });
-      return resolveRosterNegotiationsNow(g, [...(g.marketNegotiations || []), negotiation]);
-    });
   }
 
   function acceptRosterCompletionCounter(negotiationId) {
@@ -1610,6 +1837,7 @@ export default function MotorbikeManager() {
       }
     );
     marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
+    resolvePendingReleaseClearancesNow();
 
     const renewalsByCategory = {};
     marketTick.justConfirmedRenewals.forEach((r) => {
@@ -2100,6 +2328,7 @@ export default function MotorbikeManager() {
       }
     );
     marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
+    resolvePendingReleaseClearancesNow();
 
     // Renewals are effective the moment both sides agree — never
     // deferred like a signing. Group whatever just got confirmed this
@@ -2483,7 +2712,7 @@ export default function MotorbikeManager() {
     const standingsByCategory = { [ctxCategory]: riderStandings };
     Object.entries(ctxOtherCategories).forEach(([k, v]) => { standingsByCategory[k] = v.riderStandings; });
     const afterNegotiations = applyConfirmedNegotiations({
-      playerTeam: playerTeamAfterReleases, rivalTeams: ctxRivalTeams, otherCategories: ctxOtherCategories, category: ctxCategory, marketNegotiations, standingsByCategory,
+      playerTeam: playerTeamAfterReleases, rivalTeams: ctxRivalTeams, otherCategories: ctxOtherCategories, category: ctxCategory, marketNegotiations, standingsByCategory, freeAgents,
     });
     const playerTeamResolved = afterNegotiations.playerTeam;
     const evolvedRivalsSource = afterNegotiations.rivalTeams;
@@ -2491,7 +2720,7 @@ export default function MotorbikeManager() {
     const standingsByCategoryForPool = { [ctxCategory]: riderStandings };
     Object.entries(otherCategoriesResolved).forEach(([key, catState]) => { standingsByCategoryForPool[key] = catState.riderStandings; });
     let poolFreeAgents = [
-      ...applyPoolHistory(freeAgents, standingsByCategoryForPool, seasonNumber),
+      ...applyPoolHistory(afterNegotiations.freeAgents, standingsByCategoryForPool, seasonNumber),
       ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
@@ -2976,13 +3205,13 @@ export default function MotorbikeManager() {
         category={category}
         onSignFreeAgent={phase === "season" ? signFreeAgentNow : null}
         marketNegotiations={marketNegotiations}
-        onCreateOffer={phase === "complete-roster" ? createRosterCompletionOffer : createPlayerOffer}
         canStartNewOffer={phase === "season" ? nextSeasonPlayerRiderCount() < 2 : phase === "complete-roster" && playerTeam && playerTeam.riders.length < 2}
         onMarkReleaseAtSeasonEnd={markReleaseAtSeasonEnd}
         onAcceptCounterOffer={phase === "complete-roster" ? acceptRosterCompletionCounter : acceptCounterOfferAction}
         onModifyOffer={phase === "complete-roster" ? modifyRosterCompletionOffer : modifyPlayerOffer}
         onWithdrawOffer={withdrawPlayerOffer}
         onSendScout={sendScout}
+        onOpenNegotiation={(r, ck) => { setProfileTarget(null); openNegotiationScreen(r, ck); }}
         scale={scale}
         onOpenTeamProfile={openTeamProfile}
         onTop={topProfileModal === "rider"}
@@ -2994,6 +3223,43 @@ export default function MotorbikeManager() {
         playerTeam={playerTeam}
         onTop={topProfileModal === "team"}
       />
+      {negotiationTarget && playerTeam && (() => {
+        const { rider, categoryKey } = negotiationTarget;
+        const fromTeam = findTeamOwningRider(rider.id, categoryKey);
+        const isUnemployed = !fromTeam;
+        const isRenewal = fromTeam?.id === "player";
+        const catScale = categoryKey === category ? scale : (CATEGORY_DATA[categoryKey]?.scale ?? scale);
+        const playerBikeAvgVal = bikeAvg(playerTeam.bike);
+        return (
+          <NegotiationScreen
+            rider={rider}
+            categoryKey={categoryKey}
+            playerTeam={playerTeam}
+            currentTeamName={isUnemployed ? null : teamDisplayName(fromTeam)}
+            isUnemployed={isUnemployed}
+            isRenewal={isRenewal}
+            contractYearsLeft={rider.contractYears ?? 0}
+            playerBikeAvg={playerBikeAvgVal}
+            currentTeamBikeAvg={fromTeam ? bikeAvg(fromTeam.bike) : playerBikeAvgVal}
+            releaseFee={0}
+            scale={catScale}
+            onSendOffer={(teamOfferAmount, riderTerms) => sendNegotiationOffer(rider, categoryKey, teamOfferAmount, riderTerms)}
+            onClose={closeNegotiationScreen}
+          />
+        );
+      })()}
+      {teamNegotiationTarget && playerTeam && (
+        <TeamNegotiationScreen
+          rider={teamNegotiationTarget.rider}
+          categoryKey={teamNegotiationTarget.categoryKey}
+          sellingTeam={teamNegotiationTarget.sellingTeam}
+          playerTeam={playerTeam}
+          scale={teamNegotiationTarget.categoryKey === category ? scale : (CATEGORY_DATA[teamNegotiationTarget.categoryKey]?.scale ?? scale)}
+          onSendOffer={(offerAmount) => sendTeamNegotiationOffer(teamNegotiationTarget.rider, teamNegotiationTarget.categoryKey, teamNegotiationTarget.sellingTeam, offerAmount)}
+          onClauseRelease={() => payReleaseClause(teamNegotiationTarget.rider, teamNegotiationTarget.categoryKey, teamNegotiationTarget.sellingTeam)}
+          onClose={closeTeamNegotiationScreen}
+        />
+      )}
       {openPackageId && playerTeam && (
         <BikePackageModal
           pkg={playerTeam.pendingPackages?.find((p) => p.id === openPackageId)}

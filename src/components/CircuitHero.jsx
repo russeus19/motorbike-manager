@@ -20,7 +20,8 @@ const CIRCUIT_ASSET_BASE = "/assets/circuits";
 function CircuitBackgroundPhoto({ ladder, index }) {
   const src = `${CIRCUIT_ASSET_BASE}/${ladder}/${index + 1}/bg.jpg`;
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { setFailed(false); setLoaded(false); }, [src]);
   if (failed) {
     return <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #1a1d24, #0e1014)" }} />;
   }
@@ -32,9 +33,19 @@ function CircuitBackgroundPhoto({ ladder, index }) {
   // starting immediately. fetchpriority="high" pushes it further,
   // telling the browser to prioritize this fetch over any lower-value
   // requests competing for the same connection.
+  //
+  // Fixed (feature): the image used to just pop in the instant it
+  // finished loading — invisible one frame, fully there the next — so
+  // on a slow connection Inicio visibly juddered once the photo
+  // finally arrived, on top of the rest of the screen's own entrance
+  // animation. Now the <img> itself starts at opacity 0 and only fades
+  // in once `onLoad` actually fires, so a slow photo settles in
+  // smoothly whenever it's ready instead of snapping into place.
   return (
     <img src={src} alt="" loading="eager" fetchpriority="high" decoding="async"
       className="absolute inset-0 w-full h-full object-cover"
+      style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.35s ease-out" }}
+      onLoad={() => setLoaded(true)}
       onError={() => setFailed(true)} />
   );
 }

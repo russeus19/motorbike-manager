@@ -4,7 +4,7 @@ import { makeRookie } from "./riderGeneration.js";
 import { computeContinuityScore, continuityToRenewalProbability, proposedContractYears, riderWantsToStay, scoreCandidateForTeam, teamPullingPower, wouldRiderJoin } from "./marketAI.js";
 import { assignUniqueNumber, categoryRankDelta, computeSalary, crossoverCandidatePoolSize, crossoverPotentialFloor, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, passesCrossoverGate, photoIdFor, substituteHireCost } from "./riders.js";
 import { perceivedRiderForAI } from "./scouting.js";
-import { evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
+import { applyPoolHistory, evaluateRiderSeason, shouldRetire, teamExpectationTier } from "./seasonHistory.js";
 import { teamDisplayName } from "./teamNaming.js";
 import { evaluateSeasonVsExpectation } from "./teamExpectations.js";
 
@@ -176,17 +176,13 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       // — once a rider ages out of eligibility, the category simply
       // isn't an option anymore, contract or not, exactly like a real
       // team wouldn't keep someone past the real-world age cutoff.
-      // Bug fixed: this used to be hardcoded to `ck === "moto3"` only —
-      // correct back when Moto3 was the only category with an age cap,
-      // but Sportbike has one too (see isFreeAgentEligibleForCategory)
-      // and never got added here, so a Sportbike rider could simply
-      // stay on regardless of age forever. Driving this off the same
-      // eligibility function every other age check in this file
-      // already uses means it can't drift out of sync with a future
-      // category's own cap either.
+      // Driven off isFreeAgentEligibleForCategory (utils/riders.js) so
+      // it can never drift out of sync with that function's own
+      // per-category rules — currently only Moto3 has an age cap at
+      // all; MotoGP/Superbikes/Supersport/Sportbike/WorldWCR have none.
       // Moto2's own age cap (≤30) has only ever been a filter on new
       // signings, never a forced-retirement rule for someone already
-      // on the roster — excluded here on purpose, so this fix doesn't
+      // on the roster — excluded here on purpose, so this doesn't
       // silently start kicking out existing Moto2 riders over 30, a
       // behavior change nobody asked for.
       if (ck !== "moto2" && !isFreeAgentEligibleForCategory(r, ck)) {
@@ -668,6 +664,23 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       }
     });
   });
+
+  // Bug fixed: every rider released to `pool` throughout this whole
+  // function (age-outs, non-renewals, roster upgrades, substitute
+  // releases — every pool.push above) kept their season's real result
+  // sitting in that category's own riderStandings, but nothing here
+  // ever turned it into an actual history entry before they landed in
+  // the shared pool. App.jsx already does exactly this
+  // (applyPoolHistory) for the player's own played category — but
+  // this function is what handles every OTHER, background category,
+  // and never called it at all. A rider who raced a full season in a
+  // background category and then left it (age limit, released,
+  // whatever) would show real career totals (races/podiums/wins tallied
+  // elsewhere) but an empty season-by-season history, as if that
+  // season had simply never happened.
+  const standingsByCategory = {};
+  Object.entries(categoriesData).forEach(([ck, catData]) => { standingsByCategory[ck] = catData.riderStandings || {}; });
+  pool = applyPoolHistory(pool, standingsByCategory, seasonNumber);
 
   return { teamsByCategory, pool, retiredRiders };
 }
