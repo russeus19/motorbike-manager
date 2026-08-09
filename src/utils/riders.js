@@ -198,6 +198,22 @@ function offLadderPotentialFloor(targetCategoryKey, seasonNumber = 1) {
   return 0;
 }
 
+// Bug fixed: the off-ladder jump only ever checked POTENTIAL — never
+// current ability. Potential is what a rider MIGHT become, not proof
+// of anything they've actually done yet, so a brand-new 16-18 year
+// old rookie (barely-there current attributes by design — see
+// makeRookie's rookieAttrRoll — but occasionally a high raw potential
+// roll) could clear this bar on promise alone, with literally zero
+// races of proven current form, and land straight in MotoGP. A real
+// team doesn't sign an unproven teenager into the top flight because
+// scouts like their ceiling; they want to see it demonstrated
+// somewhere first. Set meaningfully below the potential floor (a
+// genuine off-ladder jump is allowed to still be developing toward
+// their ceiling) but nowhere near a rookie's actual starting range.
+function offLadderCAFloor(targetCategoryKey, seasonNumber = 1) {
+  return Math.max(50, offLadderPotentialFloor(targetCategoryKey, seasonNumber) - 20);
+}
+
 /** Even coming from the right feeder, MotoGP/Moto2/Superbikes shouldn't
  * take just "whoever's best of what's left" — a rider who finished
  * deep in the midfield of Moto2 (say, 30th) has no real business in
@@ -254,10 +270,12 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
     // the best — it now fails exactly like a genuine off-ladder jump
     // would, never like a free pass.
     if (!fromCat) {
-      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
+      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber)
+        && overallRating(rider) >= offLadderCAFloor(targetCategoryKey, seasonNumber);
     }
     if (!isCloseEnough) {
-      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber);
+      return (rider.potential ?? 0) >= offLadderPotentialFloor(targetCategoryKey, seasonNumber)
+        && overallRating(rider) >= offLadderCAFloor(targetCategoryKey, seasonNumber);
     }
     // Bug fixed: even THROUGH the natural feeder, there was no quality
     // floor at all — just "best of whoever happens to still be

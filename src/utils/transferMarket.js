@@ -286,7 +286,26 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       pool.push({ ...r, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
       const evalLabelForRetire = evaluateRiderSeason(r, points, teammatePts, tier, crashes);
       const lowerKey = CATEGORY_DATA[ck]?.lower;
-      const isRelegation = lowerKey && r.age <= 26 && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
+      // Bug fixed: evaluateRiderSeason's "Mala"/"Desastrosa" label is
+      // ENTIRELY relative to the rider's own team's expectation tier —
+      // a "title" tier team demands 120-200+ points to avoid a bad
+      // grade, meaning a rider who finished 5th in the championship
+      // with a genuine race win could still be labeled "Mala" purely
+      // for falling short of HIS OWN team's exceptionally high bar,
+      // with nothing here ever checking his actual standing. Losing a
+      // seat over that is fair (a disappointed factory team letting
+      // someone go is realistic); automatically demoting him to a
+      // LOWER CATEGORY over the same result is not — plenty of other
+      // MotoGP/Moto2 teams would be thrilled to have a top-5, race-
+      // winning rider, regardless of what his own team expected of
+      // him. Relegation now also requires a genuinely poor absolute
+      // result — finishing in the bottom half of the championship,
+      // the same bar a real team would actually judge a fallen rider
+      // by — on top of the existing team-relative label and age check.
+      const totalInCategory = Object.keys(riderPosById || {}).length;
+      const ownPosition = riderPosById?.[r.id];
+      const genuinelyPoorResult = !ownPosition || !totalInCategory || ownPosition > totalInCategory / 2;
+      const isRelegation = lowerKey && r.age <= 26 && genuinelyPoorResult && ["Mala", "Desastrosa"].includes(evalLabelForRetire);
       if (isRelegation) {
         log[ck].push({ type: "descenso", riderId: photoIdFor(r), personId: r.id, riderName: r.name, text: `${r.name} desciende de categoría tras dejar ${teamDisplayName(t)}`, category: CATEGORY_DATA[ck].label });
       } else if (!teamWantsToRenew) {

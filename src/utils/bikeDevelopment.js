@@ -716,7 +716,31 @@ export function rolloverBike(team, categoryKey) {
     const investmentRatio = clamp(researchInvested / (AREA_BASE[k].money * 3), 0, 1);
     const investmentEffect = (Math.round(investmentRatio * 9) - 5) * devScale;
 
-    newBike[k] = clamp(team.bike[k] + delta + investmentEffect, 1, 99);
+    // Bug fixed: the only thing that could ever push an area DOWN was
+    // rawDelta going negative — the bike sitting above its own target
+    // (techBase + factory/staff bonus). But factory and staff levels
+    // only ever climb over the life of a save (the AI has no real
+    // reason to downgrade them), so that target creeps upward every
+    // season until it pins itself at the hard ceiling of 99 — and once
+    // it's there, the bike can never actually exceed its own target
+    // (both are capped at the same 99), so rawDelta can never go
+    // negative again. The whole risk mechanism quietly stopped being
+    // able to fire at all, which is exactly how every AI team's bike
+    // ends up converging on 99 over enough seasons.
+    //
+    // A genuinely bad off-season is added as its own, independent
+    // layer instead of only living inside the target-chasing math
+    // above — a real redesign that didn't pan out, a reliability issue
+    // found too late, whatever the story — with a chance that falls as
+    // investment rises, but never to zero: even a fully-invested,
+    // already-elite team can still have an off year in some area.
+    // Nothing here cares whether the bike is already at its target or
+    // still climbing toward it, so it keeps applying regardless of how
+    // saturated factory/staff have become.
+    const badOffseasonChance = clamp(0.20 - investmentRatio * 0.15, 0.05, 0.20);
+    const offseasonSetback = Math.random() < badOffseasonChance ? -randInt(4, 12) * devScale : 0;
+
+    newBike[k] = clamp(team.bike[k] + delta + investmentEffect + offseasonSetback, 1, 99);
   });
   return {
     ...team,

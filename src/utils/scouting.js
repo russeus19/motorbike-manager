@@ -338,13 +338,6 @@ export function matchesPotentialFilter(rider, playerTeam, isOwnRider, minPA, max
   return kp.range[1] >= minPA && kp.range[0] <= maxPA;
 }
 
-/** How many of THIS category's rookie class (5 per category — see
- * generateRookieClass in utils/riderGeneration.js) a given Sporting
- * Director tier can currently see. A clean 1-per-tier progression,
- * since there are exactly 5 tiers and exactly 5 rookies per category
- * — Muy bajo catches only a glimpse, Muy alto sees the whole class. */
-const ROOKIE_CLASS_VISIBLE_BY_TIER = [1, 2, 3, 4, 5];
-
 /** The Sporting Director panel's own curated slice of this season's
  * rookie class for the team's own category — not a separate pool
  * (see generateRookieClass's own doc comment), just a partially-
@@ -354,13 +347,23 @@ const ROOKIE_CLASS_VISIBLE_BY_TIER = [1, 2, 3, 4, 5];
  * reshuffling every time the panel opens. Each visible entry's
  * potential is narrowed by the same tier-based half-width the scout
  * report system already uses (never the exact hidden number) — CA is
- * always shown in full, same as any other rider in the game. */
+ * always shown in full, same as any other rider in the game.
+ *
+ * Bug fixed: the old fixed [1,2,3,4,5] lookup assumed exactly 5
+ * rookies per category — once the class size changed (8 shared male,
+ * 3 for WorldWCR — see generateRookieClass), that table no longer
+ * matched either pool, either capping visibility below the true class
+ * size or, worse, claiming to show more than actually exist. Scaled
+ * proportionally to whatever the real pool size turns out to be
+ * instead, so it stays correct regardless of how the class size is
+ * ever tuned again in the future: Muy bajo always sees roughly a fifth
+ * of the class, Muy alto always sees all of it. */
 export function rookieClassVisibleSlice(freeAgents, categoryKey, seasonNumber, directorLevel) {
   const thisClass = (freeAgents || [])
-    .filter((r) => r._rookieClassSeason === seasonNumber && r._rookieClassCategory === categoryKey)
+    .filter((r) => r._rookieClassSeason === seasonNumber && (r._rookieClassSharedCategories || []).includes(categoryKey))
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
   const tierIndex = SPORTING_DIRECTOR_TIERS.indexOf(sportingDirectorTierFor(directorLevel));
-  const visibleCount = ROOKIE_CLASS_VISIBLE_BY_TIER[tierIndex] ?? 1;
+  const visibleCount = Math.max(1, Math.min(thisClass.length, Math.round(thisClass.length * (tierIndex + 1) / SPORTING_DIRECTOR_TIERS.length)));
   const halfWidth = SPORTING_DIRECTOR_TIERS[tierIndex].initialHalfWidth;
   return thisClass.slice(0, visibleCount).map((r) => {
     const truePotential = r.pa ?? r.potential ?? overallRating(r);

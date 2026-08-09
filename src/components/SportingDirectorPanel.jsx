@@ -86,11 +86,16 @@ export function SportingDirectorPanel({ playerTeam, categoryKey, seasonNumber, f
 
           {ROOKIE_CLASS_CATEGORIES.includes(categoryKey) && (() => {
             const visibles = rookieClassVisibleSlice(freeAgents, categoryKey, seasonNumber, sd.level);
+            const totalClase = (freeAgents || []).filter((r) => r._rookieClassSeason === seasonNumber && (r._rookieClassSharedCategories || []).includes(categoryKey)).length;
+            const esFondoComun = categoryKey !== "worldwcr";
             return (
               <div className="mb-4">
                 <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-                  <Sparkles size={12} /> Nueva hornada de rookies ({visibles.length}/5 detectados)
+                  <Sparkles size={12} /> Nueva hornada de rookies ({visibles.length}/{totalClase} detectados)
                 </div>
+                {esFondoComun && (
+                  <p className="text-xs mb-2" style={{ color: COLORS.muted }}>Fondo común con Moto3, WorldSSP y WorldSPB — cada piloto puede acabar fichando por cualquiera de las tres.</p>
+                )}
                 {visibles.length === 0 ? (
                   <p className="text-xs mb-1" style={{ color: COLORS.muted }}>Con este nivel de Director Deportivo todavía no detectáis a ningún debutante de la nueva hornada.</p>
                 ) : (

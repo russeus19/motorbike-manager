@@ -389,7 +389,17 @@ export function maybeGenerateAIInitiatedNegotiations(teamsByCategory, freeAgents
     const weakestOwnScore = hasOpenSeat ? -Infinity : Math.min(...buyer.riders.map((r) => scoreCandidateForTeam(r, buyer, { categoryKey, teamBudget: buyer.budget })));
 
     const ambition = buyerAmbition(buyer);
-    const eligibleFreeAgents = freeAgents.filter((r) => isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, buyer), categoryKey, seasonNumber));
+    // Bug fixed (feature): a rookie from this season's fresh class
+    // (generateRookieClass, utils/riderGeneration.js) is meant to be
+    // look-but-don't-touch only for the FIRST HALF of the season they
+    // debut in — every team gets a real chance to scout and evaluate
+    // them before signing season opens at the midpoint, for the
+    // season after. Checking against the CURRENT seasonNumber (not a
+    // fixed "just generated" flag) means the exclusion stops applying
+    // on its own the moment the season actually turns over, same as
+    // the round check stops applying once the midpoint passes.
+    const rookieClassStillObserving = (r) => r._rookieClassSeason === seasonNumber && round < Math.floor(totalRounds / 2);
+    const eligibleFreeAgents = freeAgents.filter((r) => !rookieClassStillObserving(r) && isFreeAgentEligibleForCategory(r, categoryKey) && passesCrossoverGate(perceivedRiderForAI(r, buyer), categoryKey, seasonNumber));
     const useFreeAgent = eligibleFreeAgents.length > 0 && Math.random() < 0.4;
 
     let rider = null;
@@ -833,6 +843,43 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
     // through the normal path once someone signs them.
     if (placed) appliedIds.push(neg.id);
     else strandedNegotiationIds.push(neg.id);
+  });
+
+  // Final safety net: whatever the exact sequence of confirmed
+  // negotiations that got here, no team should ever come out of this
+  // function holding more than 2 riders — the "bump the weakest"
+  // logic above assumes it's always looking at the team's true,
+  // up-to-date roster right before adding someone, but with several
+  // negotiations for the same team confirming independently in the
+  // same pass (a real possibility now that a full-roster team can be
+  // targeted for an upgrade, not just one with an actual empty seat —
+  // see maybeGenerateAIInitiatedNegotiations), a genuine overcommit
+  // (3 riders competing for 2 seats) is possible without any single
+  // step doing anything wrong on its own. Rather than chase every
+  // possible interleaving that could cause it, this guarantees the
+  // outcome directly: keep the best 2 by current ability, release
+  // anyone past that back to the free-agent pool — never lost, never
+  // stuck squeezed onto a team with no room, and never displaced all
+  // the way down into some other category the way an overcommitted
+  // MotoGP-caliber rider was before this existed.
+  function capRosterAt2(riders) {
+    if (riders.length <= 2) return { kept: riders, bumped: [] };
+    const sorted = [...riders].sort((a, b) => overallRating(b) - overallRating(a));
+    return { kept: sorted.slice(0, 2), bumped: sorted.slice(2) };
+  }
+  nextRivals.forEach((t) => {
+    const { kept, bumped } = capRosterAt2(t.riders);
+    if (!bumped.length) return;
+    t.riders = kept;
+    bumped.forEach((r) => nextFreeAgents.push({ ...r, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 }));
+  });
+  Object.values(nextOther).forEach((catState) => {
+    catState.teams.forEach((t) => {
+      const { kept, bumped } = capRosterAt2(t.riders);
+      if (!bumped.length) return;
+      t.riders = kept;
+      bumped.forEach((r) => nextFreeAgents.push({ ...r, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0 }));
+    });
   });
 
   return {

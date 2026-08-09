@@ -648,7 +648,16 @@ export default function MotorbikeManager() {
       playerTeam: { ...chosenTeam, id: "player" },
       rivalTeams: rivals,
       otherCategories: initOther,
-      freeAgents: seedLegendFreeAgents(),
+      // Bug fixed: generateRookieClass only ever ran inside
+      // runSeasonTransition, at the END of a season — meaning the
+      // very first season of any new game never got a class at all,
+      // since there's no PRECEDING transition to generate one from.
+      // The Sporting Director panel correctly showed the section, just
+      // permanently empty for the whole first season, then correctly
+      // populated from season 2 onward. Seeding one right here at
+      // game creation, tagged for season 1 specifically, closes that
+      // gap — every season, including the first, now has its own class.
+      freeAgents: [...seedLegendFreeAgents(), ...generateRookieClass(1)],
       round: 0,
       seasonNumber: 1,
       budget: chosenTeam.budget,
@@ -970,7 +979,16 @@ export default function MotorbikeManager() {
       playerTeam: { ...chosen, id: "player" },
       rivalTeams: rivals,
       otherCategories: initOther,
-      freeAgents: seedLegendFreeAgents(),
+      // Bug fixed: generateRookieClass only ever ran inside
+      // runSeasonTransition, at the END of a season — meaning the
+      // very first season of any new game never got a class at all,
+      // since there's no PRECEDING transition to generate one from.
+      // The Sporting Director panel correctly showed the section, just
+      // permanently empty for the whole first season, then correctly
+      // populated from season 2 onward. Seeding one right here at
+      // game creation, tagged for season 1 specifically, closes that
+      // gap — every season, including the first, now has its own class.
+      freeAgents: [...seedLegendFreeAgents(), ...generateRookieClass(1)],
       round: 0,
       seasonNumber: 1,
       budget: chosen.budget,
@@ -1375,6 +1393,19 @@ export default function MotorbikeManager() {
   }
 
   function openNegotiationScreen(rider, categoryKey) {
+    // Bug fixed (feature): a rookie from this season's fresh class
+    // (see generateRookieClass) is meant to be look-but-don't-touch
+    // only for the FIRST HALF of the season they debut in — every team
+    // gets a real chance to scout and evaluate them before signing
+    // season opens at the midpoint, for the season after. Checking
+    // against the CURRENT season number specifically (not some fixed
+    // "just generated" flag) means this naturally stops applying the
+    // moment the season actually turns over, same as the round check
+    // stops applying once the midpoint passes.
+    if (rider._rookieClassSeason === seasonNumber && round < Math.floor(CIRCUITS.length / 2)) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `${rider.name} todavía está en su temporada de presentación — podrás negociar con ella/él a partir de la mitad de esta temporada.` }]);
+      return;
+    }
     if (isNegotiationOnCooldown(playerTeam?.negotiationCooldowns, rider.id, round)) {
       pushNotifications([{ type: "market", category: categoryKey, text: `${rider.name} todavía no quiere volver a hablar contigo — inténtalo más adelante.` }]);
       return;

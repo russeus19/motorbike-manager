@@ -160,26 +160,40 @@ export function makeRookie(scale, categoryKey, gender = "M") {
  * treating them as "this year's class" without anything needing to
  * actively clear the tag.
  *
- * ~15 male prospects split evenly across Moto3/Supersport/Sportbike
- * (the three categories a male rookie can debut in), ~5 female
- * prospects for WorldWCR (the one category where being female isn't
- * just allowed but required). This is deliberately separate from (and
- * on top of) the older single-vacancy rookie fallback further down
- * this file's caller in transferMarket.js, which stays exactly as it
- * was — a genuine last resort for whatever the market (now including
- * this fresh class) still doesn't manage to place. */
+ * 8 male prospects form a single SHARED pool across Moto3, Supersport
+ * and Sportbike — the exact same 15, not 5 separately assigned to
+ * each. Each one is free to sign wherever actually interests them
+ * most, exactly like a genuine free agent already would (their
+ * eligibility, market value and salary are always computed against
+ * whichever category is actually asking — see isFreeAgentEligibleForCategory/
+ * computeMarketValue elsewhere — never fixed to one in advance). Their
+ * raw attributes are rolled once, at a neutral scale averaged across
+ * the three (so nobody's baseline talent is quietly tuned toward one
+ * specific category over the others), used consistently regardless of
+ * which category eventually signs them. 3 more, separately, are
+ * female prospects for WorldWCR — the one category where being female
+ * isn't just allowed but required, so unlike the other three, they
+ * don't share a pool with anyone. This is deliberately separate from
+ * (and on top of) the older single-vacancy rookie fallback further
+ * down this file's caller in transferMarket.js, which stays exactly
+ * as it was — a genuine last resort for whatever the market (now
+ * including this fresh class) still doesn't manage to place. */
 export function generateRookieClass(seasonNumber) {
-  const maleCategories = ["moto3", "supersport", "sportbike"];
+  const SHARED_MALE_CATEGORIES = ["moto3", "supersport", "sportbike"];
+  const neutralScale = SHARED_MALE_CATEGORIES.reduce((sum, ck) => sum + CATEGORY_DATA[ck].scale, 0) / SHARED_MALE_CATEGORIES.length;
   const rookies = [];
-  maleCategories.forEach((categoryKey) => {
-    for (let i = 0; i < 5; i++) {
-      const rookie = makeRookie(CATEGORY_DATA[categoryKey].scale, categoryKey, "M");
-      rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassCategory: categoryKey });
-    }
-  });
-  for (let i = 0; i < 5; i++) {
+  // Bug fixed (feature): 15+5 turned out to be far too many fresh
+  // faces flooding the market every single season — trimmed down to a
+  // size that actually feels like a notable, scoutable "class" rather
+  // than a flood. 8 shared across the three male entry categories, 3
+  // for WorldWCR.
+  for (let i = 0; i < 8; i++) {
+    const rookie = makeRookie(neutralScale, null, "M");
+    rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassSharedCategories: SHARED_MALE_CATEGORIES });
+  }
+  for (let i = 0; i < 3; i++) {
     const rookie = makeRookie(CATEGORY_DATA.worldwcr.scale, "worldwcr", "F");
-    rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassCategory: "worldwcr" });
+    rookies.push({ ...rookie, _rookieClassSeason: seasonNumber, _rookieClassSharedCategories: ["worldwcr"] });
   }
   return rookies;
 }
