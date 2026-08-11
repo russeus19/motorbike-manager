@@ -629,6 +629,27 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
       let liveTeam = findTeam(teamsByCategory, ck, teamId);
       if (!liveTeam || liveTeam.riders.length < 2) return; // a genuine vacancy already got first pick in Fase 3
       let changed = true;
+      // Bug fixed: this loop can run several times in a row for the
+      // same team — each pass compares the CURRENT weakest rider
+      // against the pool again, so a rider signed in one pass can
+      // themselves get outbid and swapped back out in a LATER pass of
+      // this exact same while loop, all within this one transition.
+      // The roster itself was always fine (never more than 2 at any
+      // point — every pass is a strict 1-for-1 swap), but the log
+      // used to record BOTH the earlier "ficha por" and the later
+      // "queda libre tras la mejora" for that same rider, back to
+      // back, in the SAME market summary. Read from outside, that
+      // looks exactly like a team signing two people and immediately
+      // being forced to cut one — three riders fighting over two
+      // seats — when what actually happened was a team quietly
+      // comparing several candidates before settling, something a
+      // real team's own internal process would never publish a blow-
+      // by-blow account of either. chainSignings tracks any rider
+      // signed within THIS team's own chain so far; if that same
+      // rider later gets bumped again in this same chain, their
+      // earlier "fichaje" entry is removed instead of logging a
+      // same-transition signing-then-release pair.
+      const chainSignings = {};
       while (changed) {
         changed = false;
         const eligible = pool.filter((r) => isFreeAgentEligibleForCategory(r, ck) && passesCrossoverGate(perceivedRiderForAI(r, liveTeam), ck, seasonNumber));
@@ -674,8 +695,20 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
           teamsByCategory[ck] = teamsByCategory[ck].map((t) => (
             t.id === teamId ? { ...t, budget: t.budget - releaseCost, riders: [...t.riders.filter((x) => x.id !== weakest.id), newRider] } : t
           ));
-          log[ck].push({ type: "fichaje", riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text: `${newRider.name} ficha por ${teamDisplayName(liveTeam)}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label });
-          log[ck].push({ type: "salida", riderId: photoIdFor(weakest), personId: weakest.id, riderName: weakest.name, text: `${weakest.name} queda libre tras la mejora de plantilla de ${teamDisplayName(liveTeam)}`, category: CATEGORY_DATA[ck].label });
+          const priorChainEntry = chainSignings[weakest.id];
+          if (priorChainEntry) {
+            // weakest was itself signed earlier in this same chain —
+            // from outside this transition, they never really joined
+            // at all, so their earlier "fichaje" line is removed
+            // rather than logging a contradictory pair.
+            log[ck] = log[ck].filter((e) => e !== priorChainEntry);
+            delete chainSignings[weakest.id];
+          } else {
+            log[ck].push({ type: "salida", riderId: photoIdFor(weakest), personId: weakest.id, riderName: weakest.name, text: `${weakest.name} queda libre tras la mejora de plantilla de ${teamDisplayName(liveTeam)}`, category: CATEGORY_DATA[ck].label });
+          }
+          const fichajeEntry = { type: "fichaje", riderId: photoIdFor(newRider), personId: newRider.id, riderName: newRider.name, text: `${newRider.name} ficha por ${teamDisplayName(liveTeam)}, que prescinde de ${weakest.name} para mejorar la plantilla`, category: CATEGORY_DATA[ck].label };
+          log[ck].push(fichajeEntry);
+          chainSignings[newRider.id] = fichajeEntry;
           changed = true;
           liveTeam = findTeam(teamsByCategory, ck, teamId);
           break;
@@ -700,6 +733,37 @@ export function resolveSeasonMarketAcrossCategories(categoriesData, freeAgentPoo
   const standingsByCategory = {};
   Object.entries(categoriesData).forEach(([ck, catData]) => { standingsByCategory[ck] = catData.riderStandings || {}; });
   pool = applyPoolHistory(pool, standingsByCategory, seasonNumber);
+
+  // Final safety net, deliberately unconditional: whatever the exact
+  // sequence of renewals, market swaps, promotions and vacancy-fills
+  // that ran above, no team should ever come out of this function
+  // holding more than 2 riders. Every individual step earlier in this
+  // file re-checks capacity immediately before adding anyone — real
+  // review confirmed that — but a season-end pass this deep, spanning
+  // several distinct phases that each mutate the shared teamsByCategory
+  // structure, is exactly the kind of place a genuine edge case can
+  // still slip through undetected. Rather than keep hunting for one
+  // specific interleaving that might not even be the actual cause,
+  // this guarantees the OUTCOME directly, the same way the live
+  // mid-season market already does (applyConfirmedNegotiations): keep
+  // the best 2 by current ability, release anyone past that back to
+  // the free-agent pool. A rider bumped this way is never lost and
+  // never dragged down into some unrelated lower category the way an
+  // overcommitted rider used to be before this existed — they land
+  // exactly where a real, competitive free agent belongs.
+  Object.keys(teamsByCategory).forEach((ck) => {
+    teamsByCategory[ck] = teamsByCategory[ck].map((t) => {
+      if (t.id === categoriesData[ck]?.excludeTeamId) return t; // the player's own roster decisions are theirs alone
+      if (t.riders.length <= 2) return t;
+      const sorted = [...t.riders].sort((a, b) => overallRating(b) - overallRating(a));
+      const bumped = sorted.slice(2);
+      bumped.forEach((r) => {
+        pool.push({ ...r, contractYears: 0, isNewTeamThisSeason: false, seasonsUnsigned: 0, _fromCategoryKey: ck, _fromBikeAvg: bikeAvgOf(t) });
+        log[ck]?.push({ type: "salida", riderId: photoIdFor(r), personId: r.id, riderName: r.name, text: `${r.name} queda libre: ${teamDisplayName(t)} no podía mantener a los tres pilotos que había reunido para la próxima temporada.`, category: CATEGORY_DATA[ck].label });
+      });
+      return { ...t, riders: sorted.slice(0, 2) };
+    });
+  });
 
   return { teamsByCategory, pool, retiredRiders };
 }

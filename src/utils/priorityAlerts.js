@@ -72,9 +72,28 @@ export function buildPriorityAlerts({ playerTeam, marketNegotiations, lowStockLa
 
   // Aviso: oferta recibida por uno de tus pilotos — activo mientras la
   // negociación siga en cualquier estado no definitivo.
+  //
+  // Bug fixed (feature): this pushed one alert per negotiation — with
+  // several offers on the table for the same rider, or offers on both
+  // riders at once, the "Inicio" screen could end up buried in near-
+  // identical banners. Grouped by rider instead: a single offer still
+  // shows the specific "X ha presentado una oferta por Y" text exactly
+  // as before, but 2+ offers on the same rider collapse into one
+  // "Hay varias ofertas por X" banner, and offers spanning both of the
+  // player's riders collapse into one "Hay varias ofertas por tus dos
+  // pilotos" banner — never more than one line about incoming offers
+  // at a time.
+  const incomingByRider = new Map();
   negotiations.forEach((n) => {
     if (n.fromTeamId !== "player" || n.toTeamId === "player") return;
     if (!ACTIVE_NEGOTIATION_STATUSES.includes(n.status)) return;
+    if (!incomingByRider.has(n.riderId)) incomingByRider.set(n.riderId, []);
+    incomingByRider.get(n.riderId).push(n);
+  });
+  const ridersWithOffers = [...incomingByRider.entries()];
+  const totalIncomingOffers = ridersWithOffers.reduce((sum, [, offers]) => sum + offers.length, 0);
+  if (totalIncomingOffers === 1) {
+    const [, [n]] = ridersWithOffers[0];
     alerts.push({
       id: `incoming-offer-${n.id}`,
       priority: 2,
@@ -82,7 +101,26 @@ export function buildPriorityAlerts({ playerTeam, marketNegotiations, lowStockLa
       text: `📨 ${n.toTeamName} ha presentado una oferta por ${n.riderName}.`,
       target: "offers",
     });
-  });
+  } else if (totalIncomingOffers >= 2) {
+    if (ridersWithOffers.length === 1) {
+      const [, offers] = ridersWithOffers[0];
+      alerts.push({
+        id: "incoming-offers-grouped-single",
+        priority: 2,
+        iconKey: "mail",
+        text: `📨 Hay varias ofertas por ${offers[0].riderName}.`,
+        target: "offers",
+      });
+    } else {
+      alerts.push({
+        id: "incoming-offers-grouped-both",
+        priority: 2,
+        iconKey: "mail",
+        text: "📨 Hay varias ofertas por tus dos pilotos.",
+        target: "offers",
+      });
+    }
+  }
 
   return alerts.sort((a, b) => a.priority - b.priority);
 }

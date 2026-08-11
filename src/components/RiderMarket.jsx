@@ -83,7 +83,7 @@ export function FreeAgentsPanel({ freeAgents, playerTeam, category, accent, open
               }
             `}</style>
             {sorted.map((r, i) => (
-              <button key={r.id} onClick={() => openProfile(r, "Agente libre", null)}
+              <button key={r.id} onClick={() => openProfile(r, "Agente libre", r._fromCategoryKey || null)}
                 className="relative text-left rounded-2xl border p-3.5 transition-transform duration-150 active:scale-[0.98] hover:scale-[1.012] group"
                 style={{ background: COLORS.panel2, borderColor: COLORS.rule, animation: "freeAgentCardIn 0.4s ease-out both", animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <div className="flex items-center gap-2.5 mb-2">
@@ -157,7 +157,23 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   const otherCategoryEntries = Object.entries(otherCategories || {}).flatMap(([key, catState]) =>
     (catState.teams || []).flatMap((t) => teamEntries(t, key))
   );
-  const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: null, isOwn: false }));
+  // Bug fixed: a free agent's entry always carried categoryKey: null —
+  // meaning signing one through this exact search screen (as opposed
+  // to their own profile) told applyConfirmedNegotiations nothing
+  // about which category they'd actually just finished racing in.
+  // That silently broke _pendingHistoryEntry (utils/marketNegotiations.js):
+  // it still ran (null !== the player's own category, so the "this is
+  // a cross-category signing" check still passed), but looked up
+  // standingsByCategory[null], which is always undefined — so the
+  // rider's just-finished season was captured as nothing at all,
+  // rather than actually being recorded. A rider still on a team
+  // always carried their real categoryKey through teamEntries above;
+  // a genuine free agent's own _fromCategoryKey (set the moment they
+  // were released to the pool — see the many pool.push(...) call sites
+  // in utils/transferMarket.js) is the exact same kind of information,
+  // just for someone who happens to be between teams right now instead
+  // of still on one.
+  const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: r._fromCategoryKey || null, isOwn: false }));
   const allEntries = [...currentCategoryEntries, ...otherCategoryEntries, ...freeAgentEntries];
 
   // Every nationality actually present in the current search pool, so the
@@ -260,7 +276,7 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
 
       <div className="space-y-2" style={{ maxHeight: 340, overflowY: "auto" }}>
         {filtered.map((e) => (
-          <button key={e.rider.id} onClick={() => openProfile(e.rider, e.teamName || "Agente libre", e.teamName ? e.categoryKey : null)}
+          <button key={e.rider.id} onClick={() => openProfile(e.rider, e.teamName || "Agente libre", e.categoryKey)}
             className="w-full text-left flex items-center justify-between rounded-xl px-3 py-2.5 transition-transform duration-150 active:scale-[0.98] hover:scale-[1.006]"
             style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
             <span className="flex items-center gap-2.5 text-sm min-w-0">

@@ -39,7 +39,7 @@ export function SubstituteScreen({ playerTeam, pendingSubstitution, freeAgents, 
               <div className="flex justify-between items-start mb-1">
                 <span className="font-semibold flex items-center gap-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>
                   <RiderPhoto rider={r} size={36} className="rounded" />
-                  <RiderNameButton rider={r} onClick={() => openProfile(r, "Agente libre", null)} />
+                  <RiderNameButton rider={r} onClick={() => openProfile(r, "Agente libre", r._fromCategoryKey || null)} />
                   <OverallBadge value={overallRating(r)} accent={accent} />
                 </span>
                 <span className="text-xs font-mono" style={{ color: COLORS.muted }}>€{cost.toLocaleString()}</span>

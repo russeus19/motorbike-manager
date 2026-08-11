@@ -410,7 +410,7 @@ export default function MotorbikeManager() {
     const found = findRiderInCategory(categoryKey, riderId);
     if (found) { openProfile(found.rider, found.teamName, categoryKey); return; }
     const freeAgent = freeAgents.find((r) => r.id === riderId);
-    if (freeAgent) { openProfile(freeAgent, "Agente libre", null); return; }
+    if (freeAgent) { openProfile(freeAgent, "Agente libre", categoryKey || freeAgent._fromCategoryKey || null); return; }
     // Fallback for anyone clicking a rider from an OLD record (season
     // history, a former teammate's later career...) — the categoryKey
     // that made sense back then might not be where they are now (they
@@ -1599,6 +1599,33 @@ export default function MotorbikeManager() {
     return (g.freeAgents || []).find((r) => r.id === riderId) || null;
   }
 
+  /* Bug fixed: a duplicate rider (the exact same person appearing
+     twice in a row on "Mis pilotos") was showing up mid-season, well
+     before the next season transition — validateGlobalRiderIntegrity
+     (utils/careerValidation.js) already catches and removes exactly
+     this kind of duplicate, but it only ever ran once, at the very end
+     of a season. Whatever the live weekly market's exact sequence that
+     occasionally produces one (never fully pinned down — a strong
+     suspect is a renewal and a separately-confirmed signing both
+     resolving for the same rider in the same week, though it's rare
+     enough it wasn't reproduced in isolation), a real, confirmed
+     mid-season occurrence is more than enough reason to run the same
+     cleanup every week too, not just at the one point it used to fire.
+     Keeps the FIRST copy encountered (own team first, then rivals),
+     silently drops any later one — a rider is either really on a
+     roster or really a free agent, never both. */
+  function dedupeRidersNow() {
+    setGame((g) => {
+      if (!g || !g.playerTeam) return g;
+      const dedup = validateGlobalRiderIntegrity({
+        playerTeam: g.playerTeam, rivalTeams: g.rivalTeams || [], otherCategories: g.otherCategories || {}, freeAgents: g.freeAgents || [],
+      });
+      if (!dedup.issues.length) return g;
+      console.log("[market][integrity][weekly]", ...dedup.issues);
+      return { ...g, playerTeam: dedup.playerTeam, rivalTeams: dedup.rivalTeams, otherCategories: dedup.otherCategories, freeAgents: dedup.freeAgents };
+    });
+  }
+
   /* Resolves any release-clause request a selling team was still
      "thinking over" once its own GP arrives — same weekly cadence as
      tickMarket, called right alongside it. A team that hasn't decided
@@ -1927,6 +1954,7 @@ export default function MotorbikeManager() {
     );
     marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
     resolvePendingReleaseClearancesNow();
+    dedupeRidersNow();
 
     const renewalsByCategory = {};
     marketTick.justConfirmedRenewals.forEach((r) => {
@@ -2418,6 +2446,7 @@ export default function MotorbikeManager() {
     );
     marketTick.notifications.forEach((n) => notifQueue.push({ type: "market", category: n.categoryKey || category, text: n.text }));
     resolvePendingReleaseClearancesNow();
+    dedupeRidersNow();
 
     // Renewals are effective the moment both sides agree — never
     // deferred like a signing. Group whatever just got confirmed this

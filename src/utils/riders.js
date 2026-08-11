@@ -181,7 +181,20 @@ export function isPlausibleCrossoverSuitor(rider, fromCategoryKey, toCategoryKey
     const floor = 45 + gap * 14;
     return overallRating(rider) >= floor || (rider.potential ?? 0) >= floor + 8;
   }
-  if (toRank < fromRank) return (rider.prestige ?? 60) < 65;
+  // Bug fixed: moving DOWN only ever checked prestige — a reputation
+  // metric, not current ability. Prestige can drift out of step with
+  // how good a rider actually still is (a rough patch, an injury, bad
+  // luck), so a genuinely elite MotoGP-caliber rider with a
+  // temporarily low prestige score could clear this bar and get an
+  // incoming offer from Moto3 with nothing else standing in the way —
+  // exactly the same gap passesCrossoverGate had for its own downward
+  // direction, just via a different, weaker check here. Reusing the
+  // same, already-fixed function keeps both consistent: a genuinely
+  // underperforming or out-of-form rider dropping down remains
+  // completely normal, but someone clearly still too strong for such
+  // a steep fall no longer slips through just because their prestige
+  // score happened to be having an off week.
+  if (toRank < fromRank) return passesCrossoverGate({ ...rider, _fromCategoryKey: fromCategoryKey }, toCategoryKey, seasonNumber) && (rider.prestige ?? 60) < 65;
   return true; // same rank (e.g. Moto2 <-> Superbikes) — a genuine lateral move, no extra bar
 }
 
@@ -289,6 +302,31 @@ export function passesCrossoverGate(rider, targetCategoryKey, seasonNumber = 1) 
     if (fromCat !== targetCategoryKey) {
       const floor = naturalFeederPotentialFloor(targetCategoryKey, seasonNumber);
       if ((rider.potential ?? 0) < floor || overallRating(rider) < floor) return false;
+    }
+  }
+
+  // Bug fixed: everything above only ever protected categories with a
+  // NATURAL_FEEDER entry (motogp/moto2/superbikes) — Moto3, Supersport,
+  // Sportbike and WorldWCR have none, since nothing naturally feeds
+  // INTO the bottom of a ladder. That meant the whole function fell
+  // straight through to `return true` for any of those four targets,
+  // with absolutely nothing checked — a MotoGP-caliber rider (or a
+  // fresh regen the AI perceived as one) was just as "eligible" for
+  // Moto3 as a genuine Moto3 rookie. This is the missing symmetric
+  // half: moving DOWN a significant number of ranks needs the same
+  // kind of sanity check moving UP already gets, just inverted — a
+  // rider clearly too strong for how far they'd be dropping doesn't
+  // have a real reason to end up there. A genuinely weak or badly
+  // out-of-form rider from a higher category dropping down remains
+  // completely normal and unblocked; what this stops is a title
+  // contender parachuting into Moto3 because nothing ever checked
+  // whether the destination made any sense at all.
+  const fromCatDown = rider._fromCategoryKey;
+  if (fromCatDown) {
+    const downRankGap = (CATEGORY_RANK[fromCatDown] ?? 2) - (CATEGORY_RANK[targetCategoryKey] ?? 2);
+    if (downRankGap > 1) {
+      const downwardCACeiling = 55 + (CATEGORY_RANK[targetCategoryKey] ?? 1) * 12;
+      if (overallRating(rider) > downwardCACeiling) return false;
     }
   }
   return true;
