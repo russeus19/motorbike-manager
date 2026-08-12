@@ -78,10 +78,56 @@ export function ProjectRow({ area, kind, team, budget, scale, accent, onStart, l
    Capacidad Técnica pool shown once at the top. This single component is
    used identically from both the Inicio screen and the Escudería screen —
    no separate implementation to keep in sync. */
+/* The actual content of Desarrollo e Investigación — extracted out of
+   DevelopmentPanel below so it can be embedded directly inside another
+   panel's own expand/collapse state (see BikeHero.jsx's "Mi moto",
+   which shows this same content instead of a separate panel) without
+   duplicating a single line of it. DevelopmentPanel (further below)
+   is just this body wrapped in its own standalone Panel + expand
+   toggle, still used as-is on the Inicio screen. */
+export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview }) {
+  const pendingPackages = playerTeam.pendingPackages || [];
+  return (
+    <>
+      {pendingPackages.length > 0 && onOpenPackageReview && (
+        <div className="mb-3 space-y-1.5">
+          {pendingPackages.map((pkg) => (
+            <button key={pkg.id} onClick={() => onOpenPackageReview(pkg.id)}
+              className="w-full text-left rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2"
+              style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}`, color: COLORS.text }}>
+              <span>📦 Paquete de <strong>{BIKE_LABELS[pkg.area]}</strong> pendiente de revisar{pkg.approved ? " · fabricando piezas..." : ""}</span>
+              <span style={{ color: COLORS.gold }}>Revisar</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-3">
+        {BIKE_AREA_KEYS.map((k) => (
+          <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
+        ))}
+      </div>
+
+      <CapacityBar playerTeam={playerTeam} budget={budget} accent={accent} />
+
+      <div className="space-y-2">
+        {BIKE_AREA_KEYS.map((k) => (
+          <div key={k} className="rounded-md p-2" style={{ border: `1px solid ${COLORS.rule}` }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{BIKE_LABELS[k]}</div>
+            <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: COLORS.muted }}>Desarrollo · esta temporada</div>
+            <ProjectRow area={k} kind="dev" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Desarrollo" />
+            <div className="text-[10px] uppercase tracking-wide mb-1 mt-1" style={{ color: COLORS.muted }}>Investigación · temporada siguiente</div>
+            <ProjectRow area={k} kind="research" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Investigación" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function DevelopmentPanel({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview }) {
   const [expanded, setExpanded] = useState(false);
   const avg = bikeAvg(playerTeam.bike);
-  const pendingPackages = playerTeam.pendingPackages || [];
 
   return (
     <Panel
@@ -97,40 +143,7 @@ export function DevelopmentPanel({ playerTeam, budget, startProject, accent, sca
       }
     >
       {expanded && (
-        <>
-          {pendingPackages.length > 0 && onOpenPackageReview && (
-            <div className="mb-3 space-y-1.5">
-              {pendingPackages.map((pkg) => (
-                <button key={pkg.id} onClick={() => onOpenPackageReview(pkg.id)}
-                  className="w-full text-left rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2"
-                  style={{ background: "rgba(227,164,39,0.12)", border: `1px solid ${COLORS.gold}`, color: COLORS.text }}>
-                  <span>📦 Paquete de <strong>{BIKE_LABELS[pkg.area]}</strong> pendiente de revisar{pkg.approved ? " · fabricando piezas..." : ""}</span>
-                  <span style={{ color: COLORS.gold }}>Revisar</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="mb-3">
-            {BIKE_AREA_KEYS.map((k) => (
-              <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
-            ))}
-          </div>
-
-          <CapacityBar playerTeam={playerTeam} budget={budget} accent={accent} />
-
-          <div className="space-y-2">
-            {BIKE_AREA_KEYS.map((k) => (
-              <div key={k} className="rounded-md p-2" style={{ border: `1px solid ${COLORS.rule}` }}>
-                <div className="text-xs font-bold mb-1.5" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{BIKE_LABELS[k]}</div>
-                <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: COLORS.muted }}>Desarrollo · esta temporada</div>
-                <ProjectRow area={k} kind="dev" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Desarrollo" />
-                <div className="text-[10px] uppercase tracking-wide mb-1 mt-1" style={{ color: COLORS.muted }}>Investigación · temporada siguiente</div>
-                <ProjectRow area={k} kind="research" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Investigación" />
-              </div>
-            ))}
-          </div>
-        </>
+        <DevelopmentPanelBody playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
       )}
     </Panel>
   );

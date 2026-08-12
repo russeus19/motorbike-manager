@@ -4,6 +4,7 @@ import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
 import { HallOfFamePanel } from "../components/HallOfFamePanel.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
+import { BikeHero } from "../components/BikeHero.jsx";
 import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { CountryFlag } from "../components/CountryFlag.jsx";
 import { DevelopmentPanel } from "../components/Development.jsx";
@@ -414,8 +415,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
               </div>
             </div>
           </Panel>
-          <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
-          <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} />
+          <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} />
+          <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} playerTeam={playerTeam} round={round} seasonNumber={seasonNumber} />
           <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} onSearchSponsor={onSearchSponsor} onCancelSearchSponsor={onCancelSearchSponsor} onCancelSponsorContract={onCancelSponsorContract} accent={accent} />
           <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
           <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
@@ -427,7 +428,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       {seasonTab === "info" && (
         <div className="space-y-4">
           <CircuitInfoPanel circuitProfile={circuitProfile} accent={accent} round={superbikesRoundForDisplay} seasonNumber={seasonNumber} daysUntilNextRace={daysUntilNextRace} />
-          <CalendarPanel round={round} accent={accent} gpHistory={gpHistory} seasonNumber={seasonNumber} category={category} />
+          <CalendarPanel round={round} accent={accent} gpHistory={gpHistory} seasonNumber={seasonNumber} category={category} playerTeam={playerTeam} />
           <DetailedStandingsPanel
             category={category}
             riderStandings={riderStandings}

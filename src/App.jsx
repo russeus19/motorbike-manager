@@ -225,6 +225,7 @@ export default function MotorbikeManager() {
   const pendingWorldSbkRace1ForHistory = game?.pendingWorldSbkRace1ForHistory ?? null;
   const pendingSuperpoleRace = game?.pendingSuperpoleRace ?? null;
   const pendingSuperpoleRaceForHistory = game?.pendingSuperpoleRaceForHistory ?? null;
+  const pendingQualifyingForHistory = game?.pendingQualifyingForHistory ?? null;
   const pendingLiveRace = game?.pendingLiveRace ?? null;
   const scale = category ? CATEGORY_DATA[category].scale : 1;
 
@@ -2062,6 +2063,14 @@ export default function MotorbikeManager() {
       otherCategories: nextOtherCategories,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
       pendingQualifying: { isWet, gridByCategory, resultByCategory, circuitName, circuitProfile },
+      // Bug fixed (feature): only the played category's own grid used
+      // to be kept — but resultByCategory (built just above, in the
+      // very same loop) already has every category's grid, played or
+      // not, since qualifying always runs for the whole weekend at
+      // once. Keeping all of it means every category's own
+      // "Clasificación" tab has real data, not just whichever one the
+      // player happens to be racing.
+      pendingQualifyingForHistory: resultByCategory,
     } : g));
     setPhase("qualifying");
   }
@@ -2331,6 +2340,8 @@ export default function MotorbikeManager() {
     const nextOtherCategories = {};
     const otherResultsByCat = {};
     const otherFastestLapByCat = {};
+    const otherRace1ByCat = {};
+    const otherSuperpoleByCat = {};
     let motogpSprintResultsForHistory = null;
     Object.entries(otherCategories).forEach(([key, catState]) => {
       if (key === "superbikes" && !isSuperbikesRaceWeek(round)) {
@@ -2382,6 +2393,7 @@ export default function MotorbikeManager() {
       if (key === "superbikes" || key === "supersport" || key === "sportbike" || key === "worldwcr") {
         const race1Outcome = simulateSprintForTeams(catState.teams, catCircuit, isWet, gridByCategory[key], key, notifQueue, POINTS, 1, false, catRoundsLeft);
         raceTeams = race1Outcome.teams;
+        otherRace1ByCat[key] = race1Outcome.results;
         race1Outcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
         race1Outcome.results.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
       }
@@ -2389,6 +2401,7 @@ export default function MotorbikeManager() {
       if (key === "superbikes") {
         const superpoleOutcome = simulateSprintForTeams(raceTeams, catCircuit, isWet, gridByCategory[key], key, notifQueue, SPRINT_POINTS, 0.6, true, catRoundsLeft);
         raceTeams = superpoleOutcome.teams;
+        otherSuperpoleByCat[key] = superpoleOutcome.results;
         superpoleOutcome.results.forEach((r) => { rS[r.id] = { name: r.name, teamName: r.teamName, points: (rS[r.id]?.points || 0) + r.points }; });
         superpoleOutcome.results.forEach((r) => { tS[r.teamId] = (tS[r.teamId] || 0) + r.points; });
         superpoleOutcome.results.forEach((r) => { if (r.position === 1 && !r.crashed) sW[r.id] = (sW[r.id] || 0) + 1; });
@@ -2426,7 +2439,26 @@ export default function MotorbikeManager() {
     });
 
     const gpResultsByCategory = { ...otherResultsByCat, [category]: results };
-    const gpHistoryEntry = buildGpHistoryEntry({ round, seasonNumber, circuitName, isWet, resultsByCategory: gpResultsByCategory, sprintResults: pendingSprintForHistory ?? motogpSprintResultsForHistory });
+    // Bug fixed (feature): sprintResults/race1Results/superpoleResults
+    // used to be flat arrays for whichever ONE category the player
+    // happened to be playing — but the background-category loop just
+    // above already computes every one of these for every OTHER
+    // category too (motogpSprintResultsForHistory, otherRace1ByCat,
+    // otherSuperpoleByCat), it just used to throw that detail away
+    // after adding the points to standings. Merged here into one
+    // object per session type, keyed by category, so every category's
+    // own qualifying/sprint/race1/superpole is available regardless of
+    // which one is actually being played this save.
+    const gpSprintByCategory = { ...(motogpSprintResultsForHistory ? { motogp: motogpSprintResultsForHistory } : {}), ...(pendingSprintForHistory ? { motogp: pendingSprintForHistory } : {}) };
+    const gpRace1ByCategory = { ...otherRace1ByCat, ...(pendingWorldSbkRace1ForHistory ? { [category]: pendingWorldSbkRace1ForHistory } : {}) };
+    const gpSuperpoleByCategory = { ...otherSuperpoleByCat, ...(pendingSuperpoleRaceForHistory ? { [category]: pendingSuperpoleRaceForHistory } : {}) };
+    const gpHistoryEntry = buildGpHistoryEntry({
+      round, seasonNumber, circuitName, isWet, resultsByCategory: gpResultsByCategory,
+      qualifyingResultsByCategory: pendingQualifyingForHistory,
+      sprintResultsByCategory: gpSprintByCategory,
+      race1ResultsByCategory: gpRace1ByCategory,
+      superpoleResultsByCategory: gpSuperpoleByCategory,
+    });
 
     const fastestLapByCategory = { ...otherFastestLapByCat, [category]: fastestLapRiderId };
     const classificationByCategory = {};
@@ -2529,8 +2561,11 @@ export default function MotorbikeManager() {
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
       pendingSubstitution: newPendingSub,
       pendingQualifying: null,
+      pendingQualifyingForHistory: null,
       pendingSprintResult: null,
       pendingSprintForHistory: null,
+      pendingWorldSbkRace1ForHistory: null,
+      pendingSuperpoleRaceForHistory: null,
       pendingLiveRace: { kind: "race", ...liveSim },
       gpHistory: [...(g.gpHistory || []), gpHistoryEntry],
       marketRumors: marketTick.marketRumors,
