@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Bike } from "lucide-react";
 import { COLORS } from "../data/colors.js";
+import { bikePhotoIdFor } from "../data/bikePhotoIds.js";
 
 const BIKE_BASE = "/assets/bikes";
 
@@ -11,6 +12,15 @@ const BIKE_BASE = "/assets/bikes";
  * second id system for the same team. Image lives at
  * `/assets/bikes/<logoId>.png` and needs no code change to add: drop
  * the file in with the right name and it appears.
+ *
+ * Bug fixed (feature): four teams field an entry in both Moto2 and
+ * Moto3 sharing one logoId (the same sponsor badge really is the same
+ * logo either way), but the actual bike is physically different
+ * between the two — a single shared photo couldn't serve both. Passing
+ * `categoryKey` routes those four specific teams to a category-
+ * specific filename instead (see data/bikePhotoIds.js for exactly
+ * which ones and why); every other team's own photo is completely
+ * unaffected, still just its own logoId.
  *
  * If `logoId` is missing, or the image fails to load (no file dropped
  * in yet, 404, corrupt file), falls back to a simple motorcycle icon
@@ -31,10 +41,11 @@ const BIKE_BASE = "/assets/bikes";
  * down into a mostly-empty box.
  *
  * Usage: <BikePhoto team={playerTeam} accent={accent} size={220} />
- * or:    <BikePhoto team={playerTeam} accent={accent} sizeClassName="w-40 sm:w-full" />
+ * or:    <BikePhoto team={playerTeam} accent={accent} categoryKey="moto2" sizeClassName="w-40 sm:w-full" />
  */
-export function BikePhoto({ team, logoId, accent = COLORS.gold, size = 200, sizeClassName, objectFit = "contain", objectPosition = "center", className = "", alt }) {
-  const resolvedId = logoId || team?.logoId || null;
+export function BikePhoto({ team, logoId, categoryKey, accent = COLORS.gold, size = 200, sizeClassName, objectFit = "contain", objectPosition = "center", className = "", alt }) {
+  const baseId = logoId || team?.logoId || null;
+  const resolvedId = bikePhotoIdFor(baseId, categoryKey);
   const initialSrc = resolvedId ? `${BIKE_BASE}/${resolvedId}.png` : null;
   const [src, setSrc] = useState(initialSrc);
   const [failed, setFailed] = useState(!initialSrc);

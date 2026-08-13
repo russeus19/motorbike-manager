@@ -85,7 +85,7 @@ export function ProjectRow({ area, kind, team, budget, scale, accent, onStart, l
    duplicating a single line of it. DevelopmentPanel (further below)
    is just this body wrapped in its own standalone Panel + expand
    toggle, still used as-is on the Inicio screen. */
-export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview }) {
+export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview, showAttributes = true }) {
   const pendingPackages = playerTeam.pendingPackages || [];
   return (
     <>
@@ -102,11 +102,21 @@ export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent,
         </div>
       )}
 
-      <div className="mb-3">
-        {BIKE_AREA_KEYS.map((k) => (
-          <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
-        ))}
-      </div>
+      {/* Bug fixed (feature): the same 5 attribute bars shown here used
+          to be duplicated inside "Mi moto" too, once that hero card
+          started showing them itself — showAttributes=false lets a
+          caller that already displays them elsewhere (BikeHero) skip
+          the repeat, while the Inicio screen's own standalone
+          DevelopmentPanel (the only OTHER place this body renders,
+          where nothing else shows these bars) keeps them exactly as
+          before. */}
+      {showAttributes && (
+        <div className="mb-3">
+          {BIKE_AREA_KEYS.map((k) => (
+            <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
+          ))}
+        </div>
+      )}
 
       <CapacityBar playerTeam={playerTeam} budget={budget} accent={accent} />
 

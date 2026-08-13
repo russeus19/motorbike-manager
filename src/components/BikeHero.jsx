@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Bike, Calendar, ChevronDown, ChevronRight, ChevronUp, Flag, Trophy, Wrench } from "lucide-react";
-import { Panel } from "./UIPrimitives.jsx";
+import { Bike, ChevronDown, ChevronRight, ChevronUp, Trophy, Wrench } from "lucide-react";
+import { Panel, StatBar } from "./UIPrimitives.jsx";
 import { COLORS } from "../data/colors.js";
+import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { bikeModelFor } from "../data/bikeModels.js";
 import { bikeAvg } from "../utils/bikeDevelopment.js";
 import { BikePhoto } from "./BikePhoto.jsx";
@@ -10,7 +11,11 @@ import { DevelopmentPanelBody } from "./Development.jsx";
 
 /** Turns "Gran Premio de España — Circuito de Jerez" into just "España"
  * — the same short-name derivation CalendarPanel already uses for its
- * compact day cards, reused here for the "Próxima carrera" stat. */
+ * compact day cards. No longer used within this file itself (Temporada
+ * actual / Próxima carrera were replaced by the bike's own attribute
+ * bars), kept only in case a caller still passes `circuit` expecting
+ * it to matter — currently unused, harmless to leave.
+ */
 function shortCircuitName(circuit) {
   if (!circuit) return null;
   return circuit.split("—")[0].replace("Gran Premio de ", "").replace("Ronda de ", "").trim();
@@ -50,7 +55,6 @@ function shortCircuitName(circuit) {
 export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackageReview, accent, seasonNumber, round, circuit, category }) {
   const [devExpanded, setDevExpanded] = useState(false);
   const avg = Math.round(bikeAvg(playerTeam.bike));
-  const circuitLabel = shortCircuitName(circuit);
   const model = bikeModelFor(category, playerTeam.manufacturer);
   const sponsors = playerTeam.sponsors || {};
   const sponsorList = [
@@ -70,9 +74,11 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
             Nothing is ever cut off AT the top — the crop only ever
             eats into the bottom — and the bottom fade blends that crop
             line into the panel instead of a hard cutoff. */}
-        <div className="flex justify-center sm:order-2 sm:flex-1 sm:relative sm:overflow-hidden sm:h-[380px] md:h-[440px]">
-          <BikePhoto team={playerTeam} accent={accent} size={180} sizeClassName="w-[180px] h-[180px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
-          <div className="hidden sm:block absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
+        <div className="flex justify-center sm:flex-1 sm:justify-end sm:order-2">
+          <div className="relative overflow-hidden sm:w-[500px] sm:h-[308px] md:w-[580px] md:h-[356px]">
+            <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={180} sizeClassName="w-[180px] h-[180px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
+            <div className="hidden sm:block absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
+          </div>
         </div>
 
         <div className="sm:order-1 sm:w-64 md:w-72 sm:flex-shrink-0 min-w-0">
@@ -85,36 +91,29 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
             </div>
           )}
 
-          <div className="space-y-2.5 sm:space-y-3">
-            <div className="flex items-start gap-2.5">
-              <Trophy size={16} style={{ color: accent }} className="flex-shrink-0 mt-0.5" />
-              <div className="min-w-0">
-                <div className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Rendimiento global</div>
-                <div className="text-sm sm:text-base font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{avg} / 100</div>
-                <div className="h-1.5 rounded-full w-full max-w-[160px] mt-1" style={{ background: COLORS.rule }}>
-                  <div className="h-1.5 rounded-full" style={{ width: `${avg}%`, background: accent }} />
-                </div>
+          <div className="flex items-center gap-2.5 mb-3">
+            <Trophy size={16} style={{ color: accent }} className="flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Rendimiento global</span>
+                <span className="text-sm sm:text-base font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{avg}/100</span>
+              </div>
+              <div className="h-1.5 rounded-full w-full mt-1" style={{ background: COLORS.rule }}>
+                <div className="h-1.5 rounded-full" style={{ width: `${avg}%`, background: accent }} />
               </div>
             </div>
+          </div>
 
-            <div className="flex items-center gap-2.5">
-              <Calendar size={16} style={{ color: accent }} className="flex-shrink-0" />
-              <div>
-                <div className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Temporada actual</div>
-                <div className="text-sm sm:text-base font-bold" style={{ color: COLORS.text }}>{seasonNumber}</div>
-              </div>
-            </div>
-
-            {circuitLabel && (
-              <div className="flex items-center gap-2.5">
-                <Flag size={16} style={{ color: accent }} className="flex-shrink-0" />
-                <div>
-                  <div className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Próxima carrera</div>
-                  <div className="text-sm sm:text-base font-bold" style={{ color: accent }}>{circuitLabel}</div>
-                  <div className="text-xs" style={{ color: COLORS.muted }}>Ronda {round + 1}/22</div>
-                </div>
-              </div>
-            )}
+          {/* The same 5 bike attributes/bars shown inside Desarrollo e
+              investigación (DevelopmentPanelBody), reused here in place
+              of the old Temporada actual / Próxima carrera stats — kept
+              to this column's own fixed width (not the full row), so
+              the bars stay proportionate and never stretch out under
+              the bike photo. */}
+          <div>
+            {BIKE_AREA_KEYS.map((k) => (
+              <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
+            ))}
           </div>
         </div>
       </div>
@@ -134,7 +133,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
         </button>
         {devExpanded && (
           <div className="mt-3">
-            <DevelopmentPanelBody playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
+            <DevelopmentPanelBody playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} showAttributes={false} />
           </div>
         )}
       </div>
@@ -142,11 +141,20 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
       {sponsorList.length > 0 && (
         <div>
           <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Patrocinadores actuales</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {sponsorList.map((s, i) => (
-              <div key={i} className="rounded-lg p-3 flex flex-col items-center justify-center gap-2" style={{ border: `1px solid ${COLORS.rule}`, minHeight: 76 }}>
-                <SponsorLogo name={s.name} height={32} />
-                <div className="text-[10px] font-semibold text-center" style={{ color: accent }}>{s.roleLabel}</div>
+              <div key={i}>
+                <div className="text-[10px] font-semibold text-center mb-1.5" style={{ color: accent }}>{s.roleLabel}</div>
+                {/* Box fills the grid column's full width again, same
+                    as originally — height halved via aspectRatio 4/1
+                    (double the original 2/1) rather than a fixed
+                    pixel value, so it stays exactly half regardless of
+                    the column's actual rendered width. The logo is
+                    properly contained inside (max-h-full), shrinking
+                    to fit rather than overflowing the frame. */}
+                <div className="rounded-lg p-1.5 flex items-center justify-center" style={{ border: `1px solid ${COLORS.rule}`, aspectRatio: "4 / 1" }}>
+                  <SponsorLogo name={s.name} height={80} className="max-h-full" />
+                </div>
               </div>
             ))}
           </div>
