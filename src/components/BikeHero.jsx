@@ -62,14 +62,17 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
     <Panel title="Mi moto" icon={Bike} accent={accent}>
       <div className="flex flex-col sm:flex-row gap-4 mb-4">
         {/* Bike photo: small and centered on mobile (unchanged); on sm
-            and up, fills the rest of the row edge-to-edge — cropped
-            tightly on the bike's own front/cockpit (objectFit=cover,
-            biased toward the top) instead of shrinking the whole bike
-            down into a mostly-empty box. A soft fade on the left edge
-            blends it into the text column instead of a hard seam. */}
-        <div className="flex justify-center sm:order-2 sm:flex-1 sm:relative sm:overflow-hidden sm:rounded-lg sm:h-64 md:h-72">
-          <BikePhoto team={playerTeam} accent={accent} size={180} sizeClassName="w-[180px] h-[180px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center 15%" />
-          <div className="hidden sm:block absolute inset-y-0 left-0 w-16 pointer-events-none" style={{ background: `linear-gradient(to right, ${COLORS.panel}, transparent)` }} />
+            and up, deliberately cropped in half — objectFit=cover with
+            objectPosition anchored to the top shows only the upper
+            portion of the bike (windscreen down to just above the
+            front fender), cropping away the lower half (front wheel
+            and below) rather than shrinking the whole bike to fit.
+            Nothing is ever cut off AT the top — the crop only ever
+            eats into the bottom — and the bottom fade blends that crop
+            line into the panel instead of a hard cutoff. */}
+        <div className="flex justify-center sm:order-2 sm:flex-1 sm:relative sm:overflow-hidden sm:h-[380px] md:h-[440px]">
+          <BikePhoto team={playerTeam} accent={accent} size={180} sizeClassName="w-[180px] h-[180px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
+          <div className="hidden sm:block absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
         </div>
 
         <div className="sm:order-1 sm:w-64 md:w-72 sm:flex-shrink-0 min-w-0">
