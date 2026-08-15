@@ -52,7 +52,7 @@ function shortCircuitName(circuit) {
  * screen (stacked layout), moving to a side-by-side layout matching
  * the reference once there's room for it (sm and up).
  */
-export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackageReview, accent, seasonNumber, round, circuit, category }) {
+export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackageReview, accent, seasonNumber, round, circuit, category, onOpenSponsors }) {
   const [devExpanded, setDevExpanded] = useState(false);
   const avg = Math.round(bikeAvg(playerTeam.bike));
   const model = bikeModelFor(category, playerTeam.manufacturer);
@@ -139,7 +139,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
       </div>
 
       {sponsorList.length > 0 && (
-        <div>
+        <button onClick={onOpenSponsors} disabled={!onOpenSponsors} className="w-full text-left disabled:cursor-default">
           <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Patrocinadores actuales</div>
           <div className="grid grid-cols-2 gap-3">
             {sponsorList.map((s, i) => (
@@ -158,7 +158,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
               </div>
             ))}
           </div>
-        </div>
+        </button>
       )}
     </Panel>
   );

@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, ArrowLeftRight, Bell, ChevronDown, ChevronUp, Flag, Gauge, LogOut, Save, Star, Wrench } from "lucide-react";
+import { AlertTriangle, Bell, ChevronDown, ChevronUp, Flag, LogOut, Save, Star, Wallet, Wrench } from "lucide-react";
+import { clamp } from "../utils/random.js";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
 import { HallOfFamePanel } from "../components/HallOfFamePanel.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
 import { BikeHero } from "../components/BikeHero.jsx";
+import { MyRidersPanel } from "../components/MyRidersPanel.jsx";
 import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
-import { CountryFlag } from "../components/CountryFlag.jsx";
-import { DevelopmentPanel } from "../components/Development.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
 import { teamDisplayName } from "../utils/teamNaming.js";
 import { StaffPanel } from "../components/StaffPanel.jsx";
@@ -16,11 +16,9 @@ import { SponsorsPanel } from "../components/SponsorsPanel.jsx";
 import { EconomyPanel } from "../components/EconomyPanel.jsx";
 import { AdvancedFreeAgentSearch, FreeAgentsPanel } from "../components/RiderMarket.jsx";
 import { DetailedStandingsPanel, SeasonArchivePanel, StandingsPanel } from "../components/Standings.jsx";
-import { RiderPhoto } from "../components/RiderPhoto.jsx";
-import { RiderNumber } from "../components/RiderNumber.jsx";
 import { TeamLogo } from "../components/TeamLogo.jsx";
 import { CircuitHero } from "../components/CircuitHero.jsx";
-import { AttrGrid, CheckerStrip, OverallBadge, Panel, PriorityAlertBanner, RiderNameButton } from "../components/UIPrimitives.jsx";
+import { CheckerStrip, Panel, PriorityAlertBanner } from "../components/UIPrimitives.jsx";
 import { WarehousePanel } from "../components/WarehousePanel.jsx";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
@@ -37,6 +35,26 @@ import { initWarehouse } from "../utils/warehouseEngine.js";
 
 export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onStartSportingDirectorUpgrade, onCancelScout, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
+  // Lifted out of EconomyPanel itself so the "Presupuesto" tap target
+  // in the Escudería summary card (below) can open it directly —
+  // see EconomyPanel.jsx's own comment on why it now accepts this as
+  // an optional controlled prop instead of managing it entirely
+  // internally.
+  const [economyExpanded, setEconomyExpanded] = useState(false);
+  // Same lifted-state pattern, for "Patrocinadores" — this one also
+  // needs a tab switch first, since (unlike Economía) it only exists
+  // on the Escudería tab, while "Mi moto" itself renders on both
+  // Inicio and Escudería.
+  const [sponsorsExpanded, setSponsorsExpanded] = useState(false);
+  const openSponsorsPanel = () => {
+    setSeasonTab("escuderia");
+    setSponsorsExpanded(true);
+    // The Escudería tab's content (and the sponsors-panel element
+    // itself) doesn't exist in the DOM until after this render commits
+    // — queue the scroll for right after, rather than looking for an
+    // element that isn't there yet.
+    setTimeout(() => document.getElementById("sponsors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
   const isSbkCalendarCategory = category === "superbikes" || category === "supersport" || category === "sportbike" || category === "worldwcr";
   // WorldWCR races on a narrower 6-round subset of Superbikes' own
   // 12-round calendar (see data/wcrCalendar.js) — everywhere below that
@@ -76,7 +94,6 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   const circuitProfile = isSbkCalendarCategory
     ? (superbikesRoundForDisplay != null ? SUPERBIKES_CIRCUIT_PROFILES[SUPERBIKES_ROUND_MAP[superbikesRoundForDisplay]] : CIRCUIT_PROFILES[round])
     : CIRCUIT_PROFILES[round];
-  const [showRiderDetails, setShowRiderDetails] = useState(false);
   const [seasonTab, setSeasonTab] = useState("inicio");
   const ridersNeeded = raceLineup(playerTeam).length || 1;
   const warehouse = playerTeam.warehouse || initWarehouse();
@@ -216,78 +233,11 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           )}
 
           <div className="mb-4">
-            <Panel
-              title="Mis pilotos"
-              icon={Gauge}
-              accent={accent}
-              onHeaderClick={() => setShowRiderDetails((v) => !v)}
-              headerRight={showRiderDetails ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}
-            >
-              {playerTeam.riders.map((r) => (
-                <div key={r.id} className="mb-3 pb-3 border-b last:border-0 last:mb-0 last:pb-0 flex gap-3" style={{ borderColor: COLORS.rule }}>
-                  <RiderPhoto rider={r} size={40} className="rounded-lg" />
-                  <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
-                      <RiderNameButton rider={r} onClick={() => openProfile(r, teamDisplayName(playerTeam), category)} />
-                      <OverallBadge value={overallRating(r)} accent={accent} />
-                    </span>
-                    <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
-                  </div>
-                  <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
-                  {r.injury && r.injury.gpRemaining > 0 && (
-                    <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
-                      <AlertTriangle size={11} />
-                      {r.injury.sidelined
-                        ? `Lesión ${r.injury.severityLabel} · vuelve en ${r.injury.gpRemaining} GP${r.injury.gpRemaining === 1 ? "" : "s"}${playerTeam.substitutes?.[r.id] ? ` · sustituto: ${playerTeam.substitutes[r.id].name}` : " · sin sustituto asignado"}`
-                        : `Lesión leve (${r.injury.gpRemaining} GP restante${r.injury.gpRemaining === 1 ? "" : "s"}) · rendimiento algo mermado`}
-                    </div>
-                  )}
-                  {showRiderDetails && (
-                    <div className="mt-2">
-                      <AttrGrid rider={r} accent={accent} />
-                      <div className="text-xs flex items-center gap-1 mt-1" style={{ color: COLORS.muted }}>
-                        <Star size={11} style={{ color: COLORS.gold }} /> PA {r.pa} · Valor €{(r.marketValue || 0).toLocaleString()}
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                </div>
-              ))}
-              {Object.entries(playerTeam.substitutes || {}).map(([ownerId, sub]) => {
-                const owner = playerTeam.riders.find((r) => r.id === ownerId);
-                return (
-                  <div key={sub.id} className="mb-3 pb-3 border-b last:border-0 last:mb-0 last:pb-0 flex gap-3" style={{ borderColor: COLORS.rule, background: "rgba(227,164,39,0.06)" }}>
-                    <RiderPhoto rider={sub} size={40} className="rounded-lg" />
-                    <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-semibold flex items-center gap-1.5">
-                        <RiderNameButton rider={sub} onClick={() => openProfile(sub, teamDisplayName(playerTeam), category)} />
-                        <OverallBadge value={overallRating(sub)} accent={accent} />
-                      </span>
-                      <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[sub.id]?.points ?? 0} pts</span>
-                    </div>
-                    <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.gold }}>
-                      <ArrowLeftRight size={11} /> Sustituto de {owner?.name || "piloto lesionado"}
-                    </div>
-                    {showRiderDetails && (
-                      <div className="mt-2">
-                        <AttrGrid rider={sub} accent={accent} />
-                        <div className="text-xs flex items-center gap-1 mt-1" style={{ color: COLORS.muted }}>
-                          <Star size={11} style={{ color: COLORS.gold }} /> PA {sub.pa} · {sub.age} años
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                  </div>
-                );
-              })}
-            </Panel>
+            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} />
           </div>
 
           <div className="mb-4">
-            <DevelopmentPanel playerTeam={playerTeam} budget={budget} startProject={startProject} accent={accent} scale={scale} onOpenPackageReview={onOpenPackageReview} />
+            <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} />
           </div>
 
           <StandingsPanel
@@ -316,74 +266,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </div>
           )}
           <div id="pilotos-mis-pilotos">
-          <Panel
-            title="Mis pilotos"
-            icon={Gauge}
-            accent={accent}
-            onHeaderClick={() => setShowRiderDetails((v) => !v)}
-            headerRight={showRiderDetails ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}
-          >
-            {playerTeam.riders.map((r) => (
-              <div key={r.id} className="mb-3 pb-3 border-b last:border-0 last:mb-0 last:pb-0 flex gap-3" style={{ borderColor: COLORS.rule }}>
-                <RiderPhoto rider={r} size={40} className="rounded-lg" />
-                <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-semibold flex items-center gap-1.5">
-                    <RiderNumber rider={r} size={26} categoryKey={category} plain alignStart />
-                    <RiderNameButton rider={r} onClick={() => openProfile(r, teamDisplayName(playerTeam), category)} />
-                    <OverallBadge value={overallRating(r)} accent={accent} />
-                  </span>
-                  <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[r.id]?.points ?? 0} pts</span>
-                </div>
-                <div className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}><CountryFlag nat={r.nat} width={16} /> {r.age} años · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}</div>
-                {r.injury && r.injury.gpRemaining > 0 && (
-                  <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.danger }}>
-                    <AlertTriangle size={11} />
-                    {r.injury.sidelined
-                      ? `Lesión ${r.injury.severityLabel} · vuelve en ${r.injury.gpRemaining} GP${r.injury.gpRemaining === 1 ? "" : "s"}${playerTeam.substitutes?.[r.id] ? ` · sustituto: ${playerTeam.substitutes[r.id].name}` : " · sin sustituto asignado"}`
-                      : `Lesión leve (${r.injury.gpRemaining} GP restante${r.injury.gpRemaining === 1 ? "" : "s"}) · rendimiento algo mermado`}
-                  </div>
-                )}
-                {showRiderDetails && (
-                  <div className="mt-2">
-                    <AttrGrid rider={r} accent={accent} />
-                    <div className="text-xs flex items-center gap-1 mt-1" style={{ color: COLORS.muted }}>
-                      <Star size={11} style={{ color: COLORS.gold }} /> PA {r.pa} · Valor €{(r.marketValue || 0).toLocaleString()}
-                    </div>
-                  </div>
-                )}
-                </div>
-              </div>
-            ))}
-            {Object.entries(playerTeam.substitutes || {}).map(([ownerId, sub]) => {
-              const owner = playerTeam.riders.find((r) => r.id === ownerId);
-              return (
-                <div key={sub.id} className="mb-3 pb-3 border-b last:border-0 last:mb-0 last:pb-0 flex gap-3" style={{ borderColor: COLORS.rule, background: "rgba(227,164,39,0.06)" }}>
-                  <RiderPhoto rider={sub} size={40} className="rounded-lg" />
-                  <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <RiderNameButton rider={sub} onClick={() => openProfile(sub, teamDisplayName(playerTeam), category)} />
-                      <OverallBadge value={overallRating(sub)} accent={accent} />
-                    </span>
-                    <span className="text-xs font-mono" style={{ color: accent }}>{riderStandings[sub.id]?.points ?? 0} pts</span>
-                  </div>
-                  <div className="text-xs mt-1 flex items-center gap-1" style={{ color: COLORS.gold }}>
-                    <ArrowLeftRight size={11} /> Sustituto de {owner?.name || "piloto lesionado"}
-                  </div>
-                  {showRiderDetails && (
-                    <div className="mt-2">
-                      <AttrGrid rider={sub} accent={accent} />
-                      <div className="text-xs flex items-center gap-1 mt-1" style={{ color: COLORS.muted }}>
-                        <Star size={11} style={{ color: COLORS.gold }} /> PA {sub.pa} · {sub.age} años
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                </div>
-              );
-            })}
-          </Panel>
+            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} />
           </div>
 
           <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
@@ -399,25 +282,67 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       {seasonTab === "escuderia" && (
         <div className="space-y-4">
           <Panel title="Escudería" icon={Wrench} accent={accent}>
-            <div className="flex items-center gap-3">
-              <TeamLogo team={playerTeam} size={64} className="rounded-lg" />
-              <div className="flex-1">
-                <div className="text-lg font-bold" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
-                <div className="text-xs" style={{ color: COLORS.muted }}>{CATEGORY_DATA[category].label} · {playerTeam.tier}{playerTeam.manufacturer ? ` · ${playerTeam.manufacturer}` : ""}</div>
-                {playerTeam.expectation && (
-                  <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Expectativa: <span className="font-mono font-bold" style={{ color: accent }}>{playerTeam.expectation.label}</span></div>
-                )}
-                <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>Prestigio: <span className="font-mono font-bold" style={{ color: accent }}>{Number.isFinite(playerTeam.prestige) ? `${playerTeam.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span></div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Presupuesto</div>
-                <div className="text-xl font-mono" style={{ color: budget < 0 ? COLORS.danger : accent }}>€{Math.round(budget).toLocaleString()}</div>
+            <div className="flex items-start gap-4 mb-4">
+              <TeamLogo team={playerTeam} size={72} className="rounded-lg flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xl sm:text-2xl font-bold leading-tight mb-2" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(playerTeam)}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>{CATEGORY_DATA[category].label}</span>
+                  {playerTeam.tier && (
+                    <span className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>{playerTeam.tier}</span>
+                  )}
+                  {playerTeam.manufacturer && (
+                    <span className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: `${accent}1F`, border: `1px solid ${accent}55`, color: accent }}>{playerTeam.manufacturer}</span>
+                  )}
+                </div>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4" style={{ borderTop: `1px solid ${COLORS.rule}` }}>
+              {playerTeam.expectation && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: COLORS.muted }}>Expectativa</div>
+                  <div className="text-2xl font-bold mb-1.5" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>{playerTeam.expectation.label}</div>
+                  <div className="h-1.5 rounded-full w-full" style={{ background: COLORS.rule }}>
+                    <div className="h-1.5 rounded-full" style={{ width: `${clamp(1 - (playerTeam.expectation.min - 1) / Math.max(1, (rivalTeams?.length || 0)), 0, 1) * 100}%`, background: accent }} />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: COLORS.muted }}>Prestigio</div>
+                <div className="text-2xl font-bold mb-1.5" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>
+                  {Number.isFinite(playerTeam.prestige) ? playerTeam.prestige : "—"}
+                  <span className="text-sm font-normal" style={{ color: COLORS.muted }}> / {PRESTIGE_SCALE_MAX}</span>
+                </div>
+                <div className="h-1.5 rounded-full w-full" style={{ background: COLORS.rule }}>
+                  <div className="h-1.5 rounded-full" style={{ width: `${clamp((playerTeam.prestige || 0) / PRESTIGE_SCALE_MAX, 0, 1) * 100}%`, background: accent }} />
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setEconomyExpanded(true);
+                  document.getElementById("economy-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="flex items-center gap-3 text-left rounded-lg -m-1 p-1 transition-colors"
+                style={{ background: "transparent" }}
+              >
+                <div className="flex-1">
+                  <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: COLORS.muted }}>Presupuesto</div>
+                  <div className="text-2xl font-bold" style={{ fontFamily: "Rajdhani, sans-serif", color: budget < 0 ? COLORS.danger : accent }}>€{Math.round(budget).toLocaleString()}</div>
+                </div>
+                <Wallet size={28} style={{ color: accent }} className="flex-shrink-0" />
+              </button>
+            </div>
           </Panel>
-          <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} />
-          <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} playerTeam={playerTeam} round={round} seasonNumber={seasonNumber} />
-          <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} onSearchSponsor={onSearchSponsor} onCancelSearchSponsor={onCancelSearchSponsor} onCancelSponsorContract={onCancelSponsorContract} accent={accent} />
+          <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} />
+          <div id="economy-panel">
+            <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} playerTeam={playerTeam} round={round} seasonNumber={seasonNumber} expanded={economyExpanded} onToggleExpanded={setEconomyExpanded} />
+          </div>
+          <div id="sponsors-panel">
+            <SponsorsPanel playerTeam={playerTeam} onChooseSponsorOffer={onChooseSponsorOffer} onSearchSponsor={onSearchSponsor} onCancelSearchSponsor={onCancelSearchSponsor} onCancelSponsorContract={onCancelSponsorContract} accent={accent} expanded={sponsorsExpanded} onToggleExpanded={setSponsorsExpanded} />
+          </div>
           <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
           <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
           <SportingDirectorPanel playerTeam={playerTeam} categoryKey={category} seasonNumber={seasonNumber} freeAgents={freeAgents} budget={budget} onStartUpgrade={onStartSportingDirectorUpgrade} onCancelScout={onCancelScout} onOpenRiderProfileById={onOpenRiderProfileById} accent={accent} scale={scale} />

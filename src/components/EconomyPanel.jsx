@@ -82,8 +82,16 @@ function StatRow({ label, value, muted }) {
  * pre-asignados por área (aquí no se reservan de antemano, así que se
  * muestra el gasto real acumulado en su lugar).
  */
-export function EconomyPanel({ lastEconomySummary, seasonEconomyTotals, economyLog, budget, accent, playerTeam, round, seasonNumber }) {
-  const [expanded, setExpanded] = useState(false);
+export function EconomyPanel({ lastEconomySummary, seasonEconomyTotals, economyLog, budget, accent, playerTeam, round, seasonNumber, expanded: expandedProp, onToggleExpanded }) {
+  // Bug fixed (feature): expanded state used to be entirely internal,
+  // with no way for another panel (see the new "Presupuesto" tap
+  // target in the Escudería summary card) to open this one directly.
+  // Controlled from outside when expanded/onToggleExpanded are given;
+  // falls back to its own internal state otherwise, so nothing else
+  // that might render this panel elsewhere breaks.
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = expandedProp ?? internalExpanded;
+  const setExpanded = onToggleExpanded ?? setInternalExpanded;
   const log = economyLog || [];
   const thisSeasonLog = log.filter((e) => e.seasonNumber === seasonNumber);
   const recentLog = [...log].reverse().slice(0, 8);

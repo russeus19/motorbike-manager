@@ -103,10 +103,11 @@ export function CheckerStrip({ accent, solid = false }) {
 }
 
 
-export function OverallBadge({ value, accent }) {
+export function OverallBadge({ value, accent, size }) {
+  const big = size === "lg";
   return (
-    <span className="inline-flex items-center justify-center rounded font-mono text-xs font-bold px-1.5 py-0.5"
-      style={{ background: accent, color: "#12151A", minWidth: 28 }}>
+    <span className={`inline-flex items-center justify-center rounded font-mono font-bold ${big ? "text-base px-2 py-1" : "text-xs px-1.5 py-0.5"}`}
+      style={{ background: accent, color: "#12151A", minWidth: big ? 36 : 28 }}>
       {value}
     </span>
   );

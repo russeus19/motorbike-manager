@@ -4,6 +4,7 @@ import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { RiderNumber } from "./RiderNumber.jsx";
 import { TeamLogo } from "./TeamLogo.jsx";
+import { RiderRadarChart } from "./RiderRadarChart.jsx";
 import { AttrGrid, RiderActionButton } from "./UIPrimitives.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
@@ -46,6 +47,7 @@ function tagLabel(tag) {
   if (tag.type === "sprintSpecialist") return "Especialista en sprints";
   if (tag.type === "qualifyingSpecialist") return "Clasificador nato";
   if (tag.type === "mentalLimit") return "Al límite mental";
+  if (tag.type === "glassBody") return "De cristal";
   if (tag.type === "comeback") return "De menos a más";
   if (tag.type === "regularidad") return "Míster Regularidad";
   return tag.label || "Habilidad especial";
@@ -63,6 +65,7 @@ function tagDescription(tag) {
   if (tag.type === "sprintSpecialist") return "+4% de rendimiento en el Sprint (o la Superpole Race en Superbikes). No afecta en la carrera principal.";
   if (tag.type === "qualifyingSpecialist") return "+4% de rendimiento en la clasificación. No afecta en carrera.";
   if (tag.type === "mentalLimit") return "+5% de probabilidad de caída cuando su moral esté Baja o Muy baja. Sin efecto con la moral en Normal o por encima.";
+  if (tag.type === "glassBody") return "Un cuerpo más frágil de lo normal, ya sea de forma natural o por el desgaste de operaciones pasadas: +5% de probabilidad de que una caída derive en una lesión grave, en vez de algo más leve.";
   if (tag.type === "comeback") return "Cuanto peor sale de parrilla, mejor remonta: hasta +5% de rendimiento en carrera si sale muy atrás. Sin efecto si sale entre las 3 primeras posiciones.";
   if (tag.type === "regularidad") return "-4% de probabilidad de caída cuando su moral esté Normal, Alta o Muy alta. Sin efecto con la moral en Baja o Muy baja.";
   return tag.description || "Aporta una ventaja concreta en una situación determinada.";
@@ -293,7 +296,7 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {rider.tags.map((tag, i) => {
-                    const isRisk = tag.type === "mentalLimit";
+                    const isRisk = tag.type === "mentalLimit" || tag.type === "glassBody";
                     const tagColor = isRisk ? COLORS.danger : accent;
                     return (
                       <button key={i} onClick={() => setExpandedTag(expandedTag === i ? null : i)}
@@ -306,12 +309,24 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
                 </div>
                 {expandedTag !== null && rider.tags[expandedTag] && (
                   <div className="mt-2 rounded-md p-2.5 text-xs flex items-start gap-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, color: COLORS.text }}>
-                    <Info size={13} style={{ color: rider.tags[expandedTag].type === "mentalLimit" ? COLORS.danger : accent, flexShrink: 0, marginTop: 1 }} />
+                    <Info size={13} style={{ color: (rider.tags[expandedTag].type === "mentalLimit" || rider.tags[expandedTag].type === "glassBody") ? COLORS.danger : accent, flexShrink: 0, marginTop: 1 }} />
                     {tagDescription(rider.tags[expandedTag])}
                   </div>
                 )}
               </div>
             )}
+
+            {/* Moved here from the "Mis pilotos" panel — as a small
+                inline hexagon next to a whole roster of riders it read
+                as too large for what it added; the same chart at a
+                bigger, more legible size fits naturally here instead,
+                as a quick visual summary right below the attribute
+                bars already shown above. */}
+            <div className="mt-4 flex justify-center">
+              <div style={{ maxWidth: 240 }}>
+                <RiderRadarChart rider={rider} accent={accent} size={220} />
+              </div>
+            </div>
           </>
         )}
 

@@ -118,7 +118,7 @@ export function canStartScoutMission(team, riderId, riderCategoryKey) {
 export function startScoutMission(team, rider, riderCategoryKey) {
   const tier = sportingDirectorTierFor(ensureSportingDirector(team).level);
   const cost = riderCategoryKey === team.categoryKey ? 0 : SCOUT_OUT_OF_CATEGORY_COST;
-  const mission = { riderId: rider.id, riderName: rider.name, categoryKey: riderCategoryKey, weeksRemaining: tier.weeksPerReport, totalWeeks: tier.weeksPerReport };
+  const mission = { riderId: rider.id, riderName: rider.name, riderPhotoId: rider.photoId ?? rider.id, riderNat: rider.nat, riderAge: rider.age, riderGender: rider.gender, categoryKey: riderCategoryKey, weeksRemaining: tier.weeksPerReport, totalWeeks: tier.weeksPerReport };
   return {
     ...team,
     budget: (team.budget ?? 0) - cost,
@@ -169,6 +169,10 @@ export function generateScoutReport(rider, team, priorReport, categoryKey = null
   const hi = clamp(Math.round(truePotential + halfWidth), 1, 100);
   return {
     riderName: rider.name,
+    riderPhotoId: rider.photoId ?? rider.id,
+    riderNat: rider.nat,
+    riderAge: rider.age,
+    riderGender: rider.gender,
     categoryKey: categoryKey ?? priorReport?.categoryKey ?? null,
     potentialRange: [lo, hi],
     reportsCount: priorReportsCount + 1,

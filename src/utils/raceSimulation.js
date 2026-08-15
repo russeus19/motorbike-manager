@@ -79,6 +79,18 @@ export function buildEntries(teamsList) {
 }
 
 
+/** "De cristal" special-skill tag: a rider whose body simply doesn't
+ * hold up as well — genuinely more fragile physically, or worn down
+ * by one surgery too many. Flat +5 percentage points added directly
+ * onto the "grave" severity weight whenever an injury is rolled at
+ * all (see rollInjury below) — same flat-bonus pattern as "Al límite
+ * mental"'s own +5 on dnfChance, just landing on a different roll.
+ * Always on, unlike "Al límite mental" — this isn't mood-dependent,
+ * it's a standing physical trait. */
+function hasGlassBodyPenalty(rider) {
+  return (rider.tags || []).some((t) => t.type === "glassBody");
+}
+
 export function rollInjury(r, circuit, isWet, roundsLeftInSeason) {
   const speedFactor = circuit ? clamp((circuit.mainStraightM - 700) / 500, -0.25, 0.6) : 0;
   const ageFactor = r.age >= 33 ? 0.15 : r.age >= 29 ? 0.05 : -0.05;
@@ -93,7 +105,7 @@ export function rollInjury(r, circuit, isWet, roundsLeftInSeason) {
     none: noneWeight,
     leve: remainder * (20 / 30),
     moderada: remainder * (7 / 30),
-    grave: remainder * (2 / 30),
+    grave: remainder * (2 / 30) + (hasGlassBodyPenalty(r) ? 5 : 0),
     muyGrave: remainder * (1 / 30),
   };
   const severity = weightedPick(weights);
