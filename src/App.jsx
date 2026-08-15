@@ -8,6 +8,11 @@ import { NotificationCenterModal } from "./components/NotificationCenter.jsx";
 import { RiderProfileModal } from "./components/RiderProfileModal.jsx";
 import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
 import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
+import { ManufacturerProfileModal } from "./components/ManufacturerProfileModal.jsx";
+import { ManufacturerNegotiationScreen } from "./components/ManufacturerNegotiationScreen.jsx";
+import { applyManufacturerRequestSuccess, tickManufacturerContract, applyPendingManufacturerSwitch } from "./utils/manufacturerNegotiation.js";
+import { SeatSelectionScreen } from "./components/SeatSelectionScreen.jsx";
+import { snapshotFactoryBikes, advanceMotoGpCustomerQueue, DEFAULT_MOTOGP_BIKE_TIERS, reassignCustomerTopSeats, candidateSeatsByManufacturer, motoGpDevScaleFor, bikeForSeat } from "./data/motogpBikeTiers.js";
 import { NegotiationScreen } from "./components/NegotiationScreen.jsx";
 import { TeamNegotiationScreen } from "./components/TeamNegotiationScreen.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
@@ -181,6 +186,9 @@ export default function MotorbikeManager() {
   const [teamNegotiationTarget, setTeamNegotiationTarget] = useState(null); // { rider, categoryKey, sellingTeam } | null
   const [openPackageId, setOpenPackageId] = useState(null);
   const [teamProfileTarget, setTeamProfileTarget] = useState(null);
+  const [manufacturerProfileTarget, setManufacturerProfileTarget] = useState(null);
+  const [manufacturerNegotiationOpen, setManufacturerNegotiationOpen] = useState(false);
+  const [pendingSeatSelection, setPendingSeatSelection] = useState(null);
   const [topProfileModal, setTopProfileModal] = useState(null);
   const [preseasonState, setPreseasonState] = useState(null);
 
@@ -248,6 +256,30 @@ export default function MotorbikeManager() {
   const setPlayerTeam = makeFieldSetter("playerTeam");
   const setRivalTeams = makeFieldSetter("rivalTeams");
   const setOtherCategories = makeFieldSetter("otherCategories");
+  // MotoGP-only: manufacturer name -> that manufacturer's factory bike
+  // attributes, frozen at the exact moment each season closes — the
+  // real source of truth for the "previous"-tier seats (see
+  // data/motogpBikeTiers.js), which are meant to be genuinely last
+  // year's factory spec, not a live approximation. Captured once per
+  // season transition, right before the new season's bikes are set —
+  // see runSeasonTransition's own snapshotFactoryBikes call below.
+  const manufacturerPreviousBikes = game?.manufacturerPreviousBikes ?? {};
+  const setManufacturerPreviousBikes = makeFieldSetter("manufacturerPreviousBikes");
+  // MotoGP-only: manufacturer name -> queued factory dev packages
+  // waiting out their 2-GP delay before reaching that manufacturer's
+  // customerTop teams — see data/motogpBikeTiers.js's own
+  // advanceMotoGpCustomerQueue for the whole mechanic.
+  const manufacturerCustomerQueue = game?.manufacturerCustomerQueue ?? {};
+  // The LIVE seat-tier layout — starts identical to
+  // DEFAULT_MOTOGP_BIKE_TIERS but can be reshuffled by
+  // reassignCustomerTopSeats at each season's close (see
+  // runSeasonTransition). Every motogpBikeTiers.js function already
+  // defaults to DEFAULT_MOTOGP_BIKE_TIERS on its own, so a save from
+  // before this field existed just keeps behaving exactly as it did —
+  // this is only ever passed explicitly once reassignment is
+  // actually in play.
+  const motogpSeatTiers = game?.motogpSeatTiers ?? DEFAULT_MOTOGP_BIKE_TIERS;
+  const setMotogpSeatTiers = makeFieldSetter("motogpSeatTiers");
   const setFreeAgents = makeFieldSetter("freeAgents");
   const setRound = makeFieldSetter("round");
   const setSeasonNumber = makeFieldSetter("seasonNumber");
@@ -330,6 +362,86 @@ export default function MotorbikeManager() {
     setTopProfileModal("team");
   }
 
+  /* All of one category's teams, regardless of whether that's the
+     player's own currently-active category (playerTeam + rivalTeams)
+     or a background one (otherCategories[catKey].teams) — the same
+     "which bucket is this category's roster actually in" check
+     findTeamById already does, just returning the whole list instead
+     of searching it for one id. */
+  function allTeamsInCategory(catKey) {
+    if (catKey === category) return [playerTeam, ...rivalTeams].filter(Boolean);
+    return otherCategories[catKey]?.teams || [];
+  }
+
+  function openManufacturerProfile(manufacturer, categoryKey) {
+    setManufacturerProfileTarget({ manufacturer, categoryKey });
+    setTopProfileModal("manufacturer");
+  }
+
+  /* Called once the manufacturer negotiation screen has its own
+     answer — only a "favorable" outcome actually changes anything
+     (see applyManufacturerRequestSuccess's own comment for what each
+     request type does); anything else is just a "no" the player
+     already saw play out in the dialogue, nothing further to apply
+     here. Deliberately only ever acts on the player's OWN team — the
+     AI's satellite teams don't run this same negotiation flow at all
+     yet (see this session's own earlier design notes: "IA activa"
+     for the seat-tier side of things is already built into
+     reassignCustomerTopSeats, but the manufacturer-conversation UI
+     itself is a player-facing tool only, for now). */
+  function resolveManufacturerRequest(requestType, outcome, targetManufacturer) {
+    if (!outcome) return;
+    const { team, motogpSeatTiers: nextTiers } = applyManufacturerRequestSuccess(requestType, playerTeam, motogpSeatTiers, category, targetManufacturer);
+    setPlayerTeam(() => team);
+    setMotogpSeatTiers(nextTiers);
+  }
+
+  /* The player's own choice from SeatSelectionScreen, overriding
+     whatever reassignCustomerTopSeats already applied automatically
+     as the default a moment earlier in runSeasonTransition — selected
+     is a Set of "teamName::seatIndex" keys (exactly customerTopSlots
+     of them, enforced by the screen itself), everyone else in that
+     manufacturer's own candidate pool goes to "previous". */
+  function confirmSeatSelection(selectedKeys) {
+    if (!pendingSeatSelection) return;
+    setMotogpSeatTiers((tiers) => {
+      const next = { ...tiers };
+      pendingSeatSelection.candidates.forEach((c) => {
+        const key = `${c.teamName}::${c.seatIndex}`;
+        const tier = selectedKeys.has(key) ? "customerTop" : "previous";
+        next[c.teamName] = (next[c.teamName] || []).map((t, i) => (i === c.seatIndex ? tier : t));
+      });
+      return next;
+    });
+    // Bug fixed: same reasoning as reassignCustomerTopSeats' own
+    // comment — a seat the player just promoted here needs its bike
+    // synced to the factory's own current spec too, not left carrying
+    // over whatever it had before. This screen only ever shows for
+    // the player controlling the manufacturer's OWN factory team, so
+    // playerTeam.bike IS that reference value directly.
+    const promotedTeamNames = new Set(
+      pendingSeatSelection.candidates
+        .filter((c) => selectedKeys.has(`${c.teamName}::${c.seatIndex}`) && c.tier !== "customerTop")
+        .map((c) => c.teamName)
+    );
+    if (promotedTeamNames.size) {
+      setRivalTeams((prev) => prev.map((t) => (promotedTeamNames.has(t.name) ? { ...t, bike: playerTeam.bike } : t)));
+    }
+    setPendingSeatSelection(null);
+  }
+
+  /* Recomputed live every render, same reasoning as
+     resolveLiveTeamProfileTarget below — a manufacturer's own roster
+     within a category isn't a single id to look up, it's "every team
+     in this category whose .manufacturer matches", so there's nothing
+     to store beyond the manufacturer name + category itself. */
+  function resolveLiveManufacturerProfileTarget() {
+    if (!manufacturerProfileTarget) return null;
+    const { manufacturer, categoryKey } = manufacturerProfileTarget;
+    const teams = allTeamsInCategory(categoryKey).filter((t) => t.manufacturer === manufacturer);
+    return { manufacturer, categoryKey, teams };
+  }
+
   /* Same idea as resolveLiveProfileTarget: re-resolve the team by id
      against live state every render so budget/development/roster changes
      show up immediately without needing to close and reopen the modal. */
@@ -337,14 +449,15 @@ export default function MotorbikeManager() {
     if (!teamProfileTarget) return null;
     const { teamId, categoryKey } = teamProfileTarget;
     if (categoryKey === category) {
-      if (playerTeam && playerTeam.id === teamId) return { team: playerTeam, categoryKey };
+      const seasonStats = { riderStandings, riderWins, riderPodiums, seasonNumber };
+      if (playerTeam && playerTeam.id === teamId) return { team: playerTeam, categoryKey, ...seasonStats };
       const rival = rivalTeams.find((t) => t.id === teamId);
-      if (rival) return { team: rival, categoryKey };
+      if (rival) return { team: rival, categoryKey, ...seasonStats };
     }
     const catState = otherCategories[categoryKey];
     if (catState) {
       const found = catState.teams.find((t) => t.id === teamId);
-      if (found) return { team: found, categoryKey };
+      if (found) return { team: found, categoryKey, riderStandings: catState.riderStandings, riderWins: catState.riderWins, riderPodiums: catState.riderPodiums, seasonNumber: catState.seasonNumber ?? seasonNumber };
     }
     return null;
   }
@@ -1287,13 +1400,22 @@ export default function MotorbikeManager() {
     const fromTeam = findTeamOwningRider(rider.id, categoryKey);
     const isRenewal = fromTeam?.id === "player";
     const isUnemployed = !fromTeam;
+    // If the negotiation screen offered a specific MotoGP seat tier
+    // (see NegotiationScreen.jsx's own isSplitMotoGpTeam comment),
+    // score against THAT tier's real bike, not the team's flat
+    // average — a promise of the better of your two seats should
+    // actually read as a better offer, not the same number either way.
+    const offeredBikeAvg = riderTerms.bikeTier
+      ? bikeAvg(bikeForSeat(playerTeam, motogpSeatTiers[playerTeam.name]?.findIndex((t) => t === riderTerms.bikeTier) ?? 0, categoryKey, manufacturerPreviousBikes, motogpSeatTiers))
+      : bikeAvg(playerTeam.bike);
     const ctx = {
       fromCategoryKey: rider._fromCategoryKey || categoryKey,
-      bikeAvgOffered: bikeAvg(playerTeam.bike),
-      currentBikeAvg: fromTeam ? bikeAvg(fromTeam.bike) : bikeAvg(playerTeam.bike),
+      bikeAvgOffered: offeredBikeAvg,
+      currentBikeAvg: fromTeam ? bikeAvg(fromTeam.bike) : offeredBikeAvg,
       isUnemployed,
       seasonsUnsigned: rider.seasonsUnsigned || 0,
       isRenewal,
+      years: riderTerms.years,
     };
     const { zone } = negotiationThermometer(rider, playerTeam, categoryKey, riderTerms.salary, ctx);
 
@@ -1974,11 +2096,17 @@ export default function MotorbikeManager() {
     });
 
     poolRef.pool = poolRef.pool.map(decrementFreeAgentInjury);
+    // MotoGP-only: this week's customerTop package delivery/enqueue
+    // pass — see advanceMotoGpCustomerQueue's own comment. Runs
+    // regardless of which category is actually played; it finds
+    // MotoGP's teams itself wherever they currently live.
+    const queueResult = advanceMotoGpCustomerQueue(playerAfterRenewals, rivalsAfterRenewals, nextOtherAfterRenewals, category, round, manufacturerCustomerQueue, motogpSeatTiers, notifQueue);
     setGame((g) => (g ? {
       ...g,
-      playerTeam: playerAfterRenewals,
-      rivalTeams: rivalsAfterRenewals,
-      otherCategories: nextOtherAfterRenewals,
+      playerTeam: queueResult.playerTeam,
+      rivalTeams: queueResult.rivalTeams,
+      otherCategories: queueResult.otherCategories,
+      manufacturerCustomerQueue: queueResult.manufacturerCustomerQueue,
       freeAgents: poolRef.pool,
       marketRumors: marketTick.marketRumors,
       marketNegotiations: marketTick.marketNegotiations,
@@ -2543,6 +2671,12 @@ export default function MotorbikeManager() {
       net: prevTotals.net + netThisGp,
     };
 
+    // MotoGP-only: same weekly customerTop delivery/enqueue pass as
+    // the rest-week path above — a race week is still a week, this
+    // still needs to happen regardless of whether MotoGP itself is
+    // the one racing right now.
+    const queueResult = advanceMotoGpCustomerQueue(playerTeamAfterSponsors, rivalsAfterRenewals, nextOtherCategoriesAfterRenewals, category, round, manufacturerCustomerQueue, motogpSeatTiers, notifQueue);
+
     setGame((g) => (g ? {
       ...g,
       lastResult: { circuitName, circuitProfile, isWet, category, results: gpResultsByCategory, classificationByCategory, arrivals, fastestLapByCategory },
@@ -2554,9 +2688,10 @@ export default function MotorbikeManager() {
       lastEconomySummary,
       seasonEconomyTotals,
       economyLog: [...(g.economyLog || []).slice(-99), { round, seasonNumber: g.seasonNumber, label: `GP: ${circuitName}`, amount: netThisGp }],
-      playerTeam: playerTeamAfterSponsors,
-      rivalTeams: rivalsAfterRenewals,
-      otherCategories: nextOtherCategoriesAfterRenewals,
+      playerTeam: queueResult.playerTeam,
+      rivalTeams: queueResult.rivalTeams,
+      otherCategories: queueResult.otherCategories,
+      manufacturerCustomerQueue: queueResult.manufacturerCustomerQueue,
       freeAgents: poolRef.pool,
       notifications: mergeNotificationItems(g.notifications, notifQueue, category),
       pendingSubstitution: newPendingSub,
@@ -2868,6 +3003,28 @@ export default function MotorbikeManager() {
       playerTeam: playerTeamAfterReleases, rivalTeams: ctxRivalTeams, otherCategories: ctxOtherCategories, category: ctxCategory, marketNegotiations, standingsByCategory, freeAgents,
     });
     const playerTeamResolved = afterNegotiations.playerTeam;
+    // A MotoGP signing that promised a specific seat tier (see
+    // NegotiationScreen.jsx's own isSplitMotoGpTeam comment) needs
+    // that promise honored once the rider actually lands on the
+    // roster — riderTerms carries bikeTier straight through
+    // createNegotiation untouched, so every confirmed "signing"
+    // negotiation with one set just needs its rider's new index
+    // found and written into the tier map. Merged into
+    // motogpSeatTiersForReassignment's own starting point further
+    // below, rather than applied here directly, since that's the one
+    // place this whole function funnels every other MotoGP seat-tier
+    // change through before the final setMotogpSeatTiers call.
+    const motogpSeatTierPromises = {};
+    if (ctxCategory === "motogp") {
+      (marketNegotiations || []).forEach((neg) => {
+        if (neg.kind !== "signing" || neg.status !== "confirmed" || neg.toTeamId !== "player" || !neg.riderTerms?.bikeTier) return;
+        const idx = playerTeamResolved.riders.findIndex((r) => r.id === neg.riderId);
+        if (idx < 0) return;
+        motogpSeatTierPromises[playerTeamResolved.name] = [...(motogpSeatTierPromises[playerTeamResolved.name] || motogpSeatTiers[playerTeamResolved.name] || [])];
+        motogpSeatTierPromises[playerTeamResolved.name][idx] = neg.riderTerms.bikeTier;
+      });
+    }
+
     const evolvedRivalsSource = afterNegotiations.rivalTeams;
     const otherCategoriesResolved = afterNegotiations.otherCategories;
     const standingsByCategoryForPool = { [ctxCategory]: riderStandings };
@@ -3107,7 +3264,7 @@ export default function MotorbikeManager() {
     // discarded the player's own team-prestige evolution every single
     // season (rivals never had this problem, since evolvedRivals was
     // already sourced from combinedPlayedCategory). ---
-    const rolledPlayerTeamBase = rolloverBike(playerAfterSponsorSeasonEnd, ctxCategory);
+    const rolledPlayerTeamBase = rolloverBike(playerAfterSponsorSeasonEnd, ctxCategory, motoGpDevScaleFor(playerAfterSponsorSeasonEnd, ctxCategory, motogpSeatTiers));
     // Bug fixed (feature, really): Investigación (kind: "research")
     // and Factory/Staff upgrades that were still counting down purely
     // because the season ran out of Grands Prix used to just sit there
@@ -3126,9 +3283,9 @@ export default function MotorbikeManager() {
           : `La mejora de ${labels[a.kind]} se completa durante la pretemporada — nuevo nivel: ${a.newLevel}.`,
       })));
     }
-    evolvedRivals = evolvedRivals.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), ctxCategory)).team);
+    evolvedRivals = evolvedRivals.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), ctxCategory, motoGpDevScaleFor(t, ctxCategory, motogpSeatTiers))).team);
     Object.keys(nextOther).forEach((key) => {
-      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), key)).team) };
+      nextOther[key] = { ...nextOther[key], teams: nextOther[key].teams.map((t) => completeAllPendingResearchAndFacilities(rolloverBike(aiResolvePrototypes(t), key, motoGpDevScaleFor(t, key, motogpSeatTiers))).team) };
     });
 
     // --- Season-boundary validation: guarantees every team — the
@@ -3225,6 +3382,98 @@ export default function MotorbikeManager() {
     });
     pushNotifications(seasonNotifs);
 
+    // MotoGP-only: freeze this closing season's factory bikes before
+    // the new season's rolled-over ones replace them below — see
+    // data/motogpBikeTiers.js's own comment on why "previous"-tier
+    // seats need a real snapshot rather than a live approximation.
+    // Whichever of these three buckets MotoGP actually lives in this
+    // particular save (played category, a rival in it, or a
+    // background one) is covered without needing to know which one
+    // in advance.
+    const motogpTeamsForSnapshot = ctxCategory === "motogp"
+      ? [finalPlayerTeamWithExpectation, ...evolvedRivals]
+      : finalOther.motogp?.teams || [];
+    if (motogpTeamsForSnapshot.length) {
+      setManufacturerPreviousBikes(snapshotFactoryBikes(motogpTeamsForSnapshot));
+    }
+
+    // Any successful "sondear otras marcas" from this season is
+    // consumed here, applied directly to the REAL final team objects
+    // (not a scoring-only copy) so the manufacturer change actually
+    // persists into the saved game — motogpSeatTiersForReassignment
+    // tracks whatever tier map results from it, since a switch
+    // rewrites that team's own row in the map too (see
+    // utils/manufacturerNegotiation.js's own
+    // applyPendingManufacturerSwitch comment).
+    let motogpSeatTiersForReassignment = { ...motogpSeatTiers, ...motogpSeatTierPromises };
+    const applySwitch = (team) => {
+      const { team: nextTeam, tiersMap } = applyPendingManufacturerSwitch(team, motogpSeatTiersForReassignment);
+      motogpSeatTiersForReassignment = tiersMap;
+      return nextTeam;
+    };
+    if (ctxCategory === "motogp") {
+      finalPlayerTeamWithExpectation = applySwitch(finalPlayerTeamWithExpectation);
+      evolvedRivals = evolvedRivals.map(applySwitch);
+    } else if (finalOther.motogp) {
+      finalOther.motogp = { ...finalOther.motogp, teams: finalOther.motogp.teams.map(applySwitch) };
+    }
+
+    // MotoGP-only: who actually holds each manufacturer's customerTop
+    // seats for NEXT season — see reassignCustomerTopSeats's own
+    // comment for the full scoring. Built from the same
+    // just-updated final team objects above (post-switch, so a team
+    // that just changed manufacturer is scored against its new
+    // marca's own candidate pool, not its old one) — riderStandings
+    // here is still this function's own closing-season tally too,
+    // not yet reset to the fresh zeros a few lines below, so
+    // performance is still judged on who actually raced this season.
+    const motogpTeamsForReassignment = ctxCategory === "motogp"
+      ? [finalPlayerTeamWithExpectation, ...evolvedRivals]
+      : finalOther.motogp?.teams || [];
+    if (motogpTeamsForReassignment.length) {
+      // Always applied first, as the default — this is what an
+      // AI-controlled factory team gets, silently, exactly as before.
+      // A player who controls the factory team making this exact call
+      // gets asked about it too (see below) — SeatSelectionScreen's
+      // own default selection matches this automatic pass, so
+      // confirming it without changes produces the identical result.
+      const { nextTiers, bikeUpdates } = reassignCustomerTopSeats(motogpSeatTiersForReassignment, motogpTeamsForReassignment, riderStandings);
+      setMotogpSeatTiers(nextTiers);
+      // Bug fixed: a seat newly promoted to customerTop used to keep
+      // whatever bike it already had — see reassignCustomerTopSeats'
+      // own comment. Applied directly to the real final team objects
+      // (the same ones setPlayerTeam/setRivalTeams/setOtherCategories
+      // save at the end of this function), same pattern as the
+      // manufacturer-switch and seat-tier-promise handling just above.
+      const syncBike = (team) => (bikeUpdates[team.name] ? { ...team, bike: bikeUpdates[team.name] } : team);
+      if (ctxCategory === "motogp") {
+        finalPlayerTeamWithExpectation = syncBike(finalPlayerTeamWithExpectation);
+        evolvedRivals = evolvedRivals.map(syncBike);
+      } else if (finalOther.motogp) {
+        finalOther.motogp = { ...finalOther.motogp, teams: finalOther.motogp.teams.map(syncBike) };
+      }
+
+      const byManufacturer = candidateSeatsByManufacturer(motogpSeatTiersForReassignment, motogpTeamsForReassignment, riderStandings);
+      const playerIsFactory = ctxCategory === "motogp" && motogpSeatTiersForReassignment[finalPlayerTeamWithExpectation.name]?.every((t) => t === "factory");
+      const candidates = playerIsFactory ? byManufacturer[finalPlayerTeamWithExpectation.manufacturer] : null;
+      if (candidates?.length) {
+        setPendingSeatSelection({ manufacturer: finalPlayerTeamWithExpectation.manufacturer, candidates });
+      }
+    }
+
+    // Same "who's actually MotoGP right now" split as the two blocks
+    // just above — a satellite's manufacturer contract ticks down by
+    // one year every season transition, regardless of which of the
+    // three buckets MotoGP currently lives in. tickManufacturerContract
+    // itself is a no-op for anything that isn't a restricted MotoGP
+    // satellite, so this is safe to map over every team unconditionally.
+    if (ctxCategory === "motogp") {
+      finalPlayerTeamWithExpectation = tickManufacturerContract(finalPlayerTeamWithExpectation, ctxCategory);
+      evolvedRivals = evolvedRivals.map((t) => tickManufacturerContract(t, ctxCategory));
+    } else if (finalOther.motogp) {
+      finalOther.motogp = { ...finalOther.motogp, teams: finalOther.motogp.teams.map((t) => tickManufacturerContract(t, "motogp")) };
+    }
+
     setCategory(ctxCategory);
     setPlayerTeam(() => finalPlayerTeamWithExpectation);
     setRivalTeams(evolvedRivals);
@@ -3308,7 +3557,7 @@ export default function MotorbikeManager() {
 
       {phase === "season" && playerTeam && (
         <SeasonScreen
-          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, lastEconomySummary, seasonEconomyTotals, economyLog, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenPackageReview: setOpenPackageId, onStartQualifying: startWeekend }}
+          {...{ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, saving, scale, seasonEvents, setSeasonEvents, openProfile, findRiderInCategory, freeAgents, gpHistory, marketRumors, marketNegotiations, seasonArchive, lastEconomySummary, seasonEconomyTotals, economyLog, manufacturerPreviousBikes, motogpSeatTiers, onRespondToIncomingOffer: respondToIncomingOffer, onOpenNegotiation: openProfileFromNegotiation, onOpenRiderProfileById: openRiderProfileById, onOpenTeamProfileById: openTeamProfileById, onOpenManufacturerProfile: openManufacturerProfile, onContactManufacturer: () => setManufacturerNegotiationOpen(true), onOpenPackageReview: setOpenPackageId, onStartQualifying: startWeekend }}
           notifCount={(isSbkCalendarCategory(category) ? SBK_CALENDAR_CATEGORIES : CATEGORY_ORDER.filter((ck) => !isSbkCalendarCategory(ck))).reduce((sum, ck) => sum + countUnread(notifications[ck]), 0)}
           onOpenNotifications={openNotificationCenter}
           onOpenSaveModal={() => openSaveModal(false)}
@@ -3350,6 +3599,7 @@ export default function MotorbikeManager() {
         <SeasonEndScreen
           {...{ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, seasonNumber, openProfile, findRiderInCategory }}
           onOpenTeamProfile={openTeamProfile}
+          onOpenManufacturerProfile={openManufacturerProfile}
           goToMarket={proceedFromSeasonEnd}
           isCareer={gameMode === "career"}
         />
@@ -3412,9 +3662,38 @@ export default function MotorbikeManager() {
         target={resolveLiveTeamProfileTarget()}
         onClose={() => setTeamProfileTarget(null)}
         onOpenRiderProfile={openProfile}
+        onOpenManufacturerProfile={openManufacturerProfile}
         playerTeam={playerTeam}
+        motogpSeatTiers={motogpSeatTiers}
+        manufacturerPreviousBikes={manufacturerPreviousBikes}
         onTop={topProfileModal === "team"}
       />
+      <ManufacturerProfileModal
+        target={resolveLiveManufacturerProfileTarget()}
+        onClose={() => setManufacturerProfileTarget(null)}
+        onOpenTeamProfile={openTeamProfile}
+        onOpenRiderProfile={openProfile}
+        onTop={topProfileModal === "manufacturer"}
+      />
+      {manufacturerNegotiationOpen && playerTeam && (
+        <ManufacturerNegotiationScreen
+          team={playerTeam}
+          categoryKey={category}
+          riderStandings={riderStandings}
+          motogpSeatTiers={motogpSeatTiers}
+          accent={playerTeam.color}
+          onResolve={resolveManufacturerRequest}
+          onClose={() => setManufacturerNegotiationOpen(false)}
+        />
+      )}
+      {pendingSeatSelection && playerTeam && (
+        <SeatSelectionScreen
+          manufacturer={pendingSeatSelection.manufacturer}
+          candidates={pendingSeatSelection.candidates}
+          accent={playerTeam.color}
+          onConfirm={confirmSeatSelection}
+        />
+      )}
       {negotiationTarget && playerTeam && (() => {
         const { rider, categoryKey } = negotiationTarget;
         const fromTeam = findTeamOwningRider(rider.id, categoryKey);
@@ -3435,6 +3714,8 @@ export default function MotorbikeManager() {
             currentTeamBikeAvg={fromTeam ? bikeAvg(fromTeam.bike) : playerBikeAvgVal}
             releaseFee={0}
             scale={catScale}
+            motogpSeatTiers={motogpSeatTiers}
+            manufacturerPreviousBikes={manufacturerPreviousBikes}
             onSendOffer={(teamOfferAmount, riderTerms) => sendNegotiationOffer(rider, categoryKey, teamOfferAmount, riderTerms)}
             onClose={closeNegotiationScreen}
           />

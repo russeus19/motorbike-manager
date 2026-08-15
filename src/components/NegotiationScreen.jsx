@@ -6,6 +6,8 @@ import { computeJoinScore, riderPersonality } from "../utils/marketAI.js";
 import { negotiationPatience, pickNegotiationLine, thermometerZone } from "../utils/negotiationDialogue.js";
 import { computeMarketValue } from "../utils/riders.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
+import { bikeAvg } from "../utils/bikeDevelopment.js";
+import { teamHasSplitBikeTiers, bikeForSeat, MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
 
 const ZONE_COLOR = { frio: COLORS.danger, dudoso: COLORS.gold, favorable: COLORS.success };
 const ZONE_LABEL = { frio: "Frío", dudoso: "Dudoso", favorable: "Favorable" };
@@ -29,6 +31,7 @@ const ZONE_LABEL = { frio: "Frío", dudoso: "Dudoso", favorable: "Favorable" };
 export function NegotiationScreen({
   rider, categoryKey, playerTeam, currentTeamName, isUnemployed, contractYearsLeft, isRenewal,
   playerBikeAvg, currentTeamBikeAvg, releaseFee, scale, onSendOffer, onClose,
+  motogpSeatTiers, manufacturerPreviousBikes,
 }) {
   const personality = riderPersonality(rider);
   const patience = negotiationPatience(rider);
@@ -45,6 +48,27 @@ export function NegotiationScreen({
   const [winBonus, setWinBonus] = useState(0);
   const [titleBonus, setTitleBonus] = useState(0);
   const [teamOfferAmount, setTeamOfferAmount] = useState(Math.round(releaseFee || 0));
+
+  // MotoGP-only: when the player's own team runs two different bike
+  // tiers (a Gresini/VR46-style split — see data/motogpBikeTiers.js's
+  // own header comment), a new signing isn't just "our bike" — it's
+  // "whichever of our two seats you'd actually get". Being able to
+  // promise the BETTER one is a real card to play in a tough
+  // negotiation, not just flavor: it changes bikeAvgOffered below,
+  // which computeJoinScore already weighs directly. Only ever shown
+  // for a genuinely NEW signing (isRenewal means they're already
+  // sitting in one of these two seats — nothing to offer there) and
+  // only when the choice is real (a split team has exactly one
+  // "previous" seat to contrast against "customerTop" with).
+  const isSplitMotoGpTeam = categoryKey === "motogp" && !isRenewal && teamHasSplitBikeTiers(playerTeam, categoryKey, motogpSeatTiers);
+  const previousSeatIndex = isSplitMotoGpTeam ? motogpSeatTiers[playerTeam.name]?.findIndex((t) => t === "previous") : -1;
+  const previousTierBikeAvg = isSplitMotoGpTeam
+    ? bikeAvg(bikeForSeat(playerTeam, previousSeatIndex, categoryKey, manufacturerPreviousBikes, motogpSeatTiers))
+    : null;
+  const [offeredBikeTier, setOfferedBikeTier] = useState("customerTop");
+  const effectivePlayerBikeAvg = isSplitMotoGpTeam
+    ? (offeredBikeTier === "previous" ? previousTierBikeAvg : bikeAvg(playerTeam.bike))
+    : playerBikeAvg;
 
   const [attemptsUsed, setAttemptsUsed] = useState(0);
   const [usedLines, setUsedLines] = useState([]);
@@ -77,18 +101,19 @@ export function NegotiationScreen({
   // never drift apart from each other.
   const liveScore = useMemo(() => computeJoinScore(rider, playerTeam, categoryKey, salary, {
     fromCategoryKey: rider._fromCategoryKey || categoryKey,
-    bikeAvgOffered: playerBikeAvg,
-    currentBikeAvg: isUnemployed ? playerBikeAvg : currentTeamBikeAvg,
+    bikeAvgOffered: effectivePlayerBikeAvg,
+    currentBikeAvg: isUnemployed ? effectivePlayerBikeAvg : currentTeamBikeAvg,
     isUnemployed,
     seasonsUnsigned: rider.seasonsUnsigned || 0,
     isRenewal,
-  }), [rider, playerTeam, categoryKey, salary, isUnemployed, playerBikeAvg, currentTeamBikeAvg, isRenewal]);
+    years,
+  }), [rider, playerTeam, categoryKey, salary, isUnemployed, effectivePlayerBikeAvg, currentTeamBikeAvg, isRenewal, years]);
   const liveZone = thermometerZone(liveScore);
   const attemptsLeft = patience - attemptsUsed;
 
   function handleSend() {
     if (ended || attemptsLeft <= 0) return;
-    const outcome = onSendOffer(teamOfferAmount, { salary, years, winBonus, titleBonus });
+    const outcome = onSendOffer(teamOfferAmount, { salary, years, winBonus, titleBonus, bikeTier: isSplitMotoGpTeam ? offeredBikeTier : null });
     const line = pickNegotiationLine(personality, outcome, usedLines);
     setUsedLines((prev) => [...prev.slice(-3), line]);
     setReaction({ zone: outcome, line });
@@ -186,6 +211,23 @@ export function NegotiationScreen({
               <span style={{ color: COLORS.text }}>Rescisión de contrato con {currentTeamName}</span>
               <input type="number" value={teamOfferAmount} onChange={(e) => setTeamOfferAmount(Number(e.target.value))} disabled={ended}
                 className="w-28 text-right font-mono px-2 py-1 rounded" style={{ background: COLORS.panel2, color: COLORS.danger, border: `1px solid ${COLORS.rule}` }} />
+            </div>
+          )}
+          {isSplitMotoGpTeam && (
+            <div>
+              <div className="text-xs mb-1.5" style={{ color: COLORS.muted }}>Moto que le ofreces</div>
+              <div className="grid grid-cols-2 gap-2">
+                {["customerTop", "previous"].map((tier) => (
+                  <button key={tier} disabled={ended} onClick={() => setOfferedBikeTier(tier)}
+                    className="rounded-lg px-3 py-2 text-left text-xs disabled:opacity-60"
+                    style={{ background: offeredBikeTier === tier ? `${COLORS.gold}18` : COLORS.panel2, border: `1px solid ${offeredBikeTier === tier ? COLORS.gold : COLORS.rule}` }}>
+                    <div className="font-bold" style={{ color: COLORS.text }}>{MOTOGP_BIKE_TIER_LABELS[tier]}</div>
+                    <div className="font-mono mt-0.5" style={{ color: offeredBikeTier === tier ? COLORS.gold : COLORS.muted }}>
+                      {Math.round(tier === "previous" ? previousTierBikeAvg : bikeAvg(playerTeam.bike))}/100
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">

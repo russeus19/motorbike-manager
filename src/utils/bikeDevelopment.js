@@ -386,14 +386,31 @@ export function aiConsiderProject(team, ctx) {
   if (free < 8) return { ...team, techBase };
   if (Math.random() > 0.35) return { ...team, techBase }; // don't act every single race
 
-  const contending = ctx.position <= Math.max(2, Math.ceil(ctx.totalTeams / 3));
-  const secondHalf = ctx.roundIndex >= ctx.totalRounds / 2;
-  let researchChance;
-  if (contending && !secondHalf) researchChance = 0.15;
-  else if (contending && secondHalf) researchChance = 0.7;
-  else if (!contending && secondHalf) researchChance = 0.55;
-  else researchChance = 0.25;
-  const kind = Math.random() < researchChance ? "research" : "dev";
+  // Bug fixed (feature): a MotoGP satellite (customerTop/previous —
+  // no factory seat at all, see data/motogpBikeTiers.js) used to
+  // research exactly like any other team, quietly building up its own
+  // hidden Base Tecnológica toward a next-season bike of its own —
+  // except that team never actually gets its own bike next season,
+  // its seat's spec is decided entirely by the manufacturer (factory's
+  // own research, delivered 2 GP late) and, separately, by
+  // reassignCustomerTopSeats at each season's close. That
+  // investigación was real money and technical capacity spent on
+  // something the satellite could never keep. ctx.isMotoGpSatellite
+  // (computed by the caller — see utils/raceWeekend.js — to avoid a
+  // circular import between this file and data/motogpBikeTiers.js)
+  // forces "dev" every time for exactly these teams instead: their own
+  // Desarrollo e Investigación becomes entirely about adapting the
+  // spec they're given to their own riders THIS season, nothing more.
+  const kind = ctx.isMotoGpSatellite ? "dev" : (() => {
+    const contending = ctx.position <= Math.max(2, Math.ceil(ctx.totalTeams / 3));
+    const secondHalf = ctx.roundIndex >= ctx.totalRounds / 2;
+    let researchChance;
+    if (contending && !secondHalf) researchChance = 0.15;
+    else if (contending && secondHalf) researchChance = 0.7;
+    else if (!contending && secondHalf) researchChance = 0.55;
+    else researchChance = 0.25;
+    return Math.random() < researchChance ? "research" : "dev";
+  })();
 
   const areas = BIKE_AREA_KEYS
     .filter((a) => !(team.activeProjects || []).some((p) => p.area === a && p.kind === kind))
@@ -683,7 +700,7 @@ export function riderPrototypeOpinion(rider, prototype) {
    -3 to +4 per area, with bigger jumps only when the Base Tecnológica has
    pulled far enough ahead to justify it (i.e. an extraordinary season of
    research). */
-export function rolloverBike(team, categoryKey) {
+export function rolloverBike(team, categoryKey, devScaleOverride) {
   const { techBase, factory, staff } = ensureRD(team);
   const researchInvested = team.researchSpendThisSeason || 0;
   // WorldWCR is a genuine single-make series (identical Yamaha R7 for
@@ -695,7 +712,21 @@ export function rolloverBike(team, categoryKey) {
   // the category is that the rider decides races, not the machinery.
   // Dampening the season's delta (not the base bike values themselves)
   // to 20% of normal keeps that same spirit intact indefinitely.
-  const devScale = categoryKey === "worldwcr" ? 0.2 : 1;
+  // Bug fixed (feature): a MotoGP customerTop/previous-tier team used
+  // to run this exact same full-strength formula as any regular team
+  // — meaning a satellite's own weak Factory/Staff (a genuine
+  // satellite starts at 35/35, well below a works team's 55/50) kept
+  // dragging its bike back down toward what ITS OWN infrastructure
+  // could organically sustain, undoing the elevated customerTop spec
+  // it's supposed to be riding courtesy of the manufacturer. Real
+  // improvement for those seats is meant to arrive through the 2-GP
+  // delayed factory packages (see data/motogpBikeTiers.js's
+  // advanceMotoGpCustomerQueue) instead of independent seasonal
+  // R&D — devScaleOverride (passed in from App.jsx's
+  // runSeasonTransition for exactly these teams) dampens this
+  // formula down to a small symbolic adaptation, the same idea as
+  // WorldWCR's own damping just below, applied for a different reason.
+  const devScale = devScaleOverride ?? (categoryKey === "worldwcr" ? 0.2 : 1);
   const newBike = {};
   BIKE_AREA_KEYS.forEach((k) => {
     const factoryBonus = Math.round(factory.level * 0.12);

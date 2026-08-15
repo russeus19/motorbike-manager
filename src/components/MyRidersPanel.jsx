@@ -4,6 +4,7 @@ import { COLORS } from "../data/colors.js";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { RiderNumber } from "./RiderNumber.jsx";
+import { bikeTierForSeat, MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
 import { overallRating } from "../utils/riders.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
@@ -40,7 +41,7 @@ function StatCard({ icon: Icon, value, label }) {
  * horizontal 4-part row from sm upward, stacked into readable blocks
  * on a narrow phone screen instead of cramming four columns into it.
  */
-function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums, rank, category, accent, openProfile, teamName, seasonNumber, teamTier }) {
+export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums, rank, category, accent, openProfile, teamName, seasonNumber, teamTier, bikeTier }) {
   return (
     <button
       onClick={() => openProfile(rider, teamName, category)}
@@ -71,7 +72,7 @@ function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums, rank,
               <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{rider.age} años</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Edad</div></div>
               <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{rider.contractYears ?? 0} año{(rider.contractYears ?? 0) === 1 ? "" : "s"}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Contrato</div></div>
               <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>€{(rider.salary || 0).toLocaleString()}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Salario anual</div></div>
-              <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{teamTier || "—"}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Estatus</div></div>
+              <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{MOTOGP_BIKE_TIER_LABELS[bikeTier] || teamTier || "—"}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Estatus</div></div>
             </div>
           )}
 
@@ -115,7 +116,7 @@ function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums, rank,
  * rank/points) the moment the panel itself renders. Tapping anywhere
  * on a row opens that rider's full profile.
  */
-export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodiums, gpHistory, category, seasonNumber, accent, openProfile }) {
+export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodiums, gpHistory, category, seasonNumber, accent, openProfile, motogpSeatTiers }) {
   const teamName = teamDisplayName(playerTeam);
   return (
     <Panel
@@ -124,7 +125,7 @@ export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodi
       accent={accent}
     >
       <>
-        {playerTeam.riders.map((r) => (
+        {playerTeam.riders.map((r, i) => (
           <RiderRow
             key={r.id}
             rider={r}
@@ -133,6 +134,7 @@ export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodi
             openProfile={openProfile}
             teamName={teamName}
             teamTier={playerTeam.tier}
+            bikeTier={bikeTierForSeat(playerTeam, i, category, motogpSeatTiers)}
             seasonNumber={seasonNumber}
             points={riderStandings[r.id]?.points ?? 0}
             wins={riderWins?.[r.id] ?? 0}

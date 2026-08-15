@@ -1,6 +1,6 @@
 import { clamp, randInt } from "./random.js";
 import { PERSONALITIES } from "../data/personalities.js";
-import { categoryRankDelta, computeMarketValue, overallRating } from "./riders.js";
+import { CATEGORY_RANK, categoryRankDelta, computeMarketValue, overallRating } from "./riders.js";
 import { evaluateRiderSeason } from "./seasonHistory.js";
 
 /**
@@ -264,8 +264,48 @@ export function scoreCandidateForTeam(rider, team, ctx) {
  * favorable) rather than a single random yes/no roll. wouldRiderJoin
  * itself is untouched below: every existing caller throughout the
  * game keeps behaving exactly as before. */
+
+/**
+ * Bug fixed (feature): contract length used to be purely cosmetic —
+ * proposedContractYears suggested a number, the player could set
+ * whatever they wanted on the slider, and none of it ever fed back
+ * into whether the rider actually said yes. Two real preferences now
+ * apply, in opposite directions:
+ *
+ *   - A rider with real untapped potential (a big PA-over-CA gap),
+ *     still young enough to act on it, in a category that isn't
+ *     MotoGP yet (nowhere higher left to climb) genuinely doesn't
+ *     want to be tied down — they're hoping to be pulled up to the
+ *     next category soon, and a long deal with THIS team stands in
+ *     the way of that. A 1-year offer costs them nothing here; a
+ *     3-year one actively puts them off.
+ *   - A rider who's Tranquilo by personality, or simply old enough
+ *     that chasing the next big project matters less than not having
+ *     to negotiate again next year, wants the opposite: real years on
+ *     the table read as the team actually committing to them.
+ *   - Everyone else still leans mildly toward SOME security over a
+ *     bare one-year deal, just nowhere near as strongly as either
+ *     case above.
+ *
+ * `years` is optional — omitted entirely (as every OTHER live-preview
+ * or team-side score in this file already does when it doesn't apply)
+ * this returns a neutral 0, so a caller that doesn't have contract
+ * terms to weigh yet doesn't need special-casing.
+ */
+function contractYearsPreference(rider, categoryKey, years) {
+  if (!Number.isFinite(years)) return 0;
+  const overall = overallRating(rider);
+  const risingStar = (rider.pa ?? 0) - overall >= 12 && (CATEGORY_RANK[categoryKey] ?? 3) < CATEGORY_RANK.motogp && (rider.age ?? 99) <= 24;
+  if (risingStar) return clamp((1 - years) * 0.06, -0.18, 0.06);
+
+  const wantsStability = riderPersonality(rider) === "Tranquilo" || (rider.age ?? 0) >= 29;
+  if (wantsStability) return clamp((years - 1) * 0.05, -0.05, 0.15);
+
+  return clamp((years - 1) * 0.02, 0, 0.06);
+}
+
 export function computeJoinScore(rider, team, categoryKey, offeredSalary, ctx = {}) {
-  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60, isUnemployed = false, seasonsUnsigned = 0, isRenewal = false } = ctx;
+  const { fromCategoryKey = categoryKey, bikeAvgOffered = 60, currentBikeAvg = 60, isUnemployed = false, seasonsUnsigned = 0, isRenewal = false, years = null } = ctx;
   const personality = riderPersonality(rider);
   const riderPrestige = rider.prestige ?? 60;
   const teamPrestige = team.prestige ?? 60;
@@ -384,6 +424,8 @@ export function computeJoinScore(rider, team, categoryKey, offeredSalary, ctx = 
   if (!isUnemployed && riderPrestige >= 170 && teamPrestige <= 90 && salaryRatio < 1.6 && catDelta <= 0) {
     score -= 0.4;
   }
+
+  score += contractYearsPreference(rider, categoryKey, years);
 
   return clamp(score, 0.03, 0.95);
 }

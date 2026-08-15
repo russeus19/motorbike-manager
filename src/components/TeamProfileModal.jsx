@@ -1,127 +1,189 @@
-import { AlertTriangle, X } from "lucide-react";
+import { X, Trophy, AlertTriangle, ChevronRight } from "lucide-react";
 import { teamDisplayName } from "../utils/teamNaming.js";
-import { StatBar } from "./UIPrimitives.jsx";
+import { StatBar, OverallBadge } from "./UIPrimitives.jsx";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
-import { RiderNumber } from "./RiderNumber.jsx";
-import { TeamLogo } from "./TeamLogo.jsx";
+import { ManufacturerLogo } from "./ManufacturerLogo.jsx";
+import { BikePhoto } from "./BikePhoto.jsx";
+import { SponsorLogo } from "./SponsorLogo.jsx";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { PRESTIGE_SCALE_MAX } from "../data/categoryPrestigeConfig.js";
 import { COLORS } from "../data/colors.js";
-import { WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
-import { bikeAvg, ensureRD } from "../utils/bikeDevelopment.js";
+import { bikeModelFor } from "../data/bikeModels.js";
+import { bikeForSeat, bikeTierForSeat, teamHasSplitBikeTiers, MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
+import { bikeAvg } from "../utils/bikeDevelopment.js";
 import { overallRating } from "../utils/riders.js";
-import { knownPotentialLabel } from "../utils/scouting.js";
+
+/** A compact rider row, purpose-built for this modal's own tight
+ * space — MyRidersPanel's own RiderRow (88px photo, stat-card grid)
+ * is designed to fill a full-width panel on Inicio/Pilotos, and
+ * overflowed badly crammed two-at-a-time into a 512px-wide card.
+ * Everything that matters still fits on one line: photo, name, CA
+ * badge, tier/status, and this season's points. */
+function CompactRiderRow({ rider, tier, points, categoryKey, accent, onOpen }) {
+  return (
+    <button onClick={onOpen} className="w-full flex items-center gap-3 text-left rounded-lg p-2.5 mb-1.5 last:mb-0"
+      style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+      <RiderPhoto rider={rider} size={48} className="rounded-lg flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <CountryFlag nat={rider.nat} width={15} />
+          <span className="text-sm font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{rider.name}</span>
+          <OverallBadge value={overallRating(rider)} accent={accent} />
+        </div>
+        <div className="text-[11px] mt-0.5" style={{ color: COLORS.muted }}>
+          {rider.age} años · {tier ? MOTOGP_BIKE_TIER_LABELS[tier] : "Titular"} · Contrato {rider.contractYears ?? 0} año{(rider.contractYears ?? 0) === 1 ? "" : "s"}
+        </div>
+        {rider.injury?.gpRemaining > 0 && (
+          <div className="text-[11px] mt-0.5 flex items-center gap-1" style={{ color: COLORS.danger }}>
+            <AlertTriangle size={10} className="flex-shrink-0" /> Lesión {rider.injury.severityLabel} · {rider.injury.gpRemaining} GP
+          </div>
+        )}
+      </div>
+      <div className="text-right flex-shrink-0">
+        <div className="text-sm font-bold" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>{points}</div>
+        <div className="text-[9px] uppercase" style={{ color: COLORS.muted }}>pts</div>
+      </div>
+      <ChevronRight size={16} style={{ color: COLORS.muted }} className="flex-shrink-0" />
+    </button>
+  );
+}
+
+/** "La moto" — a compact, read-only echo of BikeHero's own layout for
+ * whichever OTHER team this profile belongs to. */
+function SingleBikeBlock({ team, categoryKey, accent, model, avg }) {
+  return (
+    <div className="flex items-center gap-4">
+      <BikePhoto team={team} categoryKey={categoryKey} accent={accent} size={100} sizeClassName="w-[100px] h-[100px] rounded-lg flex-shrink-0" objectFit="cover" objectPosition="center top" />
+      <div className="flex-1 min-w-0">
+        {model && <div className="text-base font-bold leading-tight mb-1.5 truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>{model}</div>}
+        <div className="flex items-center gap-2 mb-2">
+          <Trophy size={13} style={{ color: accent }} className="flex-shrink-0" />
+          <div className="h-1.5 rounded-full flex-1" style={{ background: COLORS.rule }}>
+            <div className="h-1.5 rounded-full" style={{ width: `${avg}%`, background: accent }} />
+          </div>
+          <span className="text-xs font-bold flex-shrink-0" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{avg}/100</span>
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {BIKE_AREA_KEYS.map((k) => (
+            <div key={k} className="text-center rounded-md py-1" style={{ background: COLORS.panel }}>
+              <div className="text-xs font-mono font-bold" style={{ color: COLORS.text }}>{team.bike[k]}</div>
+              <div className="text-[8px] uppercase truncate px-0.5" style={{ color: COLORS.muted }}>{BIKE_LABELS[k]}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The split-tier equivalent (Gresini/VR46-style MotoGP satellites) —
+ * one shared photo, two compact stat columns. */
+function SplitBikeBlock({ team, categoryKey, accent, seasonNumber, manufacturerPreviousBikes, motogpSeatTiers }) {
+  return (
+    <div className="flex items-start gap-3">
+      <BikePhoto team={team} categoryKey={categoryKey} accent={accent} size={72} sizeClassName="w-[72px] h-[72px] rounded-lg flex-shrink-0" objectFit="cover" objectPosition="center top" />
+      <div className="flex-1 grid grid-cols-2 gap-3 min-w-0">
+        {team.riders.map((r, i) => {
+          const tier = bikeTierForSeat(team, i, categoryKey, motogpSeatTiers);
+          const bike = bikeForSeat(team, i, categoryKey, manufacturerPreviousBikes, motogpSeatTiers);
+          const avg = Math.round(bikeAvg(bike));
+          return (
+            <div key={r.id} className="min-w-0">
+              <div className="text-xs font-bold truncate mb-0.5" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{r.name}</div>
+              <span className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mb-1.5" style={{ background: `${accent}24`, color: accent }}>{MOTOGP_BIKE_TIER_LABELS[tier]} · {avg}</span>
+              <StatBar label="Media" value={avg} accent={accent} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /**
- * Team profile — same shell/behavior as RiderProfileModal (fixed header,
- * scrollable body, click-outside/X to close), reusing StatBar, RiderPhoto,
- * CountryFlag, RiderNameButton and TeamLogo instead of duplicating any of
- * that rendering logic.
+ * Team profile — same shell/behavior as RiderProfileModal (fixed
+ * header, scrollable body, click-outside/X to close). Kept
+ * deliberately compact throughout: this is a 512px-wide card, not a
+ * full screen, so every section below uses small, single-line rows
+ * rather than the bigger full-panel components those same ideas use
+ * elsewhere in the app (MyRidersPanel's RiderRow, BikeHero's own
+ * layout) — reused in SPIRIT (same information, same visual language)
+ * but not literally, since neither was built to survive being shown
+ * two-at-a-time in this little space.
  */
-export function TeamProfileModal({ target, onClose, onOpenRiderProfile, playerTeam, onTop = true }) {
+export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onOpenManufacturerProfile, playerTeam, motogpSeatTiers, manufacturerPreviousBikes, onTop = true }) {
   if (!target) return null;
-  const { team, categoryKey } = target;
+  const { team, categoryKey, riderStandings, seasonNumber } = target;
   const accent = team.color || COLORS.gold;
-  const devAvg = Math.round(bikeAvg(team.bike));
-  const { factory, staff } = ensureRD(team);
-  const isOwnTeam = playerTeam && team.id === playerTeam.id;
+  const teamName = teamDisplayName(team);
+  const isSplit = teamHasSplitBikeTiers(team, categoryKey, motogpSeatTiers);
+  const model = bikeModelFor(categoryKey, team.manufacturer, seasonNumber, "factory");
+  const avg = Math.round(bikeAvg(team.bike));
+  const sponsors = team.sponsors || {};
+  const sponsorList = [
+    sponsors.main ? { ...sponsors.main, roleLabel: "Principal" } : null,
+    sponsors.secondary ? { ...sponsors.secondary, roleLabel: "Oficial" } : null,
+  ].filter(Boolean);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.65)", zIndex: onTop ? 70 : 60 }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-2xl border" style={{ background: COLORS.panel, borderColor: COLORS.rule, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 50px rgba(0,0,0,0.45)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between p-5 pb-4 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex items-center justify-center rounded-xl flex-shrink-0 overflow-hidden" style={{ width: 72, height: 72, background: COLORS.panel2, border: `2px solid ${accent}` }}>
-              <TeamLogo team={team} size={54} />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-2xl font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamDisplayName(team)}</h3>
-              <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}{team.manufacturer ? ` · ${team.manufacturer}` : ""}</div>
+        <div className="flex items-start justify-between p-4 pb-3 flex-shrink-0" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-xl font-bold truncate mb-1" style={{ fontFamily: "Rajdhani, sans-serif" }}>{teamName}</h3>
+            <div className="text-xs mb-2" style={{ color: COLORS.muted }}>{CATEGORY_DATA[categoryKey]?.label} · {team.tier}</div>
+            <div className="flex items-center gap-3 text-xs" style={{ color: COLORS.muted }}>
+              <span>Prestigio <b className="font-mono" style={{ color: accent }}>{Number.isFinite(team.prestige) ? team.prestige : "—"}</b></span>
+              <span>·</span>
+              <span className="font-mono" style={{ color: (team.budget || 0) < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(team.budget || 0).toLocaleString()}</span>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 transition-transform active:scale-90" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={18} /></button>
+          {team.manufacturer && (
+            <button onClick={() => onOpenManufacturerProfile?.(team.manufacturer, categoryKey)} disabled={!onOpenManufacturerProfile}
+              className="flex flex-col items-center gap-1 flex-shrink-0 ml-3 hover:opacity-80 disabled:pointer-events-none">
+              <ManufacturerLogo name={team.manufacturer} accent={accent} size={56} />
+              <span className="text-[10px] font-semibold" style={{ color: accent }}>{team.manufacturer}</span>
+            </button>
+          )}
+          <button onClick={onClose} aria-label="Cerrar" className="p-1.5 rounded-full flex-shrink-0 transition-transform active:scale-90 ml-2" style={{ background: COLORS.panel2, color: COLORS.muted }}><X size={16} /></button>
         </div>
 
-        <div className="p-5 pt-4" style={{ overflowY: "auto" }}>
-          {team.expectation && (
-            <div className="text-xs mb-1.5 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-              Expectativa temporada: <span className="font-mono font-bold" style={{ color: accent }}>{team.expectation.label}</span>
-            </div>
-          )}
-          <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-            Prestigio: <span className="font-mono font-bold" style={{ color: accent }}>{Number.isFinite(team.prestige) ? `${team.prestige} / ${PRESTIGE_SCALE_MAX}` : "—"}</span>
-          </div>
-          <div className="grid grid-cols-4 gap-2 mb-4 text-xs" style={{ color: COLORS.muted }}>
-            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="uppercase">Presupuesto</div>
-              <div className="font-mono text-sm" style={{ color: (team.budget || 0) < 0 ? COLORS.danger : COLORS.text }}>€{Math.round(team.budget || 0).toLocaleString()}</div>
-            </div>
-            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="uppercase">Desarrollo medio</div>
-              <div className="font-mono text-sm" style={{ color: COLORS.text }}>{devAvg}</div>
-            </div>
-            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="uppercase">Fábrica</div>
-              <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {factory.level}</div>
-            </div>
-            <div className="rounded-xl p-2" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-              <div className="uppercase">Staff</div>
-              <div className="font-mono text-sm" style={{ color: COLORS.text }}>Nivel {staff.level}</div>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>Pilotos</div>
-            <div className="space-y-2">
-              {team.riders.map((r) => (
-                <div key={r.id} onClick={() => onOpenRiderProfile(r, teamDisplayName(team), categoryKey)}
-                  role="button" tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter") onOpenRiderProfile(r, teamDisplayName(team), categoryKey); }}
-                  className="w-full flex items-center gap-3 text-left rounded-xl p-2.5 cursor-pointer transition-transform duration-150 active:scale-[0.98] hover:scale-[1.008]"
-                  style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                  <RiderPhoto rider={r} size={44} className="rounded-lg" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate flex items-center gap-1.5">
-                      <RiderNumber rider={r} size={22} categoryKey={categoryKey} />
-                      {r.name}
-                    </div>
-                    <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.muted }}>
-                      <CountryFlag nat={r.nat} width={16} /> {r.age} años · CA {overallRating(r)} · PA {knownPotentialLabel(r, playerTeam, isOwnTeam)} · Contrato: {r.contractYears ?? 0} año{(r.contractYears ?? 0) === 1 ? "" : "s"}
-                    </div>
-                    {r.injury && r.injury.gpRemaining > 0 && (
-                      <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: COLORS.danger }}>
-                        <AlertTriangle size={11} /> Lesión {r.injury.severityLabel} · {r.injury.gpRemaining} GP restante{r.injury.gpRemaining === 1 ? "" : "s"}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-4 mt-4">
-            <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Desarrollo de la moto</div>
-            {BIKE_AREA_KEYS.map((k) => (
-              <StatBar key={k} label={BIKE_LABELS[k]} value={team.bike[k]} accent={accent} />
+        <div className="p-4 pt-3" style={{ overflowY: "auto" }}>
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Pilotos</div>
+            {team.riders.map((r, i) => (
+              <CompactRiderRow
+                key={r.id}
+                rider={r}
+                tier={bikeTierForSeat(team, i, categoryKey, motogpSeatTiers)}
+                points={riderStandings?.[r.id]?.points ?? 0}
+                categoryKey={categoryKey}
+                accent={accent}
+                onOpen={() => onOpenRiderProfile(r, teamName, categoryKey)}
+              />
             ))}
           </div>
 
-          {team.warehouse && (
-            <div className="mb-4">
-              <div className="text-xs uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Almacén</div>
-              <div className="grid grid-cols-5 gap-2">
-                {WAREHOUSE_PARTS.map((part) => {
-                  const stock = team.warehouse[part]?.stock ?? 0;
-                  const stockColor = stock <= 1 ? COLORS.danger : stock <= 2 ? COLORS.gold : "#3F9142";
-                  return (
-                    <div key={part} className="rounded-xl p-2 text-center" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
-                      <div className="text-[10px] uppercase" style={{ color: COLORS.muted }}>{WAREHOUSE_LABELS[part]}</div>
-                      <div className="font-mono text-sm" style={{ color: stockColor }}>{stock}</div>
-                    </div>
-                  );
-                })}
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>La moto</div>
+            {isSplit ? (
+              <SplitBikeBlock team={team} categoryKey={categoryKey} accent={accent} seasonNumber={seasonNumber} manufacturerPreviousBikes={manufacturerPreviousBikes} motogpSeatTiers={motogpSeatTiers} />
+            ) : (
+              <SingleBikeBlock team={team} categoryKey={categoryKey} accent={accent} model={model} avg={avg} />
+            )}
+          </div>
+
+          {sponsorList.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Patrocinadores</div>
+              <div className="grid grid-cols-2 gap-2">
+                {sponsorList.map((s, i) => (
+                  <div key={i} className="rounded-lg p-1.5 flex items-center justify-center" style={{ border: `1px solid ${COLORS.rule}`, aspectRatio: "3 / 1" }}>
+                    <SponsorLogo name={s.name} height={60} className="max-h-full" />
+                  </div>
+                ))}
               </div>
             </div>
           )}

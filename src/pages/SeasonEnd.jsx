@@ -11,7 +11,7 @@ import { COLORS } from "../data/colors.js";
 import { findInTeamRoster } from "../utils/raceSimulation.js";
 import { findSeasonAwards } from "../utils/teamExpectations.js";
 
-export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, goToMarket, seasonNumber, openProfile, findRiderInCategory, onOpenTeamProfile, isCareer }) {
+export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, rivalTeams, otherCategories, category, goToMarket, seasonNumber, openProfile, findRiderInCategory, onOpenTeamProfile, onOpenManufacturerProfile, isCareer }) {
   const allTeamNames = { player: teamDisplayName(playerTeam), ...Object.fromEntries(rivalTeams.map((t) => [t.id, teamDisplayName(t)])) };
   const myPosition = Object.entries(teamStandings).map(([id, pts]) => ({ id, points: pts })).sort((a, b) => b.points - a.points).findIndex((t) => t.id === "player") + 1;
   const accentGold = COLORS.gold;
@@ -91,6 +91,7 @@ export function SeasonEndScreen({ riderStandings, teamStandings, playerTeam, riv
           findRiderInCategory={findRiderInCategory}
           openProfile={openProfile}
           onOpenTeamProfile={onOpenTeamProfile}
+          onOpenManufacturerProfile={onOpenManufacturerProfile}
           tab={awardsTab}
           onTabChange={setAwardsTab}
         />

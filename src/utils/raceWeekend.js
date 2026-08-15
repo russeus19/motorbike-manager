@@ -1,4 +1,5 @@
 import { advanceFacilityUpgrades, advanceTeamProjects, aiConsiderFacilityDowngrade, aiConsiderFacilityUpgrade, aiConsiderProject, aiDecidePendingPackages, processApprovedPackages } from "./bikeDevelopment.js";
+import { isRestrictedMotoGpSatellite } from "../data/motogpBikeTiers.js";
 import { prizeForPosition, teamRunningCost, teamSalaryCost } from "./economy.js";
 import { bumpCareerStats } from "./raceSimulation.js";
 import { photoIdFor, substituteHireCost } from "./riders.js";
@@ -46,7 +47,7 @@ export function processTeamWeeklyProgress(team, categoryKey, ctx, notifQueue) {
 
   if (ctx.isPlayer) return { team: afterFacilities, projectArrivals, facilityArrivals };
 
-  const afterRD = aiConsiderProject(afterFacilities, ctx);
+  const afterRD = aiConsiderProject(afterFacilities, { ...ctx, categoryKey, isMotoGpSatellite: isRestrictedMotoGpSatellite(afterFacilities, categoryKey) });
   const afterDistressCheck = aiConsiderFacilityDowngrade(afterRD, ctx.scale, notifQueue, categoryKey);
   const afterFacilityInvestment = aiConsiderFacilityUpgrade(afterDistressCheck, ctx.scale);
   return { team: { ...afterFacilityInvestment, budget: Math.max(0, afterFacilityInvestment.budget) }, projectArrivals, facilityArrivals };

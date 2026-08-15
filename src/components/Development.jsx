@@ -4,6 +4,7 @@ import { Panel, StatBar } from "./UIPrimitives.jsx";
 import { BIKE_AREA_KEYS, BIKE_LABELS } from "../data/bikeAreas.js";
 import { COLORS } from "../data/colors.js";
 import { bikeAvg, canStartProject, computeTechCapacity, ensureRD, projectSpec, usedCapacity } from "../utils/bikeDevelopment.js";
+import { isRestrictedMotoGpSatellite } from "../data/motogpBikeTiers.js";
 
 /* Shared capacity bar — Desarrollo e Investigación draw from exactly the
    same pool. Kept as its own small piece so nothing about it is
@@ -85,8 +86,16 @@ export function ProjectRow({ area, kind, team, budget, scale, accent, onStart, l
    duplicating a single line of it. DevelopmentPanel (further below)
    is just this body wrapped in its own standalone Panel + expand
    toggle, still used as-is on the Inicio screen. */
-export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview, showAttributes = true }) {
+export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent, scale, onOpenPackageReview, showAttributes = true, categoryKey, motogpSeatTiers }) {
   const pendingPackages = playerTeam.pendingPackages || [];
+  // A MotoGP satellite (no factory seat at all — see
+  // data/motogpBikeTiers.js) never gets an Investigación row: that
+  // spec is decided by the manufacturer, not by this team's own R&D.
+  // Its own Desarrollo e Investigación becomes entirely about
+  // Desarrollo — adapting the bike it's been given to its own riders
+  // this season, nothing that carries into a next season it doesn't
+  // actually own the outcome of.
+  const isSatellite = isRestrictedMotoGpSatellite(playerTeam, categoryKey, motogpSeatTiers);
   return (
     <>
       {pendingPackages.length > 0 && onOpenPackageReview && (
@@ -120,14 +129,24 @@ export function DevelopmentPanelBody({ playerTeam, budget, startProject, accent,
 
       <CapacityBar playerTeam={playerTeam} budget={budget} accent={accent} />
 
+      {isSatellite && (
+        <p className="text-xs mb-3" style={{ color: COLORS.muted }}>
+          Como equipo cliente de la fábrica, solo puedes adaptar la moto que te ceden a tus propios pilotos esta temporada — la investigación de cara al año que viene la decide la fábrica, no vosotros.
+        </p>
+      )}
+
       <div className="space-y-2">
         {BIKE_AREA_KEYS.map((k) => (
           <div key={k} className="rounded-md p-2" style={{ border: `1px solid ${COLORS.rule}` }}>
             <div className="text-xs font-bold mb-1.5" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{BIKE_LABELS[k]}</div>
             <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: COLORS.muted }}>Desarrollo · esta temporada</div>
             <ProjectRow area={k} kind="dev" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Desarrollo" />
-            <div className="text-[10px] uppercase tracking-wide mb-1 mt-1" style={{ color: COLORS.muted }}>Investigación · temporada siguiente</div>
-            <ProjectRow area={k} kind="research" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Investigación" />
+            {!isSatellite && (
+              <>
+                <div className="text-[10px] uppercase tracking-wide mb-1 mt-1" style={{ color: COLORS.muted }}>Investigación · temporada siguiente</div>
+                <ProjectRow area={k} kind="research" team={playerTeam} budget={budget} scale={scale} accent={accent} onStart={startProject} label="Investigación" />
+              </>
+            )}
           </div>
         ))}
       </div>

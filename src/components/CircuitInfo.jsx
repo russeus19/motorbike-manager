@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MapPin, X } from "lucide-react";
 import { CountryFlag } from "./CountryFlag.jsx";
 import { Panel, StatBar } from "./UIPrimitives.jsx";
@@ -266,6 +266,23 @@ export function CalendarPanel({ round, accent, gpHistory, seasonNumber, category
 
   const today = dateForRound(round, seasonNumber);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+
+  // Bug fixed: viewDate's useState initial value only ever runs once,
+  // on this component's first mount — season 1's month/year. Once the
+  // season moved on (dateForRound shifts every round a full year
+  // forward per season, see data/circuits.js), the calendar kept
+  // showing season 1's dates while every race date it was trying to
+  // match against was now a season ahead — nothing in the visible
+  // grid could ever line up with sundayToMasterRound's entries, so
+  // the whole month rendered empty. Resetting on seasonNumber
+  // changing (not on every round, which would fight the "browse a
+  // different month" buttons below) keeps the view correctly on the
+  // new season the moment it starts, without giving up mid-season
+  // browsing.
+  useEffect(() => {
+    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonNumber]);
 
   return (
     <Panel title="Calendario" icon={MapPin} accent={accent} onHeaderClick={() => setExpanded((v) => !v)}

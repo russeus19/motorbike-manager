@@ -198,7 +198,7 @@ export function evaluateSeasonVsExpectation(finalPosition, expectation) {
  * not a number, so this maps each one back to the midpoint of the rank
  * band it was actually assigned from, giving a fair, comparable number
  * to weigh against where the rider actually finished. */
-const RIDER_TIER_EXPECTED_RANK = {
+export const RIDER_TIER_EXPECTED_RANK = {
   "Luchar por el campeonato": 2,
   "Entrar en el Top 5": 5.5,
   "Luchar por el Top 10": 10.5,

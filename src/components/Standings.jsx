@@ -6,7 +6,7 @@ import { CATEGORY_DATA } from "../data/categories.js";
 import { COLORS } from "../data/colors.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
-export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile, tab: controlledTab, onTabChange }) {
+export function StandingsPanel({ category, riderStandings, teamStandings, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile, onOpenManufacturerProfile, tab: controlledTab, onTabChange }) {
   // Optionally controlled from outside (see SeasonEnd.jsx, where the
   // champion header and the awards panels need to react to the exact
   // same category tab this panel already has, instead of duplicating
@@ -56,7 +56,16 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
     if (found) openProfile(found.rider, found.teamName, tab);
   }
 
+  /* Bug fixed: a "constructores" row's own id is the manufacturer's
+     name, not a real team id — teamById[mfr] was always undefined, so
+     this silently did nothing on click. Branches on the active view
+     now: a real team id still opens that team's profile as before; a
+     constructor row opens the manufacturer profile instead. */
   function handleTeamClick(id) {
+    if (teamView === "constructores") {
+      if (onOpenManufacturerProfile) onOpenManufacturerProfile(id, tab);
+      return;
+    }
     const team = teamById[id];
     if (team && onOpenTeamProfile) onOpenTeamProfile(team, tab);
   }
@@ -113,7 +122,9 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
                   {i + 1}. {t.name}
                 </button>
               ) : (
-                <span>{i + 1}. {t.name}</span>
+                <button onClick={() => handleTeamClick(t.id)} className="text-left hover:opacity-80 cursor-pointer" style={{ color: COLORS.text }}>
+                  {i + 1}. {t.name}
+                </button>
               )}
               <span className="font-mono" style={{ color: COLORS.muted }}>{t.points}</span>
             </li>
@@ -129,7 +140,7 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
 /* ---------------------------------------------------------------------- */
 
 
-export function DetailedStandingsPanel({ category, riderStandings, teamStandings, riderWins, riderPodiums, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile }) {
+export function DetailedStandingsPanel({ category, riderStandings, teamStandings, riderWins, riderPodiums, otherCategories, playerTeam, rivalTeams, accent, findRiderInCategory, openProfile, onOpenTeamProfile, onOpenManufacturerProfile }) {
   const [tab, setTab] = useState(category);
   const [teamView, setTeamView] = useState("equipos");
   const isCurrent = tab === category;
@@ -171,6 +182,10 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
   }
 
   function handleTeamClick(id) {
+    if (teamView === "constructores") {
+      if (onOpenManufacturerProfile) onOpenManufacturerProfile(id, tab);
+      return;
+    }
     const team = teamsList.find((t) => t.id === id);
     if (team && onOpenTeamProfile) onOpenTeamProfile(team, tab);
   }
@@ -237,7 +252,9 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
                 {t.name}
               </button>
             ) : (
-              <span className="flex-1 ml-2 min-w-0 truncate">{t.name}</span>
+              <button onClick={() => handleTeamClick(t.id)} className="flex-1 ml-2 min-w-0 truncate text-left hover:opacity-80 cursor-pointer" style={{ color: COLORS.text }}>
+                {t.name}
+              </button>
             )}
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.wins}</span>
             <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{t.podiums}</span>

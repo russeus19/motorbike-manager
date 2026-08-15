@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, Bell, ChevronDown, ChevronUp, Flag, LogOut, Save, Star, Wallet, Wrench } from "lucide-react";
+import { AlertTriangle, Bell, ChevronDown, ChevronRight, ChevronUp, Flag, LogOut, Save, Star, Wallet, Wrench } from "lucide-react";
 import { clamp } from "../utils/random.js";
 import { BottomNavBar } from "../components/BottomNavBar.jsx";
 import { PlayerCareerPanel } from "../components/PlayerCareerPanel.jsx";
 import { HallOfFamePanel } from "../components/HallOfFamePanel.jsx";
 import { CalendarPanel, CircuitInfoPanel } from "../components/CircuitInfo.jsx";
 import { BikeHero } from "../components/BikeHero.jsx";
+import { ManufacturerLogo } from "../components/ManufacturerLogo.jsx";
+import { isRestrictedMotoGpSatellite } from "../data/motogpBikeTiers.js";
 import { MyRidersPanel } from "../components/MyRidersPanel.jsx";
 import { RumorsPanel, OffersPanel } from "../components/MarketPanels.jsx";
 import { FactoryPanel } from "../components/FactoryPanel.jsx";
@@ -33,7 +35,7 @@ import { buildPriorityAlerts } from "../utils/priorityAlerts.js";
 import { overallRating } from "../utils/riders.js";
 import { initWarehouse } from "../utils/warehouseEngine.js";
 
-export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onStartSportingDirectorUpgrade, onCancelScout, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenPackageReview, seasonArchive }) {
+export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category, round, seasonNumber, budget, riderStandings, teamStandings, riderWins, riderPodiums, startProject, runRace, onStartQualifying, saving, scale, openProfile, findRiderInCategory, notifCount, onOpenNotifications, freeAgents, onOpenSaveModal, onExitGame, onStartWarehouseProduction, onStartUrgentWarehouseProduction, onOpenTeamProfile, onStartFactoryUpgrade, onStartStaffUpgrade, onStartFactoryDowngrade, onStartStaffDowngrade, onStartSportingDirectorUpgrade, onCancelScout, onChooseSponsorOffer, onSearchSponsor, onCancelSearchSponsor, onCancelSponsorContract, lastEconomySummary, seasonEconomyTotals, economyLog, gpHistory, marketRumors, marketNegotiations, onRespondToIncomingOffer, onOpenNegotiation, onOpenRiderProfileById, onOpenTeamProfileById, onOpenManufacturerProfile, manufacturerPreviousBikes, motogpSeatTiers, onContactManufacturer, onOpenPackageReview, seasonArchive }) {
   const accent = playerTeam.color;
   // Lifted out of EconomyPanel itself so the "Presupuesto" tap target
   // in the Escudería summary card (below) can open it directly —
@@ -233,11 +235,11 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           )}
 
           <div className="mb-4">
-            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} />
+            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} motogpSeatTiers={motogpSeatTiers} />
           </div>
 
           <div className="mb-4">
-            <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} />
+            <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} onOpenManufacturerProfile={onOpenManufacturerProfile} manufacturerPreviousBikes={manufacturerPreviousBikes} motogpSeatTiers={motogpSeatTiers} />
           </div>
 
           <StandingsPanel
@@ -251,6 +253,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             findRiderInCategory={findRiderInCategory}
             openProfile={openProfile}
             onOpenTeamProfile={onOpenTeamProfile}
+            onOpenManufacturerProfile={onOpenManufacturerProfile}
           />
           <div className="text-center text-xs mt-2" style={{ color: COLORS.muted }}>{saving ? "Guardando partida…" : " "}</div>
         </>
@@ -266,7 +269,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             </div>
           )}
           <div id="pilotos-mis-pilotos">
-            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} />
+            <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} motogpSeatTiers={motogpSeatTiers} />
           </div>
 
           <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
@@ -335,8 +338,21 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
                 <Wallet size={28} style={{ color: accent }} className="flex-shrink-0" />
               </button>
             </div>
+
+            {isRestrictedMotoGpSatellite(playerTeam, category) && onContactManufacturer && (
+              <button onClick={onContactManufacturer}
+                className="w-full mt-4 flex items-center gap-3 rounded-lg px-3.5 py-3 text-left"
+                style={{ background: `${accent}1F`, border: `1px solid ${accent}55` }}>
+                <ManufacturerLogo name={playerTeam.manufacturer} accent={accent} size={36} className="flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold" style={{ color: COLORS.text }}>Contactar con {playerTeam.manufacturer}</div>
+                  <div className="text-xs" style={{ color: COLORS.muted }}>Renovar, presionar por mejoras, pedir la moto cliente-top o sondear otras marcas.</div>
+                </div>
+                <ChevronRight size={18} style={{ color: COLORS.muted }} className="flex-shrink-0" />
+              </button>
+            )}
           </Panel>
-          <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} />
+          <BikeHero playerTeam={playerTeam} budget={budget} startProject={startProject} scale={scale} onOpenPackageReview={onOpenPackageReview} accent={accent} seasonNumber={seasonNumber} round={round} circuit={circuit} category={category} onOpenSponsors={openSponsorsPanel} onOpenManufacturerProfile={onOpenManufacturerProfile} manufacturerPreviousBikes={manufacturerPreviousBikes} motogpSeatTiers={motogpSeatTiers} />
           <div id="economy-panel">
             <EconomyPanel lastEconomySummary={lastEconomySummary} seasonEconomyTotals={seasonEconomyTotals} economyLog={economyLog} budget={budget} accent={accent} playerTeam={playerTeam} round={round} seasonNumber={seasonNumber} expanded={economyExpanded} onToggleExpanded={setEconomyExpanded} />
           </div>
@@ -367,6 +383,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             findRiderInCategory={findRiderInCategory}
             openProfile={openProfile}
             onOpenTeamProfile={onOpenTeamProfile}
+            onOpenManufacturerProfile={onOpenManufacturerProfile}
           />
           <SeasonArchivePanel seasonArchive={seasonArchive} accent={accent} category={category} onOpenRiderProfileById={onOpenRiderProfileById} />
           <HallOfFamePanel seasonArchive={seasonArchive} accent={accent} />

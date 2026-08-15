@@ -23,7 +23,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "BK8 Gresini Racing MotoGP", nameTemplate: "{sponsor} Gresini Racing MotoGP", logoId: "gresini", tier: "Satélite", slots: 1, manufacturer: "Ducati", color: "#9BAEE4",
-    bike: { aero: 85, chasis: 85, motor: 86, freno: 84, electronica: 85 }, budget: 3000000,
+    bike: { aero: 87, chasis: 87, motor: 88, freno: 86, electronica: 87 }, budget: 3000000,
     riders: [
       { name: "Álex Márquez", photoId: 3, nat: "🇪🇸", age: 30, potential: 57, tecnica: 92, ritmo: 90, adelantamientos: 87, mental: 86, adaptabilidad: 86, fisico: 81, prestige: 182 , number: 73 },
       { name: "Fermín Aldeguer", photoId: 4, nat: "🇪🇸", age: 21, potential: 92, tecnica: 87, ritmo: 86, adelantamientos: 85, mental: 70, adaptabilidad: 76, fisico: 76, prestige: 166 , number: 54 },
@@ -31,7 +31,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Pertamina Enduro VR46 Racing Team", nameTemplate: "{sponsor} VR46 Racing Team", logoId: "vr46", tier: "Satélite", slots: 1, manufacturer: "Ducati", color: "#e0f300",
-    bike: { aero: 82, chasis: 82, motor: 83, freno: 81, electronica: 83 }, budget: 3000000,
+    bike: { aero: 87, chasis: 87, motor: 88, freno: 86, electronica: 87 }, budget: 3000000,
     riders: [
       { name: "Fabio Di Giannantonio", photoId: 5, nat: "🇮🇹", age: 27, potential: 68, tecnica: 91, ritmo: 89, adelantamientos: 84, mental: 79, adaptabilidad: 81, fisico: 83, prestige: 169 , number: 49,
         tags: [{ type: "qualifyingSpecialist" }] },
@@ -51,7 +51,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Trackhouse MotoGP Team", nameTemplate: "{sponsor} Trackhouse MotoGP Team", logoId: "trackhouse", tier: "Satélite", slots: 1, manufacturer: "Aprilia", color: "#0190f8",
-    bike: { aero: 89, chasis: 89, motor: 89, freno: 88, electronica: 90 }, budget: 3000000,
+    bike: { aero: 90, chasis: 90, motor: 90, freno: 89, electronica: 91 }, budget: 3000000,
     riders: [
       { name: "Raúl Fernández", photoId: 9, nat: "🇪🇸", age: 25, potential: 85, tecnica: 86, ritmo: 85, adelantamientos: 87, mental: 74, adaptabilidad: 80, fisico: 83, prestige: 152 , number: 25,
         tags: [{ type: "sprintSpecialist" }, { type: "regularidad" }, { type: "favoriteCircuit", round: 11, circuitLabel: "Silverstone", label: "Especialista en Silverstone" }, { type: "favoriteCircuit", round: 17, circuitLabel: "Phillip Island", label: "Especialista en Phillip Island" }] },
@@ -61,7 +61,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Monster Energy Yamaha MotoGP", nameTemplate: "{sponsor} Yamaha MotoGP", logoId: "monster_yamaha", tier: "Fábrica", slots: 2, manufacturer: "Yamaha", color: "#1E4DA1",
-    bike: { aero: 69, chasis: 69, motor: 70, freno: 70, electronica: 72 }, budget: 5000000,
+    bike: { aero: 74, chasis: 74, motor: 75, freno: 75, electronica: 77 }, budget: 5000000,
     riders: [
       { name: "Fabio Quartararo", photoId: 11, nat: "🇫🇷", age: 27, potential: 52, tecnica: 88, ritmo: 85, adelantamientos: 76, mental: 79, adaptabilidad: 83, fisico: 81, prestige: 170 , number: 20,
         tags: [{ type: "qualifyingSpecialist" }, { type: "favoriteCircuit", round: 3, circuitLabel: "Jerez", label: "Especialista en Jerez" }] },
@@ -70,7 +70,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Prima Pramac Yamaha MotoGP", nameTemplate: "{sponsor} Pramac Yamaha MotoGP", logoId: "pramac_yamaha", tier: "Satélite", slots: 1, manufacturer: "Yamaha", color: "#6C2EB5",
-    bike: { aero: 64, chasis: 64, motor: 65, freno: 65, electronica: 67 }, budget: 3000000,
+    bike: { aero: 70, chasis: 70, motor: 71, freno: 71, electronica: 73 }, budget: 3000000,
     riders: [
       { name: "Toprak Razgatlıoğlu", photoId: 13, nat: "🇹🇷", age: 29, potential: 72, tecnica: 82, ritmo: 70, adelantamientos: 80, mental: 66, adaptabilidad: 61, fisico: 79, prestige: 152 , number: 7 },
       { name: "Jack Miller", photoId: 14, nat: "🇦🇺", age: 31, potential: 40, tecnica: 72, ritmo: 70, adelantamientos: 77, mental: 69, adaptabilidad: 73, fisico: 71, prestige: 134 , number: 43,
@@ -79,7 +79,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Red Bull KTM Factory Racing", nameTemplate: "{sponsor} KTM Factory Racing", logoId: "redbull_ktm_factory", tier: "Fábrica", slots: 2, manufacturer: "KTM", color: "#FF6600",
-    bike: { aero: 77, chasis: 77, motor: 78, freno: 76, electronica: 79 }, budget: 5000000,
+    bike: { aero: 84, chasis: 84, motor: 85, freno: 82, electronica: 85 }, budget: 5000000,
     riders: [
       { name: "Pedro Acosta", photoId: 15, nat: "🇪🇸", age: 22, potential: 89, tecnica: 89, ritmo: 89, adelantamientos: 90, mental: 75, adaptabilidad: 82, fisico: 85, prestige: 170 , number: 37,
         tags: [{ type: "mentalLimit" }] },
@@ -89,7 +89,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Red Bull KTM Tech3", nameTemplate: "{sponsor} KTM Tech3", logoId: "redbull_ktm_tech3", tier: "Satélite", slots: 1, manufacturer: "KTM", color: "#FF6600",
-    bike: { aero: 73, chasis: 73, motor: 74, freno: 72, electronica: 75 }, budget: 3000000,
+    bike: { aero: 82, chasis: 82, motor: 83, freno: 80, electronica: 83 }, budget: 3000000,
     riders: [
       { name: "Maverick Viñales", photoId: 17, nat: "🇪🇸", age: 30, potential: 48, tecnica: 83, ritmo: 82, adelantamientos: 76, mental: 69, adaptabilidad: 74, fisico: 78, prestige: 145 , number: 12 },
       { name: "Enea Bastianini", photoId: 18, nat: "🇮🇹", age: 28, potential: 55, tecnica: 82, ritmo: 81, adelantamientos: 86, mental: 75, adaptabilidad: 72, fisico: 74, prestige: 153 , number: 23 },
@@ -97,7 +97,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Honda HRC Castrol", nameTemplate: "Honda HRC {sponsor}", logoId: "honda_hrc", tier: "Fábrica", slots: 2, manufacturer: "Honda", color: "#CC1E2C",
-    bike: { aero: 73, chasis: 72, motor: 73, freno: 72, electronica: 75 }, budget: 5000000,
+    bike: { aero: 78, chasis: 77, motor: 78, freno: 77, electronica: 80 }, budget: 5000000,
     riders: [
       { name: "Joan Mir", photoId: 19, nat: "🇪🇸", age: 29, potential: 52, tecnica: 78, ritmo: 77, adelantamientos: 70, mental: 75, adaptabilidad: 76, fisico: 74, prestige: 145 , number: 36,
         tags: [
@@ -109,7 +109,7 @@ export const MOTOGP_TEAMS_DATA = [
   },
   {
     name: "Honda LCR", nameTemplate: "{sponsor} Honda LCR", logoId: "honda_lcr", tier: "Satélite", slots: 1, manufacturer: "Honda", color: "#808080",
-    bike: { aero: 70, chasis: 69, motor: 70, freno: 69, electronica: 72 }, budget: 3000000,
+    bike: { aero: 74, chasis: 73, motor: 74, freno: 73, electronica: 76 }, budget: 3000000,
     riders: [
       { name: "Johann Zarco", photoId: 21, nat: "🇫🇷", age: 36, potential: 32, tecnica: 81, ritmo: 77, adelantamientos: 76, mental: 78, adaptabilidad: 84, fisico: 66, prestige: 145 , number: 5,
         tags: [{ type: "wetSpecialist", label: "Maestro de lluvia" }, { type: "mentalLimit" }, { type: "favoriteCircuit", round: 4, circuitLabel: "Le Mans", label: "Especialista en Le Mans" }] },
