@@ -7,7 +7,7 @@ import { negotiationPatience, pickNegotiationLine, thermometerZone } from "../ut
 import { computeMarketValue } from "../utils/riders.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 import { bikeAvg } from "../utils/bikeDevelopment.js";
-import { teamHasSplitBikeTiers, bikeForSeat, MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
+import { teamHasSplitBikeTiers, bikeForSeat, MOTOGP_BIKE_TIER_LABELS, isRestrictedMotoGpSatellite } from "../data/motogpBikeTiers.js";
 
 const ZONE_COLOR = { frio: COLORS.danger, dudoso: COLORS.gold, favorable: COLORS.success };
 const ZONE_LABEL = { frio: "Frío", dudoso: "Dudoso", favorable: "Favorable" };
@@ -31,7 +31,7 @@ const ZONE_LABEL = { frio: "Frío", dudoso: "Dudoso", favorable: "Favorable" };
 export function NegotiationScreen({
   rider, categoryKey, playerTeam, currentTeamName, isUnemployed, contractYearsLeft, isRenewal,
   playerBikeAvg, currentTeamBikeAvg, releaseFee, scale, onSendOffer, onClose,
-  motogpSeatTiers, manufacturerPreviousBikes,
+  motogpSeatTiers, manufacturerPreviousBikes, playerCategoryKey,
 }) {
   const personality = riderPersonality(rider);
   const patience = negotiationPatience(rider);
@@ -60,15 +60,41 @@ export function NegotiationScreen({
   // sitting in one of these two seats — nothing to offer there) and
   // only when the choice is real (a split team has exactly one
   // "previous" seat to contrast against "customerTop" with).
-  const isSplitMotoGpTeam = categoryKey === "motogp" && !isRenewal && teamHasSplitBikeTiers(playerTeam, categoryKey, motogpSeatTiers);
+  // Bug fixed: both this and isMotoGpFactory below used to check
+  // categoryKey — the RIDER's own ORIGIN category (see
+  // AdvancedFreeAgentSearch's own freeAgentEntries, which tags a free
+  // agent with r._fromCategoryKey, null for a legend who's never
+  // actually raced in this save) — instead of playerCategoryKey, the
+  // category the DESTINATION team (playerTeam, always where a signing
+  // actually lands) really races in. Whether a split-tier offer or a
+  // test-rider role even makes sense only ever depends on the
+  // destination, never on wherever this particular rider happens to
+  // have come from — a cross-category signing (promoting a Moto2
+  // rider into a MotoGP team) or a legend free agent with no origin
+  // category at all both used to silently fail this check and lose
+  // access to either feature, with no visible explanation.
+  const effectivePlayerCategoryKey = playerCategoryKey || categoryKey;
+  const isSplitMotoGpTeam = effectivePlayerCategoryKey === "motogp" && !isRenewal && teamHasSplitBikeTiers(playerTeam, effectivePlayerCategoryKey, motogpSeatTiers);
   const previousSeatIndex = isSplitMotoGpTeam ? motogpSeatTiers[playerTeam.name]?.findIndex((t) => t === "previous") : -1;
   const previousTierBikeAvg = isSplitMotoGpTeam
-    ? bikeAvg(bikeForSeat(playerTeam, previousSeatIndex, categoryKey, manufacturerPreviousBikes, motogpSeatTiers))
+    ? bikeAvg(bikeForSeat(playerTeam, previousSeatIndex, effectivePlayerCategoryKey, manufacturerPreviousBikes, motogpSeatTiers))
     : null;
   const [offeredBikeTier, setOfferedBikeTier] = useState("customerTop");
   const effectivePlayerBikeAvg = isSplitMotoGpTeam
     ? (offeredBikeTier === "previous" ? previousTierBikeAvg : bikeAvg(playerTeam.bike))
     : playerBikeAvg;
+
+  // MotoGP-only: only a FACTORY team has a test rider slot to fill at
+  // all — a satellite team's own riders are titulares, full stop, no
+  // choice to make here. Only offered on a genuinely NEW signing
+  // (isRenewal means they're already sitting in one of the team's real
+  // seats, titular or probador — see App.jsx's own role-change
+  // handling for changing an EXISTING rider's role instead), and only
+  // when the team doesn't already have a probador on the books, since
+  // there's only ever one test rider seat to fill.
+  const isMotoGpFactory = effectivePlayerCategoryKey === "motogp" && !isRestrictedMotoGpSatellite(playerTeam, effectivePlayerCategoryKey, motogpSeatTiers);
+  const canOfferTestRiderRole = isMotoGpFactory && !isRenewal && !playerTeam.testRider && playerTeam.riders.length >= 2;
+  const [offeredRole, setOfferedRole] = useState("titular");
 
   const [attemptsUsed, setAttemptsUsed] = useState(0);
   const [usedLines, setUsedLines] = useState([]);
@@ -107,13 +133,14 @@ export function NegotiationScreen({
     seasonsUnsigned: rider.seasonsUnsigned || 0,
     isRenewal,
     years,
-  }), [rider, playerTeam, categoryKey, salary, isUnemployed, effectivePlayerBikeAvg, currentTeamBikeAvg, isRenewal, years]);
+    offeredRole: canOfferTestRiderRole ? offeredRole : "titular",
+  }), [rider, playerTeam, categoryKey, salary, isUnemployed, effectivePlayerBikeAvg, currentTeamBikeAvg, isRenewal, years, canOfferTestRiderRole, offeredRole]);
   const liveZone = thermometerZone(liveScore);
   const attemptsLeft = patience - attemptsUsed;
 
   function handleSend() {
     if (ended || attemptsLeft <= 0) return;
-    const outcome = onSendOffer(teamOfferAmount, { salary, years, winBonus, titleBonus, bikeTier: isSplitMotoGpTeam ? offeredBikeTier : null });
+    const outcome = onSendOffer(teamOfferAmount, { salary, years, winBonus, titleBonus, bikeTier: isSplitMotoGpTeam ? offeredBikeTier : null, role: canOfferTestRiderRole ? offeredRole : "titular" });
     const line = pickNegotiationLine(personality, outcome, usedLines);
     setUsedLines((prev) => [...prev.slice(-3), line]);
     setReaction({ zone: outcome, line });
@@ -225,6 +252,21 @@ export function NegotiationScreen({
                     <div className="font-mono mt-0.5" style={{ color: offeredBikeTier === tier ? COLORS.gold : COLORS.muted }}>
                       {Math.round(tier === "previous" ? previousTierBikeAvg : bikeAvg(playerTeam.bike))}/100
                     </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {canOfferTestRiderRole && (
+            <div>
+              <div className="text-xs mb-1.5" style={{ color: COLORS.muted }}>Rol que le ofreces</div>
+              <div className="grid grid-cols-2 gap-2">
+                {["titular", "probador"].map((role) => (
+                  <button key={role} disabled={ended} onClick={() => setOfferedRole(role)}
+                    className="rounded-lg px-3 py-2 text-left text-xs disabled:opacity-60"
+                    style={{ background: offeredRole === role ? `${COLORS.gold}18` : COLORS.panel2, border: `1px solid ${offeredRole === role ? COLORS.gold : COLORS.rule}` }}>
+                    <div className="font-bold" style={{ color: COLORS.text }}>{role === "titular" ? "Piloto titular" : "Piloto probador"}</div>
+                    {role === "probador" && <div className="mt-0.5" style={{ color: COLORS.muted }}>Deja de competir — muchos pilotos lo rechazan</div>}
                   </button>
                 ))}
               </div>

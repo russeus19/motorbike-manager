@@ -29,7 +29,7 @@ function currentRank(riderStandings, riderId) {
  * horizontal 4-part row from sm upward, stacked into readable blocks
  * on a narrow phone screen instead of cramming four columns into it.
  */
-export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums, rank, category, accent, openProfile, teamName, seasonNumber, teamTier, bikeTier }) {
+export function RiderRow({ rider, isSubstitute, ownerName, substituteFor, points, wins, podiums, rank, category, accent, openProfile, teamName, seasonNumber, teamTier, bikeTier }) {
   return (
     <button
       onClick={() => openProfile(rider, teamName, category)}
@@ -68,6 +68,11 @@ export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums
               <div className="text-xs mt-1.5 flex items-center gap-1" style={{ color: COLORS.danger }}>
                 <AlertTriangle size={11} className="flex-shrink-0" />
                 {rider.injury.sidelined ? `Lesión ${rider.injury.severityLabel} · vuelve en ${rider.injury.gpRemaining} GP${rider.injury.gpRemaining === 1 ? "" : "s"}` : `Lesión leve (${rider.injury.gpRemaining} GP) · rendimiento mermado`}
+              </div>
+            )}
+            {substituteFor && (
+              <div className="text-xs mt-1.5 flex items-center gap-1.5" style={{ color: COLORS.gold }}>
+                <ArrowLeftRight size={11} className="flex-shrink-0" /> Sustituto de {substituteFor}
               </div>
             )}
           </div>
@@ -120,6 +125,11 @@ export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums
             <div className="text-xs mt-2 flex items-center gap-1" style={{ color: COLORS.danger }}>
               <AlertTriangle size={11} className="flex-shrink-0" />
               {rider.injury.sidelined ? `Lesión ${rider.injury.severityLabel} · vuelve en ${rider.injury.gpRemaining} GP${rider.injury.gpRemaining === 1 ? "" : "s"}` : `Lesión leve (${rider.injury.gpRemaining} GP) · rendimiento mermado`}
+            </div>
+          )}
+          {substituteFor && (
+            <div className="text-xs mt-2 flex items-center gap-1.5" style={{ color: COLORS.gold }}>
+              <ArrowLeftRight size={12} className="flex-shrink-0" /> Sustituto de {substituteFor}
             </div>
           )}
         </div>
@@ -208,6 +218,17 @@ export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodi
           />
         ))}
         {Object.entries(playerTeam.substitutes || {}).map(([ownerId, sub]) => {
+          // Bug fixed: a team's own test rider (see utils/testRiders.js)
+          // stepping in to cover an injured titular still lives in
+          // BOTH playerTeam.substitutes (the seat they're temporarily
+          // filling) AND playerTeam.testRider (their own real slot) at
+          // once — rendering both loops unconditionally showed them as
+          // two separate rows, one labeled "probador" and one labeled
+          // "sustituto", as if they were two different people. Skipped
+          // here; their own row in the "Piloto probador" section below
+          // picks up the exact same "Sustituto de X" legend instead, so
+          // they show up once, with both facts visible on that one row.
+          if (playerTeam.testRider && sub.id === playerTeam.testRider.id) return null;
           const owner = playerTeam.riders.find((r) => r.id === ownerId);
           return (
             <RiderRow
@@ -227,6 +248,38 @@ export function MyRidersPanel({ playerTeam, riderStandings, riderWins, riderPodi
             />
           );
         })}
+        {playerTeam.testRider && (() => {
+          // Same reasoning as the skip above, from the other side: if
+          // this exact rider is the value for some owner's seat in
+          // playerTeam.substitutes, they're actively covering an
+          // injury right now — that owner's name is threaded through
+          // as ownerName/isSubstitute so RiderRow shows the identical
+          // yellow "Sustituto de X" legend a hired-in substitute gets,
+          // right here on their own probador row, instead of a second
+          // row elsewhere.
+          const coveringForId = Object.entries(playerTeam.substitutes || {}).find(([, s]) => s.id === playerTeam.testRider.id)?.[0];
+          const coveringForName = coveringForId ? playerTeam.riders.find((r) => r.id === coveringForId)?.name : null;
+          return (
+            <>
+              <div className="text-xs uppercase tracking-wider mt-3 mb-1.5" style={{ color: COLORS.muted }}>Piloto probador</div>
+              <RiderRow
+                key={playerTeam.testRider.id}
+                rider={playerTeam.testRider}
+                substituteFor={coveringForName}
+                category={category}
+                accent={accent}
+                openProfile={openProfile}
+                teamName={teamName}
+                teamTier={playerTeam.tier}
+                seasonNumber={seasonNumber}
+                points={riderStandings[playerTeam.testRider.id]?.points ?? 0}
+                wins={riderWins?.[playerTeam.testRider.id] ?? 0}
+                podiums={riderPodiums?.[playerTeam.testRider.id] ?? 0}
+                rank={currentRank(riderStandings, playerTeam.testRider.id)}
+              />
+            </>
+          );
+        })()}
       </>
     </Panel>
   );

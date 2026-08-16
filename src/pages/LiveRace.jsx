@@ -41,7 +41,7 @@ export function LiveRaceScreen({ pendingLiveRace, accent, onFinish }) {
   const finished = lap >= laps;
 
   return (
-    <div className="max-w-lg mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-6 py-10">
       <div className="text-xs uppercase tracking-[0.2em] mb-1" style={{ color: COLORS.muted }}>
         {kind === "sprint" ? "Sprint en directo" : kind === "worldsbk-race1" ? "Race 1 en directo" : kind === "worldsbk-superpole" ? "Superpole Race en directo" : "Carrera en directo"}
       </div>
@@ -49,33 +49,34 @@ export function LiveRaceScreen({ pendingLiveRace, accent, onFinish }) {
         <Flag size={22} style={{ color: accent }} /> Vuelta {lap} de {laps}
       </h2>
 
-      <div className="flex items-center gap-2 mb-4">
-        {[1, 4, 10].map((s) => (
-          <button key={s} onClick={() => setSpeed(s)}
-            className="text-xs px-3 py-1.5 rounded font-semibold"
-            style={{
-              background: speed === s ? accent : COLORS.panel2,
-              color: speed === s ? "#12151A" : COLORS.muted,
-              border: `1px solid ${speed === s ? accent : COLORS.rule}`,
-              fontFamily: "Rajdhani, sans-serif",
-            }}>
-            x{s}
-          </button>
-        ))}
-        <button onClick={() => setLap(laps)}
-          className="text-xs px-3 py-1.5 rounded font-semibold flex items-center gap-1.5 ml-auto"
-          style={{ background: COLORS.panel2, color: COLORS.muted, border: `1px solid ${COLORS.rule}`, fontFamily: "Rajdhani, sans-serif" }}>
-          <FastForward size={14} /> Saltar al resultado
+      {/* Misma fila/posición/estilo de botón principal que QualifyingScreen
+          y ResultScreen: siempre anclado a la derecha (ml-auto), para que
+          el usuario pueda ir pasando de pantalla en pantalla pulsando
+          siempre en el mismo sitio. Mientras la carrera corre, cumple el
+          papel de "saltar al resultado"; en cuanto termina, pasa a ser el
+          "Ver resultado" que avanza de pantalla — mismo botón, mismo
+          hueco, solo cambia la etiqueta y la acción. */}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-3">
+        <div className="flex items-center gap-2 sm:flex-1 sm:min-w-[200px]">
+          {[1, 4, 10].map((s) => (
+            <button key={s} onClick={() => setSpeed(s)}
+              className="text-xs px-3 py-1.5 rounded font-semibold"
+              style={{
+                background: speed === s ? accent : COLORS.panel2,
+                color: speed === s ? "#12151A" : COLORS.muted,
+                border: `1px solid ${speed === s ? accent : COLORS.rule}`,
+                fontFamily: "Rajdhani, sans-serif",
+              }}>
+              x{s}
+            </button>
+          ))}
+        </div>
+        <button onClick={finished ? onFinish : () => setLap(laps)}
+          className="w-full sm:w-auto py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 flex-shrink-0 sm:ml-auto"
+          style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
+          {finished ? "Ver resultado" : "Saltar al resultado"} {finished ? <ChevronRight size={18} /> : <FastForward size={18} />}
         </button>
       </div>
-
-      {finished && (
-        <button onClick={onFinish}
-          className="w-full mb-4 py-3 rounded-md font-bold flex items-center justify-center gap-2"
-          style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
-          Ver resultado <ChevronRight size={18} />
-        </button>
-      )}
 
       <div ref={tickerRef} className="rounded-lg p-3 mb-4 text-xs space-y-1.5" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}`, maxHeight: 160, overflowY: "auto" }}>
         {ticker.length === 0 && <p style={{ color: COLORS.muted }}>La carrera está a punto de arrancar...</p>}

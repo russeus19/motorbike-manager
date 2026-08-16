@@ -84,7 +84,35 @@ export function recordSeasonHistory(teams, standingsForCategory, categoryKey, se
     Object.entries(t.substitutes || {}).forEach(([ownerId, sub]) => {
       substitutes[ownerId] = buildHistoryEntryIfRaced(sub, teamDisplayName(t), standingsForCategory, posById, categoryKey, seasonNum);
     });
-    return { ...t, riders, substitutes };
+    // Bug fixed (feature): a MotoGP factory team's own test rider (see
+    // utils/testRiders.js) never got a season history entry at all —
+    // titulares and substitutes both went through
+    // buildHistoryEntryIfRaced above, but that function only ever adds
+    // an entry when the rider actually shows up in this category's
+    // standings (i.e. they raced), which is exactly backwards for a
+    // probador: being one is itself the thing worth recording, whether
+    // or not they ever had to step in for an injury. `role: "probador"`
+    // marks every one of their entries this way, every season, whether
+    // or not `position`/`points` end up meaningful this time —
+    // position/points only get set when they genuinely raced (via
+    // buildHistoryEntryIfRaced's own logic, since a probador who never
+    // subbed in has no standings entry to read from at all), so the
+    // display layer can tell "fue probador, no llegó a correr" apart
+    // from "fue probador, y corrió N carreras" using the exact same
+    // entry shape.
+    let testRider = t.testRider;
+    if (testRider) {
+      const raced = !!posById[testRider.id];
+      const entry = {
+        season: seasonNum, category: categoryKey, teamName: teamDisplayName(t), role: "probador",
+        position: raced ? posById[testRider.id] : null,
+        points: raced ? (standingsForCategory[testRider.id]?.points ?? 0) : 0,
+        races: raced ? (testRider.seasonRaceStarts || 0) : 0,
+        badge: null,
+      };
+      testRider = { ...testRider, history: [...(testRider.history || []), entry], seasonRaceStarts: 0 };
+    }
+    return { ...t, riders, substitutes, testRider };
   });
 }
 

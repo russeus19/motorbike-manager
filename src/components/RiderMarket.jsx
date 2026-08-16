@@ -147,6 +147,11 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
     return [
       ...t.riders.map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey, isOwn })),
       ...Object.values(t.substitutes || {}).map((r) => ({ rider: r, teamName: teamDisplayName(t), categoryKey, isOwn })),
+      // A test rider is a real signed rider like any other — see
+      // utils/testRiders.js's own header comment — just doing a
+      // different job while their contract lasts. They belong in the
+      // search results exactly like a titular or a substitute would.
+      ...(t.testRider ? [{ rider: t.testRider, teamName: teamDisplayName(t), categoryKey, isOwn }] : []),
     ];
   }
 
@@ -174,7 +179,25 @@ export function AdvancedFreeAgentSearch({ freeAgents, playerTeam, rivalTeams, ot
   // just for someone who happens to be between teams right now instead
   // of still on one.
   const freeAgentEntries = freeAgents.map((r) => ({ rider: r, teamName: null, categoryKey: r._fromCategoryKey || null, isOwn: false }));
-  const allEntries = [...currentCategoryEntries, ...otherCategoryEntries, ...freeAgentEntries];
+  const allEntriesRaw = [...currentCategoryEntries, ...otherCategoryEntries, ...freeAgentEntries];
+  // Bug fixed: a rider — most visibly a MotoGP factory team's own test
+  // rider, but this protects everyone — could show up more than once
+  // (reported up to 4x) if the SAME rider ends up reachable through
+  // more than one of the three sources above at once (e.g. a stale
+  // otherCategories[playedCategory] entry left over alongside the live
+  // playerTeam/rivalTeams for that same category, from a career-mode
+  // switch or an older save). No rider should ever legitimately appear
+  // twice in a roster search no matter the underlying cause, so this
+  // keeps only the FIRST entry found per rider id — current-category
+  // sources are listed first above specifically so a rider's live,
+  // active entry always wins over a stale duplicate rather than the
+  // other way around.
+  const seenRiderIds = new Set();
+  const allEntries = allEntriesRaw.filter((e) => {
+    if (seenRiderIds.has(e.rider.id)) return false;
+    seenRiderIds.add(e.rider.id);
+    return true;
+  });
 
   // Every nationality actually present in the current search pool, so the
   // dropdown never shows a country with zero riders in it. Sorted by

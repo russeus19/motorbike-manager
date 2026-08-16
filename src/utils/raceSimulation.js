@@ -50,6 +50,12 @@ export function findInTeamRoster(team, id) {
   for (const ownerId of Object.keys(subs)) {
     if (subs[ownerId].id === id) return subs[ownerId];
   }
+  // A team's own test rider (see utils/testRiders.js) is a real signed
+  // rider on this exact roster, same as a titular or a substitute —
+  // just doing a different job. Every caller of this function (locating
+  // who owns a rider for negotiation purposes, firing, etc.) needs to
+  // find them here too, not just in .riders/.substitutes.
+  if (team.testRider && team.testRider.id === id) return team.testRider;
   return null;
 }
 
@@ -376,12 +382,19 @@ export function bumpCareerStats(rider, categoryKey, position, crashed, points, i
   // anything (3 wins out of 4 races reads very differently from 3 out
   // of 40).
   const careerRaces = { ...rider.careerRaces, [categoryKey]: (rider.careerRaces?.[categoryKey] || 0) + 1 };
+  // Same idea as careerRaces above, but reset every season transition
+  // (see utils/seasonHistory.js's own recordSeasonHistory) instead of
+  // accumulating across a whole career — needed specifically to record
+  // a test rider's own "corrió N carreras este año" in their season
+  // history entry, since standings alone only ever carry points, never
+  // a race count.
+  const seasonRaceStarts = (rider.seasonRaceStarts || 0) + 1;
   const recentResults = [...(rider.recentResults || []), { position, points: points ?? 0, crashed: !!crashed }].slice(-3);
-  if (crashed) return { ...rider, careerRaces, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
-  if (position > 3) return { ...rider, careerRaces, recentResults };
+  if (crashed) return { ...rider, careerRaces, seasonRaceStarts, crashesThisSeason: (rider.crashesThisSeason || 0) + 1, recentResults };
+  if (position > 3) return { ...rider, careerRaces, seasonRaceStarts, recentResults };
   const careerPodiums = { ...rider.careerPodiums, [categoryKey]: (rider.careerPodiums?.[categoryKey] || 0) + 1 };
   const careerWins = position === 1 ? { ...rider.careerWins, [categoryKey]: (rider.careerWins?.[categoryKey] || 0) + 1 } : rider.careerWins;
-  return { ...rider, careerRaces, careerPodiums, careerWins, recentResults };
+  return { ...rider, careerRaces, seasonRaceStarts, careerPodiums, careerWins, recentResults };
 }
 
 /* Record each rider's final championship position (and title badge, if any)

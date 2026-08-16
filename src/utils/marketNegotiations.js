@@ -1,5 +1,5 @@
 import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
-import { clamp, pick } from "./random.js";
+import { clamp, pick, randInt } from "./random.js";
 import { categoryRankDelta, computeMarketValue, computeSalary, isFreeAgentEligibleForCategory, isPlausibleCrossoverSuitor, overallRating, passesCrossoverGate, photoIdFor } from "./riders.js";
 import { perceivedRiderForAI } from "./scouting.js";
 import { bikeAvg } from "./bikeDevelopment.js";
@@ -82,19 +82,27 @@ export function marketHeat(round, totalRounds) {
    RUMORS
    ------------------------------------------------------------------- */
 
-const RUMOR_TEMPLATES = [
-  (rider, team) => `${teamDisplayName(team)} está interesado en ${rider.name}.`,
-  (rider, team) => `${teamDisplayName(team)} estudia renovar a ${rider.name}.`,
-  (rider, team) => `${rider.name} podría abandonar ${teamDisplayName(team)} a final de temporada.`,
-  (rider) => `${rider.name} recibe varias muestras de interés de otros equipos.`,
-  (_rider, team) => `${teamDisplayName(team)} prepara cambios en su alineación para la próxima temporada.`,
-  (rider) => `Se habla de un posible cambio de aires para ${rider.name}.`,
-  (rider) => `El entorno de ${rider.name} negocia su futuro.`,
+/** Each entry describes one rumor "kind": the flavor text (kept for
+ * accessibility/screen-reader use — the panel itself is now built
+ * around the structured fields below, not this sentence), which team
+ * counts as the rumor's origin/destination (a renewal has the SAME
+ * team on both ends; a bare "podría abandonar" has no known
+ * destination yet), and a plausible probability RANGE — a renewal
+ * rumor is inherently more likely to actually happen than a vague
+ * "several teams are interested" one, so these aren't all centered on
+ * the same number. */
+const RUMOR_KINDS = [
+  { kind: "interest", text: (r, t) => `${teamDisplayName(t)} está interesado en ${r.name}.`, from: "current", to: "team", prob: [35, 70] },
+  { kind: "renewal", text: (r, t) => `${teamDisplayName(t)} estudia renovar a ${r.name}.`, from: "current", to: "current", prob: [50, 88] },
+  { kind: "departure", text: (r, t) => `${r.name} podría abandonar ${teamDisplayName(t)} a final de temporada.`, from: "current", to: null, prob: [25, 55] },
+  { kind: "interest_multiple", text: (r) => `${r.name} recibe varias muestras de interés de otros equipos.`, from: "current", to: null, prob: [20, 45] },
+  { kind: "departure", text: (r) => `Se habla de un posible cambio de aires para ${r.name}.`, from: "current", to: null, prob: [25, 55] },
+  { kind: "departure", text: (r) => `El entorno de ${r.name} negocia su futuro.`, from: "current", to: null, prob: [30, 60] },
 ];
 
-const FREE_AGENT_RUMOR_TEMPLATES = [
-  (rider, team) => `${teamDisplayName(team)} sondea a ${rider.name}, agente libre.`,
-  (rider) => `${rider.name} sigue sin equipo y varios boxes lo vigilan.`,
+const FREE_AGENT_RUMOR_KINDS = [
+  { kind: "free_agent_interest", text: (r, t) => `${teamDisplayName(t)} sondea a ${r.name}, agente libre.`, from: null, to: "team", prob: [30, 65] },
+  { kind: "free_agent_search", text: (r) => `${r.name} sigue sin equipo y varios boxes lo vigilan.`, from: null, to: null, prob: [15, 40] },
 ];
 
 function pickRandomEntry(team) {
@@ -102,11 +110,25 @@ function pickRandomEntry(team) {
   return pool.length ? pick(pool) : null;
 }
 
-/** Generates a handful of plausible rumor sentences for one category,
- * with probability (both of generating anything at all, and of how many)
- * scaled by how deep into the season we are. Never claims anything is
- * confirmed — rumors are explicitly "some are true, some are just
- * gossip", matching the design's own framing. */
+/** The rider's own current team, if any — looked up straight from the
+ * same team list rumors are generated from, since a rider object on
+ * its own doesn't carry a back-reference to its team. */
+function currentTeamFor(rider, teams) {
+  return (teams || []).find((t) => (t.riders || []).some((r) => r.id === rider.id) || Object.values(t.substitutes || {}).some((r) => r?.id === rider.id)) || null;
+}
+
+/** Generates a handful of plausible, structured rumors for one
+ * category, with probability (both of generating anything at all, and
+ * of how many) scaled by how deep into the season we are. Never
+ * claims anything is confirmed — rumors are explicitly "some are
+ * true, some are just gossip", matching the design's own framing.
+ * Each rumor carries everything the panel needs to render a proper
+ * card (rider photo/flag, origin/destination team logos, a
+ * probability) rather than just a sentence — origin/destination are
+ * null when the rumor genuinely doesn't name one (a free agent has no
+ * origin team; "podría abandonar" doesn't yet know a destination), so
+ * the panel can show a "?" placeholder instead of inventing a team the
+ * rumor never actually named. */
 export function generateRumorsForCategory(teams, freeAgents, categoryKey, round, totalRounds, seasonNumber) {
   const heat = marketHeat(round, totalRounds);
   const rumors = [];
@@ -114,21 +136,42 @@ export function generateRumorsForCategory(teams, freeAgents, categoryKey, round,
   for (let i = 0; i < attempts; i++) {
     if (Math.random() > heat) continue;
     const useFreeAgent = freeAgents.length && Math.random() < 0.25;
-    let text = null;
+    let rider, ownTeam, def;
     if (useFreeAgent) {
-      const rider = pick(freeAgents);
-      const team = teams.length ? pick(teams) : null;
-      const template = pick(FREE_AGENT_RUMOR_TEMPLATES);
-      text = team ? template(rider, team) : template(rider);
+      rider = pick(freeAgents);
+      ownTeam = null;
+      def = pick(FREE_AGENT_RUMOR_KINDS);
     } else if (teams.length) {
-      const team = pick(teams);
-      const rider = pickRandomEntry(team);
-      if (rider) {
-        const template = pick(RUMOR_TEMPLATES);
-        text = template(rider, team);
-      }
+      ownTeam = pick(teams);
+      rider = pickRandomEntry(ownTeam);
+      def = pick(RUMOR_KINDS);
     }
-    if (text) rumors.push({ id: nextMarketId("rumor"), text, categoryKey, round, season: seasonNumber });
+    if (!rider || !def) continue;
+    // Bug fixed: an "interest" rumor's "team" used to be the SAME
+    // team the rider was just picked FROM — reading fine as a vague
+    // sentence ("Ducati está interesado en Márquez"), but nonsensical
+    // once shown as an explicit origin→destination pair with logos on
+    // both ends (a team "interested" in its own rider, arrow pointing
+    // right back where it started). Any kind that names an INTERESTED
+    // team (as opposed to the rider's own current one) now picks a
+    // genuinely different team for that role — a free-agent
+    // suitor already worked this way, since freeAgents have no
+    // current team to accidentally collide with.
+    const suitorPool = teams.filter((t) => t !== ownTeam);
+    const suitorTeam = def.to === "team" ? (suitorPool.length ? pick(suitorPool) : (teams.length ? pick(teams) : null)) : null;
+    const originTeam = def.from === "current" ? ownTeam : null;
+    const destTeam = def.to === "team" ? suitorTeam : def.to === "current" ? ownTeam : null;
+    const textTeam = def.to === "team" ? suitorTeam : ownTeam;
+    rumors.push({
+      id: nextMarketId("rumor"),
+      text: textTeam ? def.text(rider, textTeam) : def.text(rider),
+      kind: def.kind,
+      categoryKey, round, season: seasonNumber,
+      riderId: rider.id, riderName: rider.name, riderPhotoId: photoIdFor(rider), riderNat: rider.nat,
+      fromTeamId: originTeam?.id ?? null, fromTeamName: originTeam ? teamDisplayName(originTeam) : null, fromTeamLogoId: originTeam?.logoId ?? null,
+      toTeamId: destTeam?.id ?? null, toTeamName: destTeam ? teamDisplayName(destTeam) : null, toTeamLogoId: destTeam?.logoId ?? null,
+      probability: randInt(def.prob[0], def.prob[1]),
+    });
   }
   return rumors;
 }
@@ -495,7 +538,20 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
     if (t.id === "player") return; // the player renews their own riders manually
     const tier = teamExpectationTier(t);
     const [r1, r2] = t.riders;
-    t.riders.forEach((r) => {
+    // Bug fixed (feature): this used to only ever consider t.riders — an
+    // AI-controlled MotoGP factory team's own test rider (see
+    // utils/testRiders.js) lives in the separate `testRider` slot, so
+    // their contract (which now genuinely counts down every season —
+    // see evolvedOwnTestRider's own comment in App.jsx) could run out
+    // with the AI never once attempting to renew them, unlike every
+    // titular. Same continuity-based logic, just against the one rider
+    // in this slot instead of the two in the array — a probador's own
+    // teammatePoints comparison doesn't really apply (they only race
+    // when subbing in), so that term is simply left at 0 rather than
+    // comparing them against a titular's very different points total.
+    const rosterWithTestRider = t.testRider ? [...t.riders, t.testRider] : t.riders;
+    rosterWithTestRider.forEach((r) => {
+      const isThisTestRider = t.testRider && r.id === t.testRider.id;
       if ((r.contractYears ?? 0) !== 1) return;
       // Same reasoning as the signing path above — a rival poaching
       // attempt on this rider no longer stops their OWN team from
@@ -505,7 +561,7 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
       const alreadyNegotiating = [...marketNegotiations, ...created].some((n) => n.riderId === r.id && n.toTeamId === t.id && !["failed", "withdrawn"].includes(n.status));
       if (alreadyNegotiating) return;
 
-      const teammatePts = r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0);
+      const teammatePts = isThisTestRider ? 0 : (r.id === r1?.id ? (riderStandings?.[r2?.id]?.points || 0) : (riderStandings?.[r1?.id]?.points || 0));
       const points = riderStandings?.[r.id]?.points || 0;
       const riderExpectationVerdict = t.expectation
         ? evaluateSeasonVsExpectation(riderPosById[r.id], { min: Math.max(1, t.expectation.min * 2 - 1), max: t.expectation.max * 2 })
@@ -522,6 +578,7 @@ export function maybeGenerateAIRenewalNegotiations(teams, categoryKey, riderStan
         years: proposedContractYears(r),
         winBonus: 0,
         titleBonus: 0,
+        ...(isThisTestRider ? { role: "probador" } : {}),
       };
       created.push(createNegotiation({
         kind: "renewal", rider: r, categoryKey, fromTeam: t,
@@ -651,6 +708,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   if (!confirmed.length) return { playerTeam, rivalTeams, otherCategories, freeAgents, appliedIds: [], strandedRiders: [], strandedNegotiationIds: [] };
 
   const nextPlayerRiders = [...playerTeam.riders];
+  let nextPlayerTestRider = playerTeam.testRider || null;
   const nextRivals = rivalTeams.map((t) => ({ ...t, riders: [...t.riders] }));
   const nextOther = {};
   Object.entries(otherCategories || {}).forEach(([k, v]) => {
@@ -766,11 +824,17 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
     };
     let placed = false;
     if (neg.toTeamId === "player") {
-      // Hard safety net: never let the player's roster exceed 2 riders
-      // here, even in an edge case where releases were undone after
-      // offers were already lined up (see App.jsx's nextSeasonPlayerRiderCount
-      // guard, which prevents this in the normal flow).
-      if (nextPlayerRiders.length < 2) { nextPlayerRiders.push(signedRider); placed = true; }
+      // Bug fixed (feature): a confirmed signing offered as "piloto
+      // probador" (see NegotiationScreen.jsx's own role toggle) needs
+      // to land in the team's OWN test-rider slot, never the normal
+      // 2-rider roster — that's the whole point of the role. Only ever
+      // relevant for the player's own signings for now; nothing on the
+      // AI side offers this role yet, so nextRivals/nextOther below
+      // never need this same branch.
+      if (neg.riderTerms?.role === "probador") {
+        nextPlayerTestRider = signedRider;
+        placed = true;
+      } else if (nextPlayerRiders.length < 2) { nextPlayerRiders.push(signedRider); placed = true; }
       else strandedRiders.push(finalizeStrandedHistory(signedRider, standingsByCategory, neg.categoryKey, neg.createdSeason));
     } else {
       // AI-vs-AI deals always happen within a single category (see
@@ -883,7 +947,7 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
   });
 
   return {
-    playerTeam: { ...playerTeam, riders: nextPlayerRiders },
+    playerTeam: { ...playerTeam, riders: nextPlayerRiders, testRider: nextPlayerTestRider },
     rivalTeams: nextRivals,
     otherCategories: nextOther,
     freeAgents: nextFreeAgents,
@@ -895,11 +959,21 @@ export function applyConfirmedNegotiations({ playerTeam, rivalTeams, otherCatego
 
 /** Splits off any rider marked "despedir al finalizar la temporada"
  * (section 12) — they raced the whole season normally, and only now, at
- * the transition, actually leave the roster and become a free agent. */
+ * the transition, actually leave the roster and become a free agent.
+ * The team's own test rider (see utils/testRiders.js) goes through the
+ * exact same mechanism, in the exact same pass, since markReleaseAtSeasonEnd
+ * in App.jsx marks their own releasedAtSeasonEnd flag identically — just
+ * split out separately here since they live in their own `testRider`
+ * slot, not the 2-rider `riders` array. */
 export function applyReleasedAtSeasonEnd(playerTeam) {
   const staying = playerTeam.riders.filter((r) => !r.releasedAtSeasonEnd);
   const released = playerTeam.riders.filter((r) => r.releasedAtSeasonEnd);
-  return { playerTeam: { ...playerTeam, riders: staying }, released };
+  const testRiderReleased = playerTeam.testRider?.releasedAtSeasonEnd ? playerTeam.testRider : null;
+  const nextTestRider = testRiderReleased ? null : playerTeam.testRider;
+  return {
+    playerTeam: { ...playerTeam, riders: staying, testRider: nextTestRider },
+    released: testRiderReleased ? [...released, testRiderReleased] : released,
+  };
 }
 
 /**
@@ -931,7 +1005,20 @@ export function applyRenewalsToTeam(team, renewals) {
     if (!renewal) return r;
     return { ...r, contractYears: (r.contractYears ?? 0) + renewal.years, salary: renewal.salary, releasedAtSeasonEnd: false };
   });
-  return { ...team, riders };
+  // Bug fixed (feature): this used to only ever check team.riders — a
+  // renewal for the team's own test rider (see utils/testRiders.js)
+  // would show "favorable" in the negotiation screen (nothing about
+  // reaching that outcome depends on this function at all) but then
+  // silently do nothing here, since they live in the separate
+  // `testRider` slot, not `.riders`. Their contract would just sit at
+  // whatever it already was, contradicting what the player was just
+  // told happened.
+  let testRider = team.testRider;
+  if (testRider) {
+    const renewal = renewals.find((rn) => rn.teamId === team.id && (rn.riderId === testRider.id || rn.riderName === testRider.name));
+    if (renewal) testRider = { ...testRider, contractYears: (testRider.contractYears ?? 0) + renewal.years, salary: renewal.salary, releasedAtSeasonEnd: false };
+  }
+  return { ...team, riders, testRider };
 }
 
 /**

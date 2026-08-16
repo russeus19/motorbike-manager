@@ -274,7 +274,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
             <MyRidersPanel playerTeam={playerTeam} riderStandings={riderStandings} riderWins={riderWins} riderPodiums={riderPodiums} gpHistory={gpHistory} category={category} seasonNumber={seasonNumber} accent={accent} openProfile={openProfile} motogpSeatTiers={motogpSeatTiers} />
           </div>
 
-          <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
+          <RumorsPanel marketRumors={marketRumors} accent={accent} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
           <div id="pilotos-ofertas">
           <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} budget={budget} />
           </div>

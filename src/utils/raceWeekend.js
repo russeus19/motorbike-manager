@@ -8,6 +8,25 @@ import { aiMaybeFireRider, pickBestFreeAgentSub } from "./transferMarket.js";
 import { aiManageWarehouse, consumeWarehouseForResult, initWarehouse, resolveWarehouseProduction } from "./warehouseEngine.js";
 import { teamDisplayName } from "./teamNaming.js";
 
+/** The AI-controlled counterpart to testRiderAvailable in App.jsx (the
+ * player's own version of this exact same check) — a MotoGP factory
+ * team's own test rider steps in automatically for an AI-controlled
+ * team too, with no cost and no free-agent search, before the normal
+ * pickBestFreeAgentSub flow is ever considered. Only actually
+ * available when they exist, aren't themselves sidelined, and aren't
+ * ALREADY covering a DIFFERENT titular's injury this same stretch —
+ * if both of a factory team's riders go down at once, the test rider
+ * only ever covers the first, and the second seat falls straight
+ * through to the same free-agent hire every non-factory team already
+ * uses. */
+function aiTestRiderAvailable(team, substitutes) {
+  const tr = team?.testRider;
+  if (!tr) return false;
+  if (tr.injury && tr.injury.sidelined && tr.injury.gpRemaining > 0) return false;
+  if (Object.values(substitutes || {}).some((s) => s.id === tr.id)) return false;
+  return true;
+}
+
 /**
  * The week-passes-regardless-of-racing half of a team's upkeep:
  * warehouse production, R&D project/package advancement, facility
@@ -142,7 +161,11 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
           poolRef.pool = [...poolRef.pool, sub];
           delete substitutes[ownerId];
           notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(sub), text: `${sub.name} se lesiona sustituyendo a ${originalName} en ${teamDisplayName(team)} y también causa baja — hace falta un nuevo sustituto.` });
-          if (ctx.isPlayer) {
+          if (aiTestRiderAvailable(team, substitutes)) {
+            const tr = team.testRider;
+            substitutes[ownerId] = { ...tr, isNewTeamThisSeason: true };
+            notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(tr), text: `${tr.name}, piloto probador de ${teamDisplayName(team)}, releva a ${sub.name} como sustituto de ${originalName}.` });
+          } else if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: ownerId, riderName: originalName });
           } else {
             const newSub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);
@@ -180,7 +203,11 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
         notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} sufre una caída y se diagnostica ${inj.name.toLowerCase()} (lesión ${inj.severityLabel}).` });
         if (inj.sidelined) {
           notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} se perderá ${inj.gpTotal} Gran${inj.gpTotal === 1 ? "" : "es"} Premio${inj.gpTotal === 1 ? "" : "s"} con ${teamDisplayName(team)}.` });
-          if (ctx.isPlayer) {
+          if (aiTestRiderAvailable(team, substitutes)) {
+            const tr = team.testRider;
+            substitutes[next.id] = { ...tr, isNewTeamThisSeason: true };
+            notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(tr), text: `${tr.name}, piloto probador de ${teamDisplayName(team)}, sustituye a ${next.name} hasta su recuperación.` });
+          } else if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
             const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);
@@ -230,7 +257,11 @@ export function processTeamAfterRace(team, raceResults, categoryKey, ctx, poolRe
         // to arrange anything before Sunday.
         if (wasDeferred && !substitutes[next.id]) {
           notifQueue.push({ type: "injury", category: categoryKey, riderId: photoIdFor(next), text: `${next.name} seguirá de baja ${next.injury.gpTotal} Gran${next.injury.gpTotal === 1 ? "" : "es"} Premio${next.injury.gpTotal === 1 ? "" : "s"} tras la caída de este fin de semana.` });
-          if (ctx.isPlayer) {
+          if (aiTestRiderAvailable(team, substitutes)) {
+            const tr = team.testRider;
+            substitutes[next.id] = { ...tr, isNewTeamThisSeason: true };
+            notifQueue.push({ type: "market", category: categoryKey, riderId: photoIdFor(tr), text: `${tr.name}, piloto probador de ${teamDisplayName(team)}, sustituye a ${next.name} hasta su recuperación.` });
+          } else if (ctx.isPlayer) {
             ctx.setPendingSub({ teamId: team.id, riderId: next.id, riderName: next.name });
           } else {
             const sub = pickBestFreeAgentSub(poolRef.pool, categoryKey, budgetAfterSubs, ctx.scale, team, ctx.marketNegotiations);

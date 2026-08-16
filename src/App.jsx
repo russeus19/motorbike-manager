@@ -13,7 +13,7 @@ import { ManufacturerNegotiationScreen } from "./components/ManufacturerNegotiat
 import { applyManufacturerRequestSuccess, tickManufacturerContract, applyPendingManufacturerSwitch, aiConsiderManufacturerSwitch } from "./utils/manufacturerNegotiation.js";
 import { SeatSelectionScreen } from "./components/SeatSelectionScreen.jsx";
 import { SeasonBikeRevealScreen } from "./components/SeasonBikeRevealScreen.jsx";
-import { snapshotFactoryBikes, advanceMotoGpCustomerQueue, DEFAULT_MOTOGP_BIKE_TIERS, reassignCustomerTopSeats, candidateSeatsByManufacturer, motoGpDevScaleFor, bikeForSeat } from "./data/motogpBikeTiers.js";
+import { snapshotFactoryBikes, advanceMotoGpCustomerQueue, DEFAULT_MOTOGP_BIKE_TIERS, reassignCustomerTopSeats, candidateSeatsByManufacturer, motoGpDevScaleFor, bikeForSeat, isRestrictedMotoGpSatellite } from "./data/motogpBikeTiers.js";
 import { NegotiationScreen } from "./components/NegotiationScreen.jsx";
 import { TeamNegotiationScreen } from "./components/TeamNegotiationScreen.jsx";
 import { CATEGORY_DATA, CATEGORY_ORDER } from "./data/categories.js";
@@ -117,6 +117,7 @@ import { isNegotiationOnCooldown, NEGOTIATION_COOLDOWN_ROUNDS, negotiationPatien
 import { clamp, pick } from "./utils/random.js";
 import { evolveRider, evolveRoster } from "./utils/riderEvolution.js";
 import { generateRookieClass, instantiateTeams, seedLegendFreeAgents } from "./utils/riderGeneration.js";
+import { seedMotoGpTestRiders } from "./utils/testRiders.js";
 import { applyMoraleToCategoryTeams } from "./utils/riderMorale.js";
 import { computeMarketValue, computeReleaseAtSeasonEndCost, decrementFreeAgentInjury, fireRiderCost, isFreeAgentEligibleForCategory, overallRating, photoIdFor, substituteHireCost } from "./utils/riders.js";
 import { SAVE_SLOT_IDS } from "./utils/saveSlotFormat.js";
@@ -670,10 +671,43 @@ export default function MotorbikeManager() {
       : null;
     const rivalTeams = validateAndRepairTeams(data.rivalTeams || [], CATEGORY_DATA[category]?.scale ?? 1, category).teams.map((t) => backfillPrestige(t, category));
     const otherCategories = {};
+    // Bug fixed: this used to trust data.otherCategories completely,
+    // with no check that it never also contains the currently PLAYED
+    // category — but that category's own data only ever belongs in
+    // playerTeam/rivalTeams above, never also here. If a save somehow
+    // ended up with both at once (an inconsistency from an older
+    // version, or any bug anywhere that saved both), every rider in
+    // that category would show up twice everywhere rosters get
+    // aggregated across categories (most visibly the advanced search —
+    // see components/RiderMarket.jsx's own dedup safety net, which
+    // only ever exists because this could otherwise happen). Loading
+    // now repairs it going forward instead of carrying the duplicate
+    // forever on every subsequent load.
     Object.entries(data.otherCategories || {}).forEach(([key, catState]) => {
+      if (key === category) return;
       const { teams } = validateAndRepairTeams(catState?.teams || [], CATEGORY_DATA[key]?.scale ?? 1, key);
       otherCategories[key] = { ...catState, teams: teams.map((t) => backfillPrestige(t, key)) };
     });
+
+    // Real MotoGP factory test riders (see utils/testRiders.js's own
+    // comment) — run as part of this same load-time repair pass, same
+    // reasoning as backfillPrestige right above: a save from before
+    // this feature existed needs this filled in on load, exactly once,
+    // idempotently (a team that already has its own testRider is left
+    // untouched entirely).
+    let repairedFreeAgents = data.freeAgents || [];
+    let finalPlayerTeamLoaded = playerTeam;
+    let finalRivalTeamsLoaded = rivalTeams;
+    if (category === "motogp" && playerTeam) {
+      const seeded = seedMotoGpTestRiders([playerTeam, ...rivalTeams], repairedFreeAgents, CATEGORY_DATA.motogp.scale);
+      finalPlayerTeamLoaded = seeded.teams[0];
+      finalRivalTeamsLoaded = seeded.teams.slice(1);
+      repairedFreeAgents = seeded.freeAgents;
+    } else if (otherCategories.motogp) {
+      const seeded = seedMotoGpTestRiders(otherCategories.motogp.teams, repairedFreeAgents, CATEGORY_DATA.motogp.scale);
+      otherCategories.motogp = { ...otherCategories.motogp, teams: seeded.teams };
+      repairedFreeAgents = seeded.freeAgents;
+    }
 
     // See ensureIdCounterAbovePersistedIds's own comment: without this,
     // any rider created after this load (almost always a regen) could
@@ -687,11 +721,12 @@ export default function MotorbikeManager() {
       if (!t) return;
       (t.riders || []).forEach((r) => allPersistedRiderIds.push(r.id));
       Object.values(t.substitutes || {}).forEach((s) => allPersistedRiderIds.push(s.id));
+      if (t.testRider) allPersistedRiderIds.push(t.testRider.id);
     };
-    collectIds(playerTeam);
-    rivalTeams.forEach(collectIds);
+    collectIds(finalPlayerTeamLoaded);
+    finalRivalTeamsLoaded.forEach(collectIds);
     Object.values(otherCategories).forEach((cat) => (cat.teams || []).forEach(collectIds));
-    (data.freeAgents || []).forEach((r) => allPersistedRiderIds.push(r.id));
+    (repairedFreeAgents || []).forEach((r) => allPersistedRiderIds.push(r.id));
     ensureIdCounterAbovePersistedIds(allPersistedRiderIds);
 
     setGame({
@@ -703,9 +738,10 @@ export default function MotorbikeManager() {
       seasonArchive: [], retiredRiders: [],
       ...data,
       gameMode: restoredGameMode,
-      playerTeam,
-      rivalTeams,
+      playerTeam: finalPlayerTeamLoaded,
+      rivalTeams: finalRivalTeamsLoaded,
       otherCategories,
+      freeAgents: repairedFreeAgents,
     });
 
     // Bulletproof phase restoration — this is the actual fix for "loading
@@ -770,6 +806,17 @@ export default function MotorbikeManager() {
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
     });
+    // Real MotoGP factory test riders (Pirro, Savadori, Pol Espargaró,
+    // Fernández, Nakagami) start the game signed to their real teams —
+    // see utils/testRiders.js's own comment for why this has to pull
+    // them out of the legends pool here rather than baking them
+    // straight into data/teamsMotoGP.js.
+    let seededLegends = seedLegendFreeAgents();
+    if (initOther.motogp) {
+      const seeded = seedMotoGpTestRiders(initOther.motogp.teams, seededLegends, CATEGORY_DATA.motogp.scale);
+      initOther.motogp = { ...initOther.motogp, teams: seeded.teams };
+      seededLegends = seeded.freeAgents;
+    }
 
     setGame({
       gameMode: "career",
@@ -787,7 +834,7 @@ export default function MotorbikeManager() {
       // populated from season 2 onward. Seeding one right here at
       // game creation, tagged for season 1 specifically, closes that
       // gap — every season, including the first, now has its own class.
-      freeAgents: [...seedLegendFreeAgents(), ...generateRookieClass(1)],
+      freeAgents: [...seededLegends, ...generateRookieClass(1)],
       round: 0,
       seasonNumber: 1,
       budget: chosenTeam.budget,
@@ -1101,13 +1148,31 @@ export default function MotorbikeManager() {
       const tts = {}; t.forEach((team) => { tts[team.id] = 0; });
       initOther[k] = { teams: t, riderStandings: rs, teamStandings: tts, riderWins: {}, riderPodiums: {}, sprintWins: {}, sprintPodiums: {}, seasonNumber: 1 };
     });
+    // Real MotoGP factory test riders (see utils/testRiders.js) — this
+    // "quick" mode can start the player directly IN MotoGP (unlike the
+    // career picker above, which always starts in Moto3), so the
+    // player's own team/rivals need checking here too, not just
+    // initOther.
+    let seededLegends = seedLegendFreeAgents();
+    let finalChosen = chosen;
+    let finalRivals = rivals;
+    if (draftCategory === "motogp") {
+      const seeded = seedMotoGpTestRiders([chosen, ...rivals], seededLegends, CATEGORY_DATA.motogp.scale);
+      finalChosen = seeded.teams[0];
+      finalRivals = seeded.teams.slice(1);
+      seededLegends = seeded.freeAgents;
+    } else if (initOther.motogp) {
+      const seeded = seedMotoGpTestRiders(initOther.motogp.teams, seededLegends, CATEGORY_DATA.motogp.scale);
+      initOther.motogp = { ...initOther.motogp, teams: seeded.teams };
+      seededLegends = seeded.freeAgents;
+    }
 
     setGame({
       gameMode: "quick",
       managerName: draftManagerName.trim(),
       category: draftCategory,
-      playerTeam: { ...chosen, id: "player" },
-      rivalTeams: rivals,
+      playerTeam: { ...finalChosen, id: "player" },
+      rivalTeams: finalRivals,
       otherCategories: initOther,
       // Bug fixed: generateRookieClass only ever ran inside
       // runSeasonTransition, at the END of a season — meaning the
@@ -1118,7 +1183,7 @@ export default function MotorbikeManager() {
       // populated from season 2 onward. Seeding one right here at
       // game creation, tagged for season 1 specifically, closes that
       // gap — every season, including the first, now has its own class.
-      freeAgents: [...seedLegendFreeAgents(), ...generateRookieClass(1)],
+      freeAgents: [...seededLegends, ...generateRookieClass(1)],
       round: 0,
       seasonNumber: 1,
       budget: chosen.budget,
@@ -1310,13 +1375,14 @@ export default function MotorbikeManager() {
   }
 
   function fireRider(riderId) {
-    const rider = playerTeam?.riders.find((r) => r.id === riderId);
+    const isTestRider = playerTeam?.testRider?.id === riderId;
+    const rider = isTestRider ? playerTeam.testRider : playerTeam?.riders.find((r) => r.id === riderId);
     if (!rider) return;
     const cost = fireRiderCost(rider);
     if (cost > budget) return;
     logMoneyMovement(`Despido de ${rider.name}`, -cost);
-    setPlayerTeam((t) => ({ ...t, riders: t.riders.filter((r) => r.id !== riderId) }));
-    setFreeAgents((prev) => [...prev, { ...rider, contractYears: 0, isNewTeamThisSeason: false }]);
+    setPlayerTeam((t) => (isTestRider ? { ...t, testRider: null } : { ...t, riders: t.riders.filter((r) => r.id !== riderId) }));
+    setFreeAgents((prev) => [...prev, { ...rider, role: "titular", contractYears: 0, isNewTeamThisSeason: false }]);
     setProfileTarget(null);
   }
 
@@ -1370,8 +1436,25 @@ export default function MotorbikeManager() {
     if (!playerTeam) return;
     const fromTeam = findTeamOwningRider(rider.id, categoryKey);
     const isRenewal = fromTeam?.id === "player";
-    if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) {
+    // Bug fixed: this used to block ANY new offer once the player
+    // already had 2 titular seats committed for next season — correct
+    // for a normal signing (there's genuinely no seat left), but it
+    // never knew a "piloto probador" offer isn't competing for one of
+    // those 2 seats at all — it's a completely separate slot (see
+    // NegotiationScreen.jsx's own canOfferTestRiderRole toggle). A
+    // player who'd just fired their test rider and tried to hire a
+    // replacement got told "ya tenéis las dos plazas cubiertas" even
+    // though the vacancy they were actually trying to fill had nothing
+    // to do with those 2 seats. Only the titular count still blocks a
+    // TITULAR offer; a probador offer only ever needs the test-rider
+    // slot itself to be free.
+    const offeringTestRiderRole = riderTerms?.role === "probador";
+    if (!isRenewal && !offeringTestRiderRole && nextSeasonPlayerRiderCount() >= 2) {
       pushNotifications([{ type: "market", category: categoryKey, text: `No podéis ofertar por ${rider.name}: ya tenéis las dos plazas de la próxima temporada cubiertas.` }]);
+      return;
+    }
+    if (offeringTestRiderRole && playerTeam.testRider) {
+      pushNotifications([{ type: "market", category: categoryKey, text: `No podéis ofertar por ${rider.name} como piloto probador: ya tenéis uno.` }]);
       return;
     }
     // A completed (or in-progress) renewal with their CURRENT team never
@@ -1421,8 +1504,17 @@ export default function MotorbikeManager() {
     // score against THAT tier's real bike, not the team's flat
     // average — a promise of the better of your two seats should
     // actually read as a better offer, not the same number either way.
+    // Bug fixed: this used to look up the tier against `categoryKey` —
+    // the RIDER's own origin category, which for a cross-category
+    // signing or a legend free agent with none at all could easily NOT
+    // be "motogp" even while riderTerms.bikeTier was genuinely set
+    // (only possible when the DESTINATION — playerTeam, via the app's
+    // own `category` state — really is in MotoGP). motogpSeatTiers
+    // itself is keyed by team name within the MotoGP category
+    // specifically, so this needs the destination's category, never
+    // the rider's.
     const offeredBikeAvg = riderTerms.bikeTier
-      ? bikeAvg(bikeForSeat(playerTeam, motogpSeatTiers[playerTeam.name]?.findIndex((t) => t === riderTerms.bikeTier) ?? 0, categoryKey, manufacturerPreviousBikes, motogpSeatTiers))
+      ? bikeAvg(bikeForSeat(playerTeam, motogpSeatTiers[playerTeam.name]?.findIndex((t) => t === riderTerms.bikeTier) ?? 0, category, manufacturerPreviousBikes, motogpSeatTiers))
       : bikeAvg(playerTeam.bike);
     const ctx = {
       fromCategoryKey: rider._fromCategoryKey || categoryKey,
@@ -1460,6 +1552,38 @@ export default function MotorbikeManager() {
           const nextFreeAgents = (g.freeAgents || []).filter((r) => r.id !== rider.id);
           const signedRider = { ...rider, contractYears: riderTerms.years, salary: riderTerms.salary, isNewTeamThisSeason: true };
           return { ...g, playerTeam: { ...g.playerTeam, riders: [...g.playerTeam.riders, signedRider] }, freeAgents: nextFreeAgents };
+        });
+      } else if (riderTerms.role === "probador") {
+        // Bug fixed (feature): a "piloto probador" signing shouldn't
+        // wait for the season transition at all — unlike a titular
+        // (a real seat swap the season-end engine needs to resolve
+        // cleanly against everyone else's own roster decisions), the
+        // test-rider slot is a completely separate, single-team
+        // concern with nothing else competing for it. The player can
+        // fill it the moment they find someone willing, exactly like a
+        // renewal lands immediately above. Removes them from wherever
+        // they currently are (a rival team, if any compensation step
+        // was already cleared — see needsTeamStep above — or straight
+        // from the free-agent pool) and places them directly into
+        // playerTeam.testRider, right here, mid-season.
+        setGame((g) => {
+          if (!g || !g.playerTeam) return g;
+          const signedRider = { ...rider, role: "probador", contractYears: riderTerms.years, salary: riderTerms.salary, isNewTeamThisSeason: true };
+          const nextFreeAgents = (g.freeAgents || []).filter((r) => r.id !== rider.id);
+          if (!fromTeam) {
+            return { ...g, playerTeam: { ...g.playerTeam, testRider: signedRider }, freeAgents: nextFreeAgents };
+          }
+          if (fromTeam.id === "player") return g; // shouldn't happen (isRenewal already handled above), but never double-apply
+          const stripFromTeam = (t) => (t.id === fromTeam.id
+            ? { ...t, riders: t.riders.filter((r) => r.id !== rider.id), testRider: t.testRider?.id === rider.id ? null : t.testRider }
+            : t);
+          return {
+            ...g,
+            playerTeam: { ...g.playerTeam, testRider: signedRider },
+            rivalTeams: (g.rivalTeams || []).map(stripFromTeam),
+            otherCategories: Object.fromEntries(Object.entries(g.otherCategories || {}).map(([k, v]) => [k, { ...v, teams: (v.teams || []).map(stripFromTeam) }])),
+            freeAgents: nextFreeAgents,
+          };
         });
       } else {
         // Bug fixed: this used to apply the signing immediately via
@@ -1561,7 +1685,30 @@ export default function MotorbikeManager() {
     // exempt since it doesn't add a new body to the roster at all.
     const sellingTeam = findTeamOwningRider(rider.id, categoryKey);
     const isRenewal = sellingTeam?.id === "player";
-    if (!isRenewal && nextSeasonPlayerRiderCount() >= 2) {
+    // Bug fixed (feature): same gap as createPlayerOffer/canStartNewOffer
+    // (see their own comments) — this never knew a genuine test-rider
+    // vacancy (playerTeam is a MotoGP factory team, playerTeam.testRider
+    // is empty) is a completely separate slot from the 2 titular seats
+    // this check was built to protect. Without this, the screen this
+    // function opens never even got a chance to show
+    // canOfferTestRiderRole's own toggle — the player got refused here,
+    // one step before ever reaching it.
+    //
+    // Bug fixed: this originally checked the categoryKey PARAMETER
+    // (this rider's own ORIGIN category — see AdvancedFreeAgentSearch's
+    // own freeAgentEntries, which tags a free agent with
+    // r._fromCategoryKey, null for a legend who's never actually raced
+    // in this save) instead of `category`, the app's own state for
+    // which category the PLAYER is actually playing. A legend free
+    // agent like Pedrosa, with no _fromCategoryKey at all, silently
+    // failed the "categoryKey === motogp" check even while negotiating
+    // to join a MotoGP team, blocking the negotiation with no visible
+    // explanation other than a notification easy to miss. Whether the
+    // DESTINATION team has an open test-rider slot only ever depends on
+    // the destination (the player's own team), never on wherever this
+    // particular rider happens to have come from.
+    const hasOpenTestRiderSlot = category === "motogp" && playerTeam && !playerTeam.testRider && !isRestrictedMotoGpSatellite(playerTeam, category, motogpSeatTiers);
+    if (!isRenewal && !hasOpenTestRiderSlot && nextSeasonPlayerRiderCount() >= 2) {
       pushNotifications([{ type: "market", category: categoryKey, text: `No podéis negociar con ${rider.name}: ya tenéis las dos plazas de la próxima temporada cubiertas.` }]);
       return;
     }
@@ -1862,7 +2009,8 @@ export default function MotorbikeManager() {
      before the season is even over, without paying the immediate-
      rescission cost of the existing fireRider(). */
   function markReleaseAtSeasonEnd(riderId, released) {
-    const rider = playerTeam?.riders.find((r) => r.id === riderId);
+    const isTestRider = playerTeam?.testRider?.id === riderId;
+    const rider = isTestRider ? playerTeam.testRider : playerTeam?.riders.find((r) => r.id === riderId);
     if (!rider) return;
     // Once both of next season's seats are already committed through
     // firm contracts, this decision is closed — undoing a release here
@@ -1871,11 +2019,14 @@ export default function MotorbikeManager() {
     // spots. The check reads the real contract/negotiation state
     // (nextSeasonPlayerRiderCount), never a UI flag, so it can't be
     // bypassed by reopening the screen or reloading a save.
-    if (!released && nextSeasonPlayerRiderCount() >= 2) return;
+    // Doesn't apply to the test rider seat at all — that's a completely
+    // separate slot from the 2-titular roster this check protects.
+    if (!isTestRider && !released && nextSeasonPlayerRiderCount() >= 2) return;
     const cost = computeReleaseAtSeasonEndCost(rider, scale);
     if (released && cost > budget) return;
     logMoneyMovement(released ? `Rescisión de contrato: ${rider.name}` : `Anulación de rescisión: ${rider.name}`, released ? -cost : cost);
     setPlayerTeam((t) => {
+      if (isTestRider) return { ...t, testRider: { ...t.testRider, releasedAtSeasonEnd: released } };
       const nextRiders = t.riders.map((r) => (r.id === riderId ? { ...r, releasedAtSeasonEnd: released } : r));
       return { ...t, riders: nextRiders };
     });
@@ -2745,6 +2896,23 @@ export default function MotorbikeManager() {
     return team.riders.find((r) => r.injury && r.injury.sidelined && r.injury.gpRemaining > 0 && !(team.substitutes || {})[r.id]) || null;
   }
 
+  /** A MotoGP factory team's own test rider steps in automatically the
+   * moment a titular gets hurt — that's the whole point of having one
+   * on the books — with no player choice involved, unlike hiring a
+   * free-agent substitute. Only actually available when they exist,
+   * aren't themselves sidelined, and aren't ALREADY covering the
+   * OTHER titular this same stretch — if both riders go down at once,
+   * the test rider only ever covers the first, and the second seat
+   * still needs the normal free-agent substitute flow, exactly as
+   * described. */
+  function testRiderAvailable(team) {
+    const tr = team?.testRider;
+    if (!tr) return false;
+    if (tr.injury && tr.injury.sidelined && tr.injury.gpRemaining > 0) return false;
+    if (Object.values(team.substitutes || {}).some((s) => s.id === tr.id)) return false;
+    return true;
+  }
+
   function goToSeasonOrOfferSubstitute(team, fromTransition = false) {
     if (team.riders.length < 2) {
       setPhase("complete-roster");
@@ -2752,6 +2920,21 @@ export default function MotorbikeManager() {
     }
     const rider = findRiderNeedingSubstitute(team);
     if (rider) {
+      // The team's own test rider steps in automatically — no player
+      // choice involved, exactly the point of having one on the books
+      // (see testRiderAvailable's own comment). Updates playerTeam
+      // directly and recurses on the FRESH team object so a second,
+      // simultaneous injury (test rider already used covering the
+      // first) correctly falls through to the normal free-agent hire
+      // screen below instead of looping back to the same test rider.
+      if (testRiderAvailable(team)) {
+        const tr = team.testRider;
+        const updatedTeam = { ...team, substitutes: { ...(team.substitutes || {}), [rider.id]: { ...tr, isNewTeamThisSeason: true } } };
+        setPlayerTeam(() => updatedTeam);
+        pushNotifications([{ type: "market", category, riderId: photoIdFor(tr), text: `${tr.name}, piloto probador de ${teamDisplayName(team)}, sustituye a ${rider.name} mientras dure su lesión.` }]);
+        goToSeasonOrOfferSubstitute(updatedTeam, fromTransition);
+        return;
+      }
       setPendingSubstitution({ teamId: team.id, riderId: rider.id, riderName: rider.name, fromTransition });
       setPhase("substitute-select");
       return;
@@ -3025,7 +3208,11 @@ export default function MotorbikeManager() {
     // to be let go at season's end, actually change hands right here. ---
     const playerTeamBeforeMarket = { ...ctxPlayerTeam, riders: resolvedPlayerRiders };
     const { released: releasedAtEnd } = applyReleasedAtSeasonEnd(playerTeamBeforeMarket);
-    const playerTeamAfterReleases = { ...playerTeamBeforeMarket, riders: playerTeamBeforeMarket.riders.filter((r) => !r.releasedAtSeasonEnd) };
+    const playerTeamAfterReleases = {
+      ...playerTeamBeforeMarket,
+      riders: playerTeamBeforeMarket.riders.filter((r) => !r.releasedAtSeasonEnd),
+      testRider: playerTeamBeforeMarket.testRider?.releasedAtSeasonEnd ? null : playerTeamBeforeMarket.testRider,
+    };
     const standingsByCategory = { [ctxCategory]: riderStandings };
     Object.entries(ctxOtherCategories).forEach(([k, v]) => { standingsByCategory[k] = v.riderStandings; });
     const afterNegotiations = applyConfirmedNegotiations({
@@ -3060,7 +3247,7 @@ export default function MotorbikeManager() {
     Object.entries(otherCategoriesResolved).forEach(([key, catState]) => { standingsByCategoryForPool[key] = catState.riderStandings; });
     let poolFreeAgents = [
       ...applyPoolHistory(afterNegotiations.freeAgents, standingsByCategoryForPool, seasonNumber),
-      ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
+      ...releasedAtEnd.map((r) => finalizePlayerDepartureHistory({ ...r, role: "titular", contractYears: 0, releasedAtSeasonEnd: false, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...promotedAway.map((r) => finalizePlayerDepartureHistory({ ...r, contractYears: 0, isNewTeamThisSeason: false, _fromCategoryKey: ctxCategory, _fromBikeAvg: bikeAvg(playerTeamBeforeMarket.bike) }, teamDisplayName(playerTeamBeforeMarket), riderStandings, ctxCategory, seasonNumber)),
       ...(afterNegotiations.strandedRiders || []).map((r) => ({ ...r, isNewTeamThisSeason: false })),
     ];
@@ -3090,18 +3277,35 @@ export default function MotorbikeManager() {
     const ctxForOwn = {};
     playerTeamResolved.riders.forEach((r) => { ctxForOwn[r.id] = { seasonPoints: riderStandings[r.id]?.points ?? 0, wins: riderWins[r.id] ?? 0, fieldAvg, teamBikeAvgVal: playerBikeAvgVal, scale }; });
     const { riders: evolvedOwnRaw, notable: ownNotable } = evolveRoster(playerTeamResolved.riders, ctxForOwn);
+    // Bug fixed (feature): a factory team's own test rider (see
+    // utils/testRiders.js) never went through evolveRoster at all —
+    // only .riders ever did — so their contractYears never counted
+    // down and they never aged, meaning their contract could never
+    // naturally run out and open the seat back up for a fresh
+    // negotiation, unlike every titular. evolveRoster expects an array,
+    // so this wraps the single testRider in one and unwraps the result;
+    // same context shape as a titular gets, using whatever points they
+    // actually earned this season (0 if they never had to sub in).
+    const evolvedOwnTestRiderPreHistory = playerTeamResolved.testRider
+      ? evolveRoster([playerTeamResolved.testRider], { [playerTeamResolved.testRider.id]: { seasonPoints: riderStandings[playerTeamResolved.testRider.id]?.points ?? 0, wins: riderWins[playerTeamResolved.testRider.id] ?? 0, fieldAvg, teamBikeAvgVal: playerBikeAvgVal, scale } }).riders[0]
+      : null;
 
     const evolvedRivalsRaw = evolvedRivalsSource.map((t) => {
       const bAvg = bikeAvg(t.bike);
       const ctx = {};
       t.riders.forEach((r) => { ctx[r.id] = { seasonPoints: riderStandings[r.id]?.points ?? 0, wins: riderWins[r.id] ?? 0, fieldAvg, teamBikeAvgVal: bAvg, scale }; });
       const { riders } = evolveRoster(t.riders, ctx);
-      return { ...t, riders };
+      // Same fix as evolvedOwnTestRider above, for an AI-controlled
+      // factory team's own test rider.
+      const evolvedTestRider = t.testRider
+        ? evolveRoster([t.testRider], { [t.testRider.id]: { seasonPoints: riderStandings[t.testRider.id]?.points ?? 0, wins: riderWins[t.testRider.id] ?? 0, fieldAvg, teamBikeAvgVal: bAvg, scale } }).riders[0]
+        : null;
+      return { ...t, riders, testRider: evolvedTestRider };
     });
 
     const combinedPlayedCategory = applyTeamPrestigeEvolution(
       recordSeasonHistory(
-        [{ ...playerTeamResolved, riders: evolvedOwnRaw }, ...evolvedRivalsRaw],
+        [{ ...playerTeamResolved, riders: evolvedOwnRaw, testRider: evolvedOwnTestRiderPreHistory }, ...evolvedRivalsRaw],
         riderStandings, ctxCategory, seasonNumber
       ),
       ctxTeamStandings, ctxCategory
@@ -3117,6 +3321,15 @@ export default function MotorbikeManager() {
     // Trayectoria/Historial de temporadas, even though she'd genuinely
     // raced it.
     const evolvedOwnSubstitutes = combinedPlayedCategory[0].substitutes;
+    // Bug fixed (feature): same exact bug as evolvedOwnSubstitutes right
+    // above, for the same reason — recordSeasonHistory correctly builds
+    // the test rider's own season-history entry (see its own comment:
+    // "fue probador", plus races/points if they actually subbed in),
+    // but only .riders/.substitutes ever got read back out below.
+    // Without this, a factory team's test rider would silently lose
+    // their freshly-recorded history entry (and their seasonRaceStarts
+    // reset) every single season transition.
+    const evolvedOwnTestRider = combinedPlayedCategory[0].testRider;
     // Sponsors renew here too, right alongside prestige — same moment,
     // same freshly-evolved prestige value. The player gets candidate
     // offers to choose from later (surfaced once the new season is
@@ -3156,6 +3369,21 @@ export default function MotorbikeManager() {
     let finalRoster = evolvedOwn.filter((r) => (r.contractYears ?? 0) > 0);
     const ownExpired = evolvedOwn.filter((r) => (r.contractYears ?? 0) <= 0);
     poolFreeAgents = [...poolFreeAgents, ...ownExpired];
+
+    // Bug fixed (feature): same contract-truth rule as titulares right
+    // above, applied to the team's own test rider — without this,
+    // their contractYears would count down (now that evolveRoster runs
+    // on them too — see evolvedOwnTestRiderPreHistory's own comment)
+    // but never actually free the seat once it hit 0, leaving
+    // playerTeam.testRider permanently occupied by a rider on an
+    // expired contract and blocking canOfferTestRiderRole from ever
+    // showing again (it only offers when the slot is genuinely empty).
+    // Reset back to "titular" on the way out, exactly like a fired or
+    // released one already does, so they go back into the pool as an
+    // ordinary signable rider, not stuck labeled "probador" forever.
+    const ownTestRiderExpired = evolvedOwnTestRider && (evolvedOwnTestRider.contractYears ?? 0) <= 0;
+    if (ownTestRiderExpired) poolFreeAgents = [...poolFreeAgents, { ...evolvedOwnTestRider, role: "titular" }];
+    const finalTestRider = ownTestRiderExpired ? null : evolvedOwnTestRider;
 
     // Substitutes never carry a real contract into a new season either.
     const playerSubstitutes = Object.values(ctxPlayerTeam.substitutes || {});
@@ -3327,7 +3555,7 @@ export default function MotorbikeManager() {
       const { teams: repairedTeams } = validateAndRepairTeams(nextOther[key].teams, CATEGORY_DATA[key].scale, key);
       nextOther[key] = { ...nextOther[key], teams: repairedTeams };
     });
-    const { team: repairedPlayerTeam } = validateAndRepairTeam(expireStaleScoutMorale({ ...rolledPlayerTeam, riders: finalRoster, substitutes: evolvedOwnSubstitutes }), scale, { padRosterTo2: false });
+    const { team: repairedPlayerTeam } = validateAndRepairTeam(expireStaleScoutMorale({ ...rolledPlayerTeam, riders: finalRoster, substitutes: evolvedOwnSubstitutes, testRider: finalTestRider }), scale, { padRosterTo2: false });
     const finalRosterValidated = repairedPlayerTeam.riders;
 
     // --- Fresh season expectations for every team and rider ---
@@ -3687,14 +3915,18 @@ export default function MotorbikeManager() {
       <RiderProfileModal
         target={resolveLiveProfileTarget()}
         onClose={() => setProfileTarget(null)}
-        isOwnRider={!!(playerTeam && profileTarget && playerTeam.riders.some((r) => r.id === profileTarget.rider.id) && (phase === "season" || phase === "complete-roster"))}
+        isOwnRider={!!(playerTeam && profileTarget && (playerTeam.riders.some((r) => r.id === profileTarget.rider.id) || playerTeam.testRider?.id === profileTarget.rider.id) && (phase === "season" || phase === "complete-roster"))}
         budget={budget}
         onFireRider={fireRider}
         playerTeam={(phase === "season" || phase === "complete-roster") ? playerTeam : null}
         category={category}
         onSignFreeAgent={phase === "season" ? signFreeAgentNow : null}
         marketNegotiations={marketNegotiations}
-        canStartNewOffer={phase === "season" ? nextSeasonPlayerRiderCount() < 2 : phase === "complete-roster" && playerTeam && playerTeam.riders.length < 2}
+        canStartNewOffer={
+          phase === "season"
+            ? nextSeasonPlayerRiderCount() < 2 || (category === "motogp" && playerTeam && !playerTeam.testRider && !isRestrictedMotoGpSatellite(playerTeam, category, motogpSeatTiers))
+            : phase === "complete-roster" && playerTeam && playerTeam.riders.length < 2
+        }
         onMarkReleaseAtSeasonEnd={markReleaseAtSeasonEnd}
         onAcceptCounterOffer={phase === "complete-roster" ? acceptRosterCompletionCounter : acceptCounterOfferAction}
         onModifyOffer={phase === "complete-roster" ? modifyRosterCompletionOffer : modifyPlayerOffer}
@@ -3766,6 +3998,7 @@ export default function MotorbikeManager() {
           <NegotiationScreen
             rider={rider}
             categoryKey={categoryKey}
+            playerCategoryKey={category}
             playerTeam={playerTeam}
             currentTeamName={isUnemployed ? null : teamDisplayName(fromTeam)}
             isUnemployed={isUnemployed}

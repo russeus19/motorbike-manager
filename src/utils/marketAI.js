@@ -427,6 +427,22 @@ export function computeJoinScore(rider, team, categoryKey, offeredSalary, ctx = 
 
   score += contractYearsPreference(rider, categoryKey, years);
 
+  // Bug fixed (feature): "piloto probador" is a genuinely tough sell —
+  // it means giving up an actual race seat, which most riders still
+  // capable of racing don't want, no matter how good the salary or the
+  // team. A flat, substantial penalty reflects that — bigger still for
+  // an Ambicioso rider (racing IS the point for them), softened for a
+  // veteran already past their competitive prime (33+), who's more
+  // realistically weighing "a real role at a factory team" against
+  // "nobody's calling for a race seat anymore" rather than against a
+  // seat they'd actually rather have.
+  if (ctx.offeredRole === "probador") {
+    let testPenalty = 0.32;
+    if (personality === "Ambicioso") testPenalty += 0.12;
+    if (rider.age >= 33) testPenalty -= 0.15;
+    score -= testPenalty;
+  }
+
   return clamp(score, 0.03, 0.95);
 }
 

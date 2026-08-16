@@ -70,14 +70,14 @@ export function ResultScreen({ lastResult, accent, continueAfterResult, isLastRo
         </div>
       )}
 
-      <div className="flex flex-wrap justify-between items-start gap-3 mb-3">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-3">
         {!sprintMode && !sessionLabel && (
-          <div className="flex-1 min-w-[200px]">
+          <div className="sm:flex-1 sm:min-w-[200px]">
             <CategoryTabSelector value={tab} onChange={setTab} accent={accent} playerCategory={category} size="compact" />
           </div>
         )}
         <button onClick={continueAfterResult}
-          className="py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 disabled:opacity-40 flex-shrink-0"
+          className="w-full sm:w-auto py-2.5 px-5 rounded-md font-bold flex items-center justify-center gap-2 flex-shrink-0 sm:ml-auto"
           style={{ background: accent, color: "#12151A", fontFamily: "Rajdhani, sans-serif" }}>
           {defaultContinueLabel} <ChevronRight size={18} />
         </button>

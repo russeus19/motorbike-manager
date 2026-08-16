@@ -4,66 +4,126 @@ import { Panel } from "./UIPrimitives.jsx";
 import { COLORS } from "../data/colors.js";
 import { CATEGORY_DATA } from "../data/categories.js";
 import { groupNegotiationsByStatus } from "../utils/marketNegotiations.js";
-import { buildNewsEntities, linkifyNewsText } from "../utils/newsLinkify.js";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { TeamLogo } from "./TeamLogo.jsx";
 import { CountryFlag } from "./CountryFlag.jsx";
 
-const AUTO_ADVANCE_MS = 4500;
-const PAUSE_AFTER_INTERACTION_MS = 6000;
-const SWIPE_THRESHOLD_PX = 40;
+const CATEGORY_ORDER_FOR_RUMORS = ["motogp", "moto2", "moto3", "superbikes", "supersport", "sportbike", "worldwcr"];
 
-/** Renders one rumor's text with any rider/team name inside it turned
- * into a clickable, subtly-styled span — auto-detected via
- * utils/newsLinkify.js, never manually tagged per rumor. */
-function LinkifiedText({ text, entities, onOpenRiderProfileById, onOpenTeamProfileById }) {
-  const segments = linkifyNewsText(text, entities);
+const RUMOR_KIND_LABEL = {
+  interest: "Interés", renewal: "Renovación", departure: "Posible salida",
+  interest_multiple: "Interés", free_agent_interest: "Agente libre", free_agent_search: "Agente libre",
+};
+
+/** A small circular progress ring showing a rumor's probability —
+ * the same idea a real transfer-market rumor tracker always uses
+ * (a percentage is far easier to scan at a glance across a whole list
+ * than reading each one's exact wording), built as a plain inline SVG
+ * so it costs nothing extra to render dozens of these in one screen. */
+function ProbabilityRing({ value, accent, size = 44 }) {
+  const stroke = 3.5;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const color = value >= 60 ? "#3F9142" : value >= 35 ? COLORS.gold : COLORS.muted;
   return (
-    <p className="text-sm leading-snug" style={{ color: COLORS.text, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-      {segments.map((seg, i) => {
-        if (seg.type === "text") return <span key={i}>{seg.value}</span>;
-        const isRider = seg.type === "rider";
-        return (
-          <button
-            key={i}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isRider) onOpenRiderProfileById?.(seg.riderId, seg.categoryKey);
-              else onOpenTeamProfileById?.(seg.teamId, seg.categoryKey);
-            }}
-            className="font-semibold underline decoration-dotted hover:opacity-75 active:opacity-60"
-            style={{ color: COLORS.gold }}>
-            {seg.value}
-          </button>
-        );
-      })}
-    </p>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={COLORS.rule} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={c - (c * clamp01(value)) / 100} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[10px] font-bold" style={{ color: COLORS.text, fontFamily: "Rajdhani, sans-serif" }}>{Math.round(value)}%</span>
+      </div>
+    </div>
+  );
+}
+function clamp01(v) { return Math.max(0, Math.min(100, v)); }
+
+/** A team's logo, or a muted "?" placeholder when the rumor genuinely
+ * doesn't name one (a free agent's origin, or a "podría abandonar"
+ * rumor with no known destination yet) — never invents a team the
+ * rumor itself didn't specify. */
+function RumorTeamMark({ teamId, teamName, logoId, onOpenTeamProfileById, categoryKey }) {
+  if (!teamId) {
+    return (
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: COLORS.panel, border: `1px dashed ${COLORS.rule}` }}>
+        <span className="text-sm font-bold" style={{ color: COLORS.muted }}>?</span>
+      </div>
+    );
+  }
+  return (
+    <button onClick={(e) => { e.stopPropagation(); onOpenTeamProfileById?.(teamId, categoryKey); }} title={teamName} className="flex-shrink-0">
+      <TeamLogo logoId={logoId} size={36} className="rounded-lg" />
+    </button>
   );
 }
 
+/** One rumor, as a rich card: rider photo + flag + name up front, an
+ * origin → destination team pairing (each a real logo or a "?"
+ * placeholder), and a probability ring — the same information the old
+ * one-sentence-at-a-time slider gave, just legible at a glance and
+ * several at once instead of one full text block taking the whole
+ * panel. */
+function RumorCard({ rumor, accent, onOpenRiderProfileById, onOpenTeamProfileById }) {
+  return (
+    <button
+      onClick={() => onOpenRiderProfileById?.(rumor.riderId, rumor.categoryKey)}
+      className="w-full text-left rounded-xl p-2.5 flex flex-col items-center gap-1.5" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+      <RiderPhoto riderId={rumor.riderPhotoId} size={40} className="rounded-lg" />
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-sm font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{rumor.riderName}</span>
+        {rumor.riderNat && <CountryFlag nat={rumor.riderNat} width={14} className="flex-shrink-0" />}
+      </div>
+      <div className="text-[10px] uppercase tracking-wide" style={{ color: COLORS.muted }}>{RUMOR_KIND_LABEL[rumor.kind] || "Rumor"}</div>
+      <div className="flex items-center gap-1.5">
+        <RumorTeamMark teamId={rumor.fromTeamId} teamName={rumor.fromTeamName} logoId={rumor.fromTeamLogoId} onOpenTeamProfileById={onOpenTeamProfileById} categoryKey={rumor.categoryKey} />
+        <span style={{ color: COLORS.muted }}>→</span>
+        <RumorTeamMark teamId={rumor.toTeamId} teamName={rumor.toTeamName} logoId={rumor.toTeamLogoId} onOpenTeamProfileById={onOpenTeamProfileById} categoryKey={rumor.categoryKey} />
+      </div>
+      <ProbabilityRing value={rumor.probability} accent={accent} size={38} />
+    </button>
+  );
+}
+
+const AUTO_ADVANCE_MS = 6000;
+const PAUSE_AFTER_INTERACTION_MS = 7000;
+const SWIPE_THRESHOLD_PX = 40;
+const RUMORS_PER_PAGE = 6;
+
 /**
- * Rumores — an automatic slider cycling through the market's rumor feed
- * (utils/marketNegotiations.js), with clickable page indicators, manual
- * swipe/drag navigation (auto-advance pauses briefly after either), and
- * every rider/team name inside the text turned into a clickable link to
- * that rider's or team's profile. Purely a reader over `marketRumors`;
- * generating rumors happens once per race in App.jsx's runRace, not here.
+ * Rumores — redesigned from a one-sentence-at-a-time text slider into
+ * a page-per-category slider: each swipe/dot moves to a DIFFERENT
+ * category (MotoGP, Moto2, Moto3, WorldSBK...) instead of a different
+ * individual rumor, and each page shows several of that category's
+ * most recent rumors at once as rich cards (rider photo/flag, origin
+ * → destination team logos, a probability ring) — closer to how a
+ * real transfer-market rumor tracker actually reads, and far more
+ * legible than the old plain-text version.
  */
-export function RumorsPanel({ marketRumors, accent, playerTeam, rivalTeams, otherCategories, freeAgents, category, onOpenRiderProfileById, onOpenTeamProfileById }) {
+export function RumorsPanel({ marketRumors, accent, category, onOpenRiderProfileById, onOpenTeamProfileById }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const pauseTimerRef = useRef(null);
   const dragStartXRef = useRef(null);
 
-  const entities = buildNewsEntities({ playerTeam, rivalTeams, otherCategories, freeAgents, category });
+  const byCategory = {};
+  (marketRumors || []).forEach((r) => { (byCategory[r.categoryKey] ||= []).push(r); });
+  const pages = CATEGORY_ORDER_FOR_RUMORS
+    .filter((k) => byCategory[k]?.length)
+    .map((k) => ({ categoryKey: k, rumors: byCategory[k].slice(0, RUMORS_PER_PAGE) }));
+  // The player's own current category leads the slider — the most
+  // relevant page is the one they'd otherwise have to swipe furthest
+  // to reach.
+  pages.sort((a, b) => (a.categoryKey === category ? -1 : b.categoryKey === category ? 1 : 0));
 
   useEffect(() => {
-    if (!marketRumors.length || paused) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % marketRumors.length), AUTO_ADVANCE_MS);
+    if (pages.length < 2 || paused) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % pages.length), AUTO_ADVANCE_MS);
     return () => clearInterval(id);
-  }, [marketRumors.length, paused]);
+  }, [pages.length, paused]);
 
-  useEffect(() => { setIndex(0); }, [marketRumors.length > 0 ? marketRumors[0].id : null]);
+  useEffect(() => { setIndex(0); }, [marketRumors?.length ? marketRumors[0].id : null]);
 
   useEffect(() => () => { if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current); }, []);
 
@@ -74,7 +134,7 @@ export function RumorsPanel({ marketRumors, accent, playerTeam, rivalTeams, othe
   }
 
   function goTo(i) {
-    setIndex(((i % marketRumors.length) + marketRumors.length) % marketRumors.length);
+    setIndex(((i % pages.length) + pages.length) % pages.length);
     pauseAutoAdvanceBriefly();
   }
 
@@ -87,26 +147,32 @@ export function RumorsPanel({ marketRumors, accent, playerTeam, rivalTeams, othe
     else if (delta >= SWIPE_THRESHOLD_PX) goTo(index - 1);
   }
 
-  const current = marketRumors[index % Math.max(1, marketRumors.length)];
+  const currentPage = pages[index % Math.max(1, pages.length)];
 
   return (
     <Panel title="Rumores" icon={Newspaper} accent={accent}>
-      {!marketRumors.length ? (
+      {!pages.length ? (
         <p className="text-sm" style={{ color: COLORS.muted }}>Todavía no hay rumores de mercado. Volvé a mirar tras disputar algún Gran Premio más.</p>
       ) : (
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          <div className="flex items-start gap-3">
-            <button onClick={() => goTo(index - 1)} className="flex-shrink-0 text-lg leading-none px-1 mt-1" style={{ color: COLORS.muted }} aria-label="Rumor anterior">‹</button>
-            <div className="flex-1 min-w-0">
-              <LinkifiedText text={current.text} entities={entities} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
-              <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{CATEGORY_DATA[current.categoryKey]?.label}</p>
+          <div className="flex items-center gap-2 mb-2">
+            <button onClick={() => goTo(index - 1)} className="flex-shrink-0 text-lg leading-none px-1" style={{ color: COLORS.muted }} aria-label="Categoría anterior">‹</button>
+            <div className="flex-1 text-center text-sm font-bold uppercase tracking-wide" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>
+              {CATEGORY_DATA[currentPage.categoryKey]?.label}
             </div>
-            <button onClick={() => goTo(index + 1)} className="flex-shrink-0 text-lg leading-none px-1 mt-1" style={{ color: COLORS.muted }} aria-label="Rumor siguiente">›</button>
+            <button onClick={() => goTo(index + 1)} className="flex-shrink-0 text-lg leading-none px-1" style={{ color: COLORS.muted }} aria-label="Categoría siguiente">›</button>
           </div>
-          <div className="flex justify-center gap-1.5 mt-2">
-            {marketRumors.slice(0, 12).map((r, i) => (
-              <button key={r.id} onClick={() => goTo(i)} aria-label={`Ir al rumor ${i + 1}`}
-                className="rounded-full" style={{ width: 6, height: 6, background: i === (index % Math.max(1, marketRumors.length)) ? accent : COLORS.rule }} />
+
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5">
+            {currentPage.rumors.map((r) => (
+              <RumorCard key={r.id} rumor={r} accent={accent} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
+            ))}
+          </div>
+
+          <div className="flex justify-center gap-1.5 mt-2.5">
+            {pages.map((p, i) => (
+              <button key={p.categoryKey} onClick={() => goTo(i)} aria-label={`Ir a ${CATEGORY_DATA[p.categoryKey]?.label}`}
+                className="rounded-full" style={{ width: 6, height: 6, background: i === (index % pages.length) ? accent : COLORS.rule }} />
             ))}
           </div>
         </div>

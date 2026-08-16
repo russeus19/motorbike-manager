@@ -557,6 +557,22 @@ export function RiderProfileModal({ target, onClose, isOwnRider, budget, onFireR
               <div className="space-y-1.5">
                 {history.map((h, i) => {
                   const emoji = badgeEmoji(h.badge);
+                  if (h.role === "probador") {
+                    const raced = h.position != null;
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
+                        <span className="truncate" style={{ color: COLORS.text }}>
+                          <span className="font-mono" style={{ color: COLORS.muted }}>T{h.season}</span> · {CATEGORY_DATA[h.category]?.label} · {h.teamName}
+                          <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style={{ background: `${COLORS.gold}24`, color: COLORS.gold }}>Piloto probador</span>
+                        </span>
+                        {raced && (
+                          <span className="flex items-center gap-1.5 flex-shrink-0 font-mono" style={{ color: COLORS.muted }}>
+                            {h.races ?? 0} carrera{(h.races ?? 0) === 1 ? "" : "s"} · {h.points ?? 0} pts
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
                   return (
                     <div key={i} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm" style={{ background: COLORS.panel2, border: `1px solid ${h.badge ? COLORS.gold : COLORS.rule}` }}>
                       <span className="truncate" style={{ color: COLORS.text }}>
