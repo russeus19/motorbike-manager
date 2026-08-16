@@ -5,12 +5,21 @@ import { COLORS } from "../data/colors.js";
 import { WAREHOUSE_ICONS, WAREHOUSE_LABELS, WAREHOUSE_PARTS } from "../data/warehouseParts.js";
 import { initWarehouse, warehouseCost } from "../utils/warehouseEngine.js";
 
-export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentProduce }) {
-  const [expanded, setExpanded] = useState(false);
+export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentProduce, expanded: expandedProp, onToggleExpanded }) {
+  // Bug fixed (feature): expanded state used to be entirely internal,
+  // with no way for the "Stock bajo" priority alert to open this
+  // panel directly when tapped — same controlled/uncontrolled pattern
+  // EconomyPanel and SponsorsPanel already use for their own equivalent
+  // taps. Controlled from outside when expanded/onToggleExpanded are
+  // given; falls back to its own internal state otherwise.
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = expandedProp ?? internalExpanded;
+  const setExpanded = onToggleExpanded ?? setInternalExpanded;
   const warehouse = playerTeam.warehouse || initWarehouse();
   const lowParts = WAREHOUSE_PARTS.filter((p) => warehouse[p].stock <= 2);
 
   return (
+    <div id="warehouse-panel">
     <Panel
       title="Almacén"
       icon={Box}
@@ -67,6 +76,7 @@ export function WarehousePanel({ playerTeam, budget, scale, onProduce, onUrgentP
         </div>
       )}
     </Panel>
+    </div>
   );
 }
 

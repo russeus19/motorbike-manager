@@ -35,6 +35,17 @@ export function teamDisplayName(team) {
   let result = team.nameTemplate;
   result = fillOrDropToken(result, "{sponsor}", team.sponsors?.main?.name);
   result = fillOrDropToken(result, "{secondary}", team.sponsors?.secondary?.name);
+  // Same idea as the sponsor slots above, now for MotoGP satellite
+  // teams whose real name bakes their manufacturer straight in (Prima
+  // Pramac Yamaha MotoGP, Honda LCR, Red Bull KTM Tech3) — switching
+  // manufacturers (see this session's own manufacturer-negotiation
+  // system) should rename the team the same way switching title
+  // sponsors already does. Unlike {sponsor}/{secondary}, this token
+  // never needs the "drop cleanly if empty" behavior: every team
+  // always has SOME manufacturer, so fillOrDropToken's fallback path
+  // never actually triggers here, but reusing it costs nothing and
+  // keeps this function's own logic in one place.
+  result = fillOrDropToken(result, "{manufacturer}", team.manufacturer);
   return result.trim();
 }
 

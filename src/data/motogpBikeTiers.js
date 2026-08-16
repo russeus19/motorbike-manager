@@ -173,6 +173,43 @@ export function factoryTeamFor(manufacturer, categoryKey, allTeams, tiersMap = D
  * improvement is meant to come from the manufacturer's delayed
  * packages, not from running full independent R&D on infrastructure
  * a satellite team was never given to begin with. */
+/** Every manufacturer only ever has exactly this many customerTop-spec
+ * bikes to hand out — 2, full stop, whether that's split across two
+ * separate 1-seat satellite teams (Ducati's Gresini/VR46) or held
+ * entirely by one 2-seat satellite (everyone else's single satellite
+ * team). Never more, never fewer, regardless of how many satellite
+ * TEAMS a manufacturer happens to be running. */
+export const MOTOGP_CUSTOMER_TOP_CAPACITY = 2;
+
+/** How many customerTop seats a manufacturer has ALREADY committed to
+ * delivering — via a still-standing "pedir moto cliente-top" success
+ * (manufacturerFavorNextSeason) or a still-pending "sondear otras
+ * marcas" switch offer (pendingManufacturerOffer) — counted across
+ * every team of that manufacturer except the one optionally excluded
+ * (the team currently asking for a NEW commitment of its own, so its
+ * own not-yet-granted request never counts against itself).
+ *
+ * This is what lets a brand-new promise get correctly refused, or
+ * capped, BEFORE it's ever made — a manufacturer that's already
+ * committed both its customerTop bikes elsewhere this season simply
+ * has nothing left to offer, and both computeManufacturerRequestScore
+ * ("pedir moto cliente-top") and manufacturerBikeOffer ("sondear
+ * otras marcas") check this before promising anything, rather than
+ * creating a conflict a season transition would later have to resolve
+ * by quietly breaking one of the two promises. reassignCustomerTopSeats
+ * itself still keeps a hard, non-negotiable cap at
+ * MOTOGP_CUSTOMER_TOP_CAPACITY as a last-resort safety net — but the
+ * real fix is never letting the conflict arise in the first place. */
+export function committedCustomerTopCount(manufacturer, allTeams, excludeTeamName) {
+  let count = 0;
+  (allTeams || []).forEach((team) => {
+    if (team.manufacturer !== manufacturer || team.name === excludeTeamName) return;
+    if (team.manufacturerFavorNextSeason) count += 1;
+    if (team.pendingManufacturerOffer) count += team.pendingManufacturerOffer.filter((t) => t === "customerTop").length;
+  });
+  return Math.min(count, MOTOGP_CUSTOMER_TOP_CAPACITY);
+}
+
 export function isRestrictedMotoGpSatellite(team, categoryKey, tiersMap = DEFAULT_MOTOGP_BIKE_TIERS) {
   if (categoryKey !== "motogp") return false;
   const tiers = tiersMap[team?.name];
@@ -359,24 +396,77 @@ export function advanceMotoGpCustomerQueue(playerTeam, rivalTeams, otherCategori
  * apply nextTiers via setMotogpSeatTiers as before, and additionally
  * write bikeUpdates onto the matching team objects.
  */
+/**
+ * Bug fixed (feature): the bike sync used to live entirely inside the
+ * competitive-reassignment loop below, which itself only ever
+ * processes manufacturers with a genuine "previous" tier in play
+ * (only Ducati today — see candidateSeatsByManufacturer's own early
+ * return for a manufacturer with none). That meant a 4-bike
+ * manufacturer's own customerTop team (KTM Tech3, Trackhouse, Honda
+ * LCR, Pramac) never went through this function AT ALL, ever — there
+ * was no competition to resolve for them, so nothing ever synced
+ * their bike back to their own factory's, season after season. Once
+ * a customerTop team fell behind (packages arriving but sitting
+ * unreviewed, or simply not enough of them completing that season),
+ * the gap only ever widened, with no season boundary ever correcting
+ * it — exactly the "quedó en 82 mientras la fábrica llegó a 93, sin
+ * que ningún inicio de temporada los igualara" symptom this was
+ * built to fix. Every customerTop seat, for every manufacturer,
+ * regardless of whether that manufacturer has any real competition
+ * for the tier at all, now gets synced to its own factory's CURRENT
+ * bike at every season transition — the mid-season 2-GP delayed
+ * package delivery still gives an early, decline-able preview of
+ * upcoming changes, but the season boundary itself is the real
+ * backstop that keeps a customerTop bike from ever drifting away
+ * from what it's actually supposed to represent.
+ */
+function syncAllCustomerTopBikes(tiersMap, allTeams) {
+  const bikeUpdates = {};
+  (allTeams || []).forEach((team) => {
+    const tiers = tiersMap[team.name];
+    if (!tiers?.includes("customerTop") || !team.manufacturer) return;
+    const factoryTeam = (allTeams || []).find((t) => t.manufacturer === team.manufacturer && tiersMap[t.name]?.every((tier) => tier === "factory"));
+    if (factoryTeam) bikeUpdates[team.name] = factoryTeam.bike;
+  });
+  return bikeUpdates;
+}
+
 export function reassignCustomerTopSeats(tiersMap, allTeams, riderStandings) {
   const nextTiers = {};
   Object.entries(tiersMap).forEach(([name, tiers]) => { nextTiers[name] = [...tiers]; });
-  const bikeUpdates = {};
 
   const byManufacturer = candidateSeatsByManufacturer(tiersMap, allTeams, riderStandings);
   Object.entries(byManufacturer).forEach(([manufacturer, scored]) => {
     if (!scored.length) return;
     const customerTopSlots = scored[0].customerTopSlots;
-    const factoryTeam = (allTeams || []).find((t) => t.manufacturer === manufacturer && tiersMap[t.name]?.every((tier) => tier === "factory"));
+    // Bug fixed: a manufacturer only ever has customerTopSlots real
+    // customerTop bikes to hand out — that cap is never negotiable,
+    // no matter how many separate "guaranteed" seats a season somehow
+    // produced. The real fix for two genuine promises colliding lives
+    // upstream now (committedCustomerTopCount gates both
+    // computeManufacturerRequestScore's "pedir moto cliente-top" and
+    // manufacturerBikeOffer's "sondear otras marcas" BEFORE either one
+    // is ever granted, so a manufacturer that's already spoken for
+    // both its bikes simply can't promise a third) — this stays a
+    // last-resort safety net only: if a genuine conflict somehow still
+    // reaches this point, guaranteed seats are still sorted ahead of
+    // competitive ones (see candidateSeatsByManufacturer's own
+    // comment), but the cutoff itself never moves past the real slot
+    // count, so real merit decides between the two colliding
+    // guarantees rather than both simply being honored at the expense
+    // of the invariant.
     scored.forEach((s, i) => {
       const tier = i < customerTopSlots ? "customerTop" : "previous";
       nextTiers[s.teamName] = nextTiers[s.teamName].map((t, idx) => (idx === s.seatIndex ? tier : t));
-      if (tier === "customerTop" && s.tier !== "customerTop" && factoryTeam) {
-        bikeUpdates[s.teamName] = factoryTeam.bike;
-      }
     });
   });
+
+  // Bike syncing is now entirely decoupled from the competitive
+  // reassignment above — computed against nextTiers (the layout AFTER
+  // this season's competition is resolved), so it correctly covers
+  // every customerTop seat regardless of whether its manufacturer had
+  // any "previous"-tier competition to resolve in the first place.
+  const bikeUpdates = syncAllCustomerTopBikes(nextTiers, allTeams);
 
   return { nextTiers, bikeUpdates };
 }
@@ -418,58 +508,57 @@ export function candidateSeatsByManufacturer(tiersMap, allTeams, riderStandings)
     const customerTopSlots = candidateSeats.filter((s) => s.tier === "customerTop").length;
     const scored = candidateSeats.map((s) => {
       const r = s.rider;
-      if (!r) return { ...s, score: -Infinity, customerTopSlots };
+      const teamObj = teams.find((t) => t.name === s.teamName);
+      // Bug fixed (feature): a successful "pedir la moto cliente-top"
+      // request, a new signing promised a specific seat tier, and a
+      // manufacturer switch's own committed offer (see
+      // applyManufacturerRequestSuccess / App.jsx's own
+      // motogpSeatTierPromises / applyPendingManufacturerSwitch) each
+      // used to just be a very large score bonus (+100000) — which
+      // worked fine when only ONE such promise existed for a
+      // manufacturer in a given transition, but if the OTHER
+      // satellite ALSO had one active the same season (its own
+      // successful "pedir moto cliente-top", say), the two ended up
+      // competing against EACH OTHER on real merit as a tiebreaker —
+      // a genuine, explicit promise could still lose to a different
+      // genuine, explicit promise, which is exactly backwards: a
+      // promise the player was shown and acted on should never be
+      // something the game quietly walks back based on who happened
+      // to score higher. `guaranteed` marks any of these three, and
+      // the sort below puts every guaranteed seat strictly ahead of
+      // every non-guaranteed one, no matter its score — ties between
+      // two guarantees don't matter, since reassignCustomerTopSeats'
+      // own cutoff (see its comment) now always makes room for all of
+      // them.
+      const guaranteed = Boolean(
+        (r && s.tier === "previous" && teamObj?.manufacturerFavorNextSeason) ||
+        (r && r.isNewTeamThisSeason && s.tier === "customerTop") ||
+        (teamObj?.pendingManufacturerOffer?.[s.seatIndex] === "customerTop")
+      );
+      if (!r) return { ...s, score: -Infinity, customerTopSlots, guaranteed };
       const points = riderStandings?.[r.id]?.points ?? 0;
       const prestige = r.prestige ?? 0;
       let expectationScore = 0;
       const expectedRank = r.expectation ? RIDER_TIER_EXPECTED_RANK[r.expectation] : null;
       if (expectedRank && actualRankById[r.id]) expectationScore = (expectedRank - actualRankById[r.id]) * 2;
       let score = points + prestige * 0.3 + expectationScore;
-      // A successful "pedir la moto cliente-top" request (see
-      // utils/manufacturerNegotiation.js's own applyManufacturerRequestSuccess)
-      // sets this flag instead of touching the tier directly — it's
-      // consumed here, as a guaranteed-win bonus large enough to always
-      // outscore genuine performance/prestige, but still going through
-      // this exact same slot-respecting sort below, so granting it
-      // correctly bumps whichever OTHER seat of the same manufacturer
-      // currently scores lowest down to "previous" to make room,
-      // instead of quietly creating an extra customerTop bike that
-      // was never supposed to exist.
-      const teamObj = teams.find((t) => t.name === s.teamName);
-      if (s.tier === "previous" && teamObj?.manufacturerFavorNextSeason) score += 100000;
-      // A newly-signed rider (this exact transition, via a negotiation
-      // that promised them a specific seat tier — see App.jsx's own
-      // motogpSeatTierPromises comment) hasn't raced a single lap
-      // under this team yet, so their own merit score above is
-      // necessarily near zero — without this, the promise that helped
-      // convince them to sign could be undone in the very same
-      // transition that placed them, before they ever got to ride the
-      // bike it was actually about. Protected for this one
-      // reassignment pass only; every season after this one, they
-      // compete on the exact same normal terms as anyone else.
-      if (r.isNewTeamThisSeason && s.tier === "customerTop") score += 100000;
       // A team arriving via a successful "sondear otras marcas" (see
       // utils/manufacturerNegotiation.js's own
       // applyPendingManufacturerSwitch) starts this same pass with
       // both seats seeded at "previous", same as anyone else — but
       // unlike a total newcomer, it's arriving with a real, already-
       // established team prestige earned elsewhere. That's worth a
-      // genuine edge in THIS competition, not a guaranteed win like
-      // the two flags above — a real but bounded nod to "this team
-      // didn't just appear from nowhere", scaled by how much team
-      // prestige they actually brought with them.
+      // genuine edge in THIS competition, not a guaranteed win — a
+      // real but bounded nod to "this team didn't just appear from
+      // nowhere", scaled by how much team prestige they actually
+      // brought with them.
       if (teamObj?.justSwitchedManufacturer) score += clamp((teamObj.prestige ?? 0) * 0.4, 0, 90);
-      // The concrete tier this manufacturer actually promised this
-      // specific seat before the team committed to the switch (see
-      // manufacturerBikeOffer/applyPendingManufacturerSwitch) — a
-      // guaranteed win for THIS seat if the offer said "customerTop",
-      // same strength as the other guaranteed flags above, so a real
-      // "dos motos cliente-top" offer genuinely means both seats land
-      // there this pass, not just an improved chance at it.
-      if (teamObj?.pendingManufacturerOffer?.[s.seatIndex] === "customerTop") score += 100000;
-      return { ...s, score, customerTopSlots };
+      return { ...s, score, customerTopSlots, guaranteed };
     });
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a, b) => {
+      if (a.guaranteed !== b.guaranteed) return a.guaranteed ? -1 : 1;
+      return b.score - a.score;
+    });
     result[manufacturer] = scored;
   });
   return result;

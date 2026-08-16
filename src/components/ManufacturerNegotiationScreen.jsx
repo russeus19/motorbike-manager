@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { ManufacturerLogo } from "./ManufacturerLogo.jsx";
 import { COLORS } from "../data/colors.js";
@@ -8,7 +8,7 @@ import {
   MANUFACTURER_REQUEST_TYPES, availableManufacturerRequests, computeManufacturerRequestScore,
   computeOtherManufacturerInterest, otherManufacturerCandidates, ensureManufacturerContract, manufacturerBikeOffer,
 } from "../utils/manufacturerNegotiation.js";
-import { MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
+import { MOTOGP_BIKE_TIER_LABELS, committedCustomerTopCount, MOTOGP_CUSTOMER_TOP_CAPACITY } from "../data/motogpBikeTiers.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
 const ZONE_COLOR = { frio: COLORS.danger, dudoso: COLORS.gold, favorable: COLORS.success };
@@ -61,22 +61,50 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
   function computeScore() {
     return isSwitch
       ? computeOtherManufacturerInterest(team, riderStandings, targetManufacturer, allMotoGpTeams, motogpSeatTiers)
-      : computeManufacturerRequestScore(requestType, team, riderStandings, categoryKey);
+      : computeManufacturerRequestScore(requestType, team, riderStandings, categoryKey, allMotoGpTeams);
   }
 
-  const liveScore = requestType && !awaitingTargetPick ? computeScore() : null;
+  // Bug fixed: this used to call computeScore() directly in the render
+  // body — since computeOtherManufacturerInterest rolls a genuine
+  // random wobble every time it runs, the thermometer position and the
+  // offer preview could silently shift on ANY re-render (a parent
+  // state update, anything), with nothing forcing the player's action
+  // to use the exact number they were looking at. useMemo, keyed on
+  // requestType/targetManufacturer, rolls once per distinct request —
+  // a fresh roll when the player picks a different manufacturer or
+  // request type to explore, but a completely stable number while
+  // they're looking at any one of them, which handleSend then reuses
+  // directly instead of rolling its own separate one.
+  const liveScore = useMemo(() => (
+    requestType && !awaitingTargetPick ? computeScore() : null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [requestType, targetManufacturer, awaitingTargetPick]);
   const liveZone = liveScore != null ? thermometerZone(liveScore) : null;
-  const liveOffer = isSwitch && liveScore != null ? manufacturerBikeOffer(liveScore) : null;
+  const remainingCapacity = isSwitch && targetManufacturer
+    ? MOTOGP_CUSTOMER_TOP_CAPACITY - committedCustomerTopCount(targetManufacturer, allMotoGpTeams, team.name)
+    : MOTOGP_CUSTOMER_TOP_CAPACITY;
+  const liveOffer = isSwitch && liveScore != null ? manufacturerBikeOffer(liveScore, remainingCapacity) : null;
 
   function handleSend() {
     if (!requestType || reaction || awaitingTargetPick) return;
-    const score = computeScore();
+    // Bug fixed: this used to call computeScore() again here, a
+    // second, completely independent roll from the one already shown
+    // on the live thermometer/offer preview above —
+    // computeOtherManufacturerInterest includes a genuine random
+    // wobble each time it's called, so the offer the player saw
+    // ("dos motos clientes top") and the offer actually locked in by
+    // manufacturerBikeOffer(score) right below it could land in
+    // different brackets entirely, with nothing on screen ever
+    // showing the mismatch. Reusing the SAME liveScore the player was
+    // already looking at when they pressed the button means the
+    // outcome and the offer are always the one they actually saw.
+    const score = liveScore;
     const zone = thermometerZone(score);
     const outcome = zone === "favorable";
     const line = pickLine(zone, usedLines);
     setUsedLines((prev) => [...prev.slice(-3), line]);
     setReaction({ zone, line, outcome });
-    onResolve(requestType, outcome, isSwitch ? targetManufacturer : undefined, isSwitch ? manufacturerBikeOffer(score) : undefined);
+    onResolve(requestType, outcome, isSwitch ? targetManufacturer : undefined, isSwitch ? manufacturerBikeOffer(score, remainingCapacity) : undefined);
   }
 
   function handleClose() {
@@ -126,19 +154,13 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
           ) : awaitingTargetPick ? (
             <div className="space-y-2">
               <p className="text-sm mb-1" style={{ color: COLORS.muted }}>¿A qué fabricante os acercáis primero? Cada uno os juzgará por vuestros propios méritos — {team.manufacturer} no tiene voz aquí.</p>
-              {(() => {
-                const candidates = otherManufacturerCandidates(team.manufacturer, allMotoGpTeams, motogpSeatTiers);
-                if (!candidates.length) {
-                  return <p className="text-xs italic" style={{ color: COLORS.muted }}>Ninguna otra marca tiene sitio libre para un tercer equipo ahora mismo — todas ya tienen dos equipos satélite propios.</p>;
-                }
-                return candidates.map((mfr) => (
-                  <button key={mfr} onClick={() => setTargetManufacturer(mfr)}
-                    className="w-full flex items-center gap-3 text-left rounded-xl p-3" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
-                    <ManufacturerLogo name={mfr} accent={accent} size={36} />
-                    <span className="text-sm font-bold" style={{ color: COLORS.text }}>{mfr}</span>
-                  </button>
-                ));
-              })()}
+              {otherManufacturerCandidates(team.manufacturer).map((mfr) => (
+                <button key={mfr} onClick={() => setTargetManufacturer(mfr)}
+                  className="w-full flex items-center gap-3 text-left rounded-xl p-3" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+                  <ManufacturerLogo name={mfr} accent={accent} size={36} />
+                  <span className="text-sm font-bold" style={{ color: COLORS.text }}>{mfr}</span>
+                </button>
+              ))}
             </div>
           ) : (
             <>

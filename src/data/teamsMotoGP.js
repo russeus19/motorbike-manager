@@ -69,7 +69,7 @@ export const MOTOGP_TEAMS_DATA = [
     ],
   },
   {
-    name: "Prima Pramac Yamaha MotoGP", nameTemplate: "{sponsor} Pramac Yamaha MotoGP", logoId: "pramac_yamaha", tier: "Satélite", slots: 1, manufacturer: "Yamaha", color: "#6C2EB5",
+    name: "Prima Pramac Yamaha MotoGP", nameTemplate: "{sponsor} Pramac {manufacturer} MotoGP", logoId: "pramac_yamaha", tier: "Satélite", slots: 1, manufacturer: "Yamaha", color: "#6C2EB5",
     bike: { aero: 70, chasis: 70, motor: 71, freno: 71, electronica: 73 }, budget: 3000000,
     riders: [
       { name: "Toprak Razgatlıoğlu", photoId: 13, nat: "🇹🇷", age: 29, potential: 72, tecnica: 82, ritmo: 70, adelantamientos: 80, mental: 66, adaptabilidad: 61, fisico: 79, prestige: 152 , number: 7 },
@@ -88,7 +88,7 @@ export const MOTOGP_TEAMS_DATA = [
     ],
   },
   {
-    name: "Red Bull KTM Tech3", nameTemplate: "{sponsor} KTM Tech3", logoId: "redbull_ktm_tech3", tier: "Satélite", slots: 1, manufacturer: "KTM", color: "#FF6600",
+    name: "Red Bull KTM Tech3", nameTemplate: "{sponsor} {manufacturer} Tech3", logoId: "redbull_ktm_tech3", tier: "Satélite", slots: 1, manufacturer: "KTM", color: "#FF6600",
     bike: { aero: 82, chasis: 82, motor: 83, freno: 80, electronica: 83 }, budget: 3000000,
     riders: [
       { name: "Maverick Viñales", photoId: 17, nat: "🇪🇸", age: 30, potential: 48, tecnica: 83, ritmo: 82, adelantamientos: 76, mental: 69, adaptabilidad: 74, fisico: 78, prestige: 145 , number: 12 },
@@ -108,7 +108,7 @@ export const MOTOGP_TEAMS_DATA = [
     ],
   },
   {
-    name: "Honda LCR", nameTemplate: "{sponsor} Honda LCR", logoId: "honda_lcr", tier: "Satélite", slots: 1, manufacturer: "Honda", color: "#808080",
+    name: "Honda LCR", nameTemplate: "{sponsor} {manufacturer} LCR", logoId: "honda_lcr", tier: "Satélite", slots: 1, manufacturer: "Honda", color: "#808080",
     bike: { aero: 74, chasis: 73, motor: 74, freno: 73, electronica: 76 }, budget: 3000000,
     riders: [
       { name: "Johann Zarco", photoId: 21, nat: "🇫🇷", age: 36, potential: 32, tecnica: 81, ritmo: 77, adelantamientos: 76, mental: 78, adaptabilidad: 84, fisico: 66, prestige: 145 , number: 5,

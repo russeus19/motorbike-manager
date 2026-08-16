@@ -10,8 +10,9 @@ import { SaveSlotsModal } from "./components/SaveSlotsModal.jsx";
 import { TeamProfileModal } from "./components/TeamProfileModal.jsx";
 import { ManufacturerProfileModal } from "./components/ManufacturerProfileModal.jsx";
 import { ManufacturerNegotiationScreen } from "./components/ManufacturerNegotiationScreen.jsx";
-import { applyManufacturerRequestSuccess, tickManufacturerContract, applyPendingManufacturerSwitch } from "./utils/manufacturerNegotiation.js";
+import { applyManufacturerRequestSuccess, tickManufacturerContract, applyPendingManufacturerSwitch, aiConsiderManufacturerSwitch } from "./utils/manufacturerNegotiation.js";
 import { SeatSelectionScreen } from "./components/SeatSelectionScreen.jsx";
+import { SeasonBikeRevealScreen } from "./components/SeasonBikeRevealScreen.jsx";
 import { snapshotFactoryBikes, advanceMotoGpCustomerQueue, DEFAULT_MOTOGP_BIKE_TIERS, reassignCustomerTopSeats, candidateSeatsByManufacturer, motoGpDevScaleFor, bikeForSeat } from "./data/motogpBikeTiers.js";
 import { NegotiationScreen } from "./components/NegotiationScreen.jsx";
 import { TeamNegotiationScreen } from "./components/TeamNegotiationScreen.jsx";
@@ -189,6 +190,7 @@ export default function MotorbikeManager() {
   const [manufacturerProfileTarget, setManufacturerProfileTarget] = useState(null);
   const [manufacturerNegotiationOpen, setManufacturerNegotiationOpen] = useState(false);
   const [pendingSeatSelection, setPendingSeatSelection] = useState(null);
+  const [pendingSeasonBikeReveal, setPendingSeasonBikeReveal] = useState(false);
   const [topProfileModal, setTopProfileModal] = useState(null);
   const [preseasonState, setPreseasonState] = useState(null);
 
@@ -428,6 +430,20 @@ export default function MotorbikeManager() {
       setRivalTeams((prev) => prev.map((t) => (promotedTeamNames.has(t.name) ? { ...t, bike: playerTeam.bike } : t)));
     }
     setPendingSeatSelection(null);
+  }
+
+  /* SeasonBikeRevealScreen's own "Empezar la temporada" — swapped is
+     only ever true if the player actually used the "Intercambiar
+     motos" toggle on a split team; reordering team.riders[0]/[1] is
+     the whole trick, since bike tier is keyed by seat INDEX, not
+     rider identity (see data/motogpBikeTiers.js's own header comment
+     on why), so swapping the array order is the same thing as
+     swapping who's riding which spec. */
+  function confirmSeasonBikeReveal(swapped) {
+    if (swapped && playerTeam?.riders?.length === 2) {
+      setPlayerTeam((t) => ({ ...t, riders: [t.riders[1], t.riders[0]] }));
+    }
+    setPendingSeasonBikeReveal(false);
   }
 
   /* Recomputed live every render, same reasoning as
@@ -2754,6 +2770,19 @@ export default function MotorbikeManager() {
       goToSeasonOrOfferSubstitute(team, true);
       return;
     }
+    // Bug fixed (feature): the season-opening "here's your new bike"
+    // welcome scene used to trigger right at the end of
+    // runSeasonTransition — BEFORE the roster-completion gate above
+    // even runs, if the team needed one. Deciding which of your two
+    // riders takes which bike needs to know who your two riders
+    // actually ARE first — signing a free agent to fill an empty seat
+    // happens through that gate, so the reveal has to wait until
+    // AFTER it, not before. This is the one place every real
+    // season-transition path (market summary, roster completion,
+    // substitute hired or skipped) already converges through before
+    // preseason/season actually starts, so it's the right point to
+    // trigger it from instead.
+    if (category === "motogp") setPendingSeasonBikeReveal(true);
     if ((team.pendingPrototypes || []).length > 0) {
       startPreseason(team);
       return;
@@ -3397,6 +3426,24 @@ export default function MotorbikeManager() {
       setManufacturerPreviousBikes(snapshotFactoryBikes(motogpTeamsForSnapshot));
     }
 
+    // AI-controlled MotoGP satellites get their own chance to weigh a
+    // manufacturer switch here too — see
+    // utils/manufacturerNegotiation.js's own aiConsiderManufacturerSwitch
+    // comment for the conservative bar it has to clear (contract
+    // nearly up, a genuinely poor season, and a real opportunity
+    // elsewhere). Runs against the same full team list used for
+    // scoring throughout this block, and only ever touches AI teams —
+    // the player's own team already goes through its own deliberate
+    // negotiation screen, never this automatic path.
+    const motogpTeamsForAiSwitch = ctxCategory === "motogp"
+      ? [finalPlayerTeamWithExpectation, ...evolvedRivals]
+      : finalOther.motogp?.teams || [];
+    if (ctxCategory === "motogp") {
+      evolvedRivals = evolvedRivals.map((t) => aiConsiderManufacturerSwitch(t, "motogp", riderStandings, motogpTeamsForAiSwitch, motogpSeatTiers));
+    } else if (finalOther.motogp) {
+      finalOther.motogp = { ...finalOther.motogp, teams: finalOther.motogp.teams.map((t) => aiConsiderManufacturerSwitch(t, "motogp", riderStandings, motogpTeamsForAiSwitch, motogpSeatTiers)) };
+    }
+
     // Any successful "sondear otras marcas" from this season is
     // consumed here, applied directly to the REAL final team objects
     // (not a scoring-only copy) so the manufacturer change actually
@@ -3695,6 +3742,17 @@ export default function MotorbikeManager() {
           candidates={pendingSeatSelection.candidates}
           accent={playerTeam.color}
           onConfirm={confirmSeatSelection}
+        />
+      )}
+      {pendingSeasonBikeReveal && !pendingSeatSelection && playerTeam && category === "motogp" && (
+        <SeasonBikeRevealScreen
+          team={playerTeam}
+          categoryKey={category}
+          seasonNumber={seasonNumber}
+          motogpSeatTiers={motogpSeatTiers}
+          manufacturerPreviousBikes={manufacturerPreviousBikes}
+          accent={playerTeam.color}
+          onConfirm={confirmSeasonBikeReveal}
         />
       )}
       {negotiationTarget && playerTeam && (() => {

@@ -375,7 +375,14 @@ export function seedInitialSponsors(team, categoryKey, scale) {
       // never expiring, never breakable (by either side), and never up
       // for a fresh competing offer — see cancelSponsorContract,
       // advanceSponsorContractsForSeasonEnd, and applySponsorRaceResult's
-      // break-clause check, which all respect this flag.
+      // break-clause check, which all respect this flag. `permanent`
+      // only ever means "the team/player can't walk away from it" —
+      // it's still conditional on the team staying with KTM (both
+      // being Austrian companies is the whole reason this bond exists
+      // in the first place): if a KTM satellite ever switches to a
+      // different manufacturer, Red Bull's sponsorship ends right
+      // there too — see utils/manufacturerNegotiation.js's own
+      // applyPendingManufacturerSwitch for that half of the rule.
       const permanent = name === "Red Bull" && kind === "main";
       let tier, payoutPerGp, bonusPerPoint;
       if (permanent) {

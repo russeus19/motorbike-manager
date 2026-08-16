@@ -48,6 +48,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
   // on the Escudería tab, while "Mi moto" itself renders on both
   // Inicio and Escudería.
   const [sponsorsExpanded, setSponsorsExpanded] = useState(false);
+  const [warehouseExpanded, setWarehouseExpanded] = useState(false);
   const openSponsorsPanel = () => {
     setSeasonTab("escuderia");
     setSponsorsExpanded(true);
@@ -126,7 +127,8 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
     }
     const targetTab = alert.target === "warehouse" ? "escuderia" : "pilotos";
     setSeasonTab(targetTab);
-    const scrollId = alert.target === "roster" ? "pilotos-mis-pilotos" : alert.target === "offers" ? "pilotos-ofertas" : null;
+    if (alert.target === "warehouse") setWarehouseExpanded(true);
+    const scrollId = alert.target === "roster" ? "pilotos-mis-pilotos" : alert.target === "offers" ? "pilotos-ofertas" : alert.target === "warehouse" ? "warehouse-panel" : null;
     if (scrollId) {
       setTimeout(() => document.getElementById(scrollId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     }
@@ -274,7 +276,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
 
           <RumorsPanel marketRumors={marketRumors} accent={accent} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} category={category} onOpenRiderProfileById={onOpenRiderProfileById} onOpenTeamProfileById={onOpenTeamProfileById} />
           <div id="pilotos-ofertas">
-          <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} />
+          <OffersPanel marketNegotiations={marketNegotiations.filter((n) => n.toTeamId === "player" || n.fromTeamId === "player")} accent={accent} onRespondToIncomingOffer={onRespondToIncomingOffer} onOpenNegotiation={onOpenNegotiation} playerTeam={playerTeam} rivalTeams={rivalTeams} otherCategories={otherCategories} freeAgents={freeAgents} budget={budget} />
           </div>
 
           <FreeAgentsPanel freeAgents={freeAgents} playerTeam={playerTeam} category={category} accent={accent} openProfile={openProfile} />
@@ -362,7 +364,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           <FactoryPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartFactoryUpgrade} onStartDowngrade={onStartFactoryDowngrade} accent={accent} scale={scale} />
           <StaffPanel playerTeam={playerTeam} budget={budget} onStartUpgrade={onStartStaffUpgrade} onStartDowngrade={onStartStaffDowngrade} accent={accent} scale={scale} />
           <SportingDirectorPanel playerTeam={playerTeam} categoryKey={category} seasonNumber={seasonNumber} freeAgents={freeAgents} budget={budget} onStartUpgrade={onStartSportingDirectorUpgrade} onCancelScout={onCancelScout} onOpenRiderProfileById={onOpenRiderProfileById} accent={accent} scale={scale} />
-          <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} />
+          <WarehousePanel playerTeam={playerTeam} budget={budget} scale={scale} onProduce={onStartWarehouseProduction} onUrgentProduce={onStartUrgentWarehouseProduction} expanded={warehouseExpanded} onToggleExpanded={setWarehouseExpanded} />
         </div>
       )}
 
