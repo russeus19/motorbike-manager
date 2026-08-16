@@ -459,6 +459,14 @@ export function candidateSeatsByManufacturer(tiersMap, allTeams, riderStandings)
       // didn't just appear from nowhere", scaled by how much team
       // prestige they actually brought with them.
       if (teamObj?.justSwitchedManufacturer) score += clamp((teamObj.prestige ?? 0) * 0.4, 0, 90);
+      // The concrete tier this manufacturer actually promised this
+      // specific seat before the team committed to the switch (see
+      // manufacturerBikeOffer/applyPendingManufacturerSwitch) — a
+      // guaranteed win for THIS seat if the offer said "customerTop",
+      // same strength as the other guaranteed flags above, so a real
+      // "dos motos cliente-top" offer genuinely means both seats land
+      // there this pass, not just an improved chance at it.
+      if (teamObj?.pendingManufacturerOffer?.[s.seatIndex] === "customerTop") score += 100000;
       return { ...s, score, customerTopSlots };
     });
     scored.sort((a, b) => b.score - a.score);

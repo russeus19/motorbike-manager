@@ -99,11 +99,51 @@ function RiderStatsColumn({ rider, tier, bike, model, accent }) {
   );
 }
 
+/** "Rendimiento global" trophy+bar and the 5 bike attribute bars —
+ * shared between the mobile-only stacked layout and the desktop text
+ * column inside BikeHero's single-bike view, so this one piece of
+ * markup never has to be duplicated between the two arrangements. */
+function BikePerformanceAndBars({ avg, bike, accent }) {
+  return (
+    <>
+      <div className="flex items-center gap-2.5 mb-3">
+        <Trophy size={16} style={{ color: accent }} className="flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Rendimiento global</span>
+            <span className="text-sm sm:text-base font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{avg}/100</span>
+          </div>
+          <div className="h-1.5 rounded-full w-full mt-1" style={{ background: COLORS.rule }}>
+            <div className="h-1.5 rounded-full" style={{ width: `${avg}%`, background: accent }} />
+          </div>
+        </div>
+      </div>
+      <div>
+        {BIKE_AREA_KEYS.map((k) => (
+          <StatBar key={k} label={BIKE_LABELS[k]} value={bike[k]} accent={accent} />
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackageReview, accent, seasonNumber, round, circuit, category, onOpenSponsors, onOpenManufacturerProfile, manufacturerPreviousBikes, motogpSeatTiers }) {
   const [devExpanded, setDevExpanded] = useState(false);
-  const avg = Math.round(bikeAvg(playerTeam.bike));
   const isSplit = teamHasSplitBikeTiers(playerTeam, category, motogpSeatTiers);
-  const model = bikeModelFor(category, playerTeam.manufacturer, seasonNumber, "factory");
+  // Bug fixed: this used to assume a non-split team must be riding
+  // factory spec — true for a works team or a 4-bike manufacturer's
+  // satellite, but not for a team whose two seats are uniformly
+  // "previous" (both riders demoted together — not "split", since
+  // split specifically means the two seats differ from each other).
+  // Reading the seat's own real tier (0 works fine here since a
+  // non-split team's two seats share the same one by definition) so
+  // the model year and the actual attribute values both reflect what
+  // the team is really riding, instead of a stale customerTop-era
+  // playerTeam.bike that's never updated the moment a demotion happens.
+  const uniformTier = bikeTierForSeat(playerTeam, 0, category, motogpSeatTiers) || "factory";
+  const effectiveBike = bikeForSeat(playerTeam, 0, category, manufacturerPreviousBikes, motogpSeatTiers);
+  const avg = Math.round(bikeAvg(effectiveBike));
+  const model = bikeModelFor(category, playerTeam.manufacturer, seasonNumber, uniformTier);
   const sponsors = playerTeam.sponsors || {};
   const sponsorList = [
     sponsors.main ? { ...sponsors.main, roleLabel: "Patrocinador principal" } : null,
@@ -113,64 +153,80 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
   return (
     <Panel title="Mi moto" icon={Bike} accent={accent}>
       {!isSplit ? (
-      <div className="flex flex-col sm:flex-row gap-4 mb-4">
-        {/* Bike photo: small and centered on mobile (unchanged); on sm
-            and up, deliberately cropped in half — objectFit=cover with
-            objectPosition anchored to the top shows only the upper
-            portion of the bike (windscreen down to just above the
-            front fender), cropping away the lower half (front wheel
-            and below) rather than shrinking the whole bike to fit.
-            Nothing is ever cut off AT the top — the crop only ever
-            eats into the bottom — and the bottom fade blends that crop
-            line into the panel instead of a hard cutoff. */}
-        <div className="flex justify-center sm:flex-1 sm:justify-end sm:order-2">
-          <div className="relative overflow-hidden sm:w-[500px] sm:h-[308px] md:w-[580px] md:h-[356px]">
-            <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={180} sizeClassName="w-[180px] h-[180px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
-            <div className="hidden sm:block absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
+      <div className="mb-4">
+        {/* Mobile-only header row: manufacturer + model to the left,
+            vertically centered against a small photo to the right —
+            economizes vertical space instead of stacking one above
+            the other. Hidden from sm upward, where the original
+            side-by-side layout (big photo right, full text column
+            left) takes over instead. */}
+        <div className="flex sm:hidden items-center gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            {onOpenManufacturerProfile && playerTeam.manufacturer ? (
+              <button onClick={() => onOpenManufacturerProfile(playerTeam.manufacturer, category)}
+                className="text-2xl font-bold leading-none text-left hover:opacity-80 block truncate w-full"
+                style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
+                {playerTeam.manufacturer}
+              </button>
+            ) : (
+              <div className="text-2xl font-bold leading-none truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
+                {playerTeam.manufacturer || "—"}
+              </div>
+            )}
+            {model && (
+              <div className="text-base font-bold leading-tight mt-1 truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>
+                {model}
+              </div>
+            )}
+          </div>
+          <div className="relative overflow-hidden rounded-lg flex-shrink-0" style={{ width: 110, height: 110 }}>
+            <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={110} sizeClassName="w-full h-full" objectFit="cover" objectPosition="center top" />
+            <div className="absolute inset-x-0 bottom-0 h-8 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
           </div>
         </div>
+        <div className="sm:hidden">
+          <BikePerformanceAndBars avg={avg} bike={effectiveBike} accent={accent} />
+        </div>
 
-        <div className="sm:order-1 sm:w-64 md:w-72 sm:flex-shrink-0 min-w-0">
-          {onOpenManufacturerProfile && playerTeam.manufacturer ? (
-            <button onClick={() => onOpenManufacturerProfile(playerTeam.manufacturer, category)}
-              className={`text-3xl sm:text-4xl font-bold leading-none text-left hover:opacity-80 ${model ? "mb-1" : "mb-3"}`}
-              style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
-              {playerTeam.manufacturer}
-            </button>
-          ) : (
-            <div className={`text-3xl sm:text-4xl font-bold leading-none ${model ? "mb-1" : "mb-3"}`} style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
-              {playerTeam.manufacturer || "—"}
-            </div>
-          )}
-          {model && (
-            <div className="text-xl sm:text-2xl font-bold leading-tight mb-3 sm:mb-4" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>
-              {model}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2.5 mb-3">
-            <Trophy size={16} style={{ color: accent }} className="flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between">
-                <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: COLORS.muted }}>Rendimiento global</span>
-                <span className="text-sm sm:text-base font-bold" style={{ color: accent, fontFamily: "Rajdhani, sans-serif" }}>{avg}/100</span>
-              </div>
-              <div className="h-1.5 rounded-full w-full mt-1" style={{ background: COLORS.rule }}>
-                <div className="h-1.5 rounded-full" style={{ width: `${avg}%`, background: accent }} />
-              </div>
+        {/* Desktop/tablet layout — unchanged: big cropped photo on the
+            right, full text column (manufacturer, model, rendimiento,
+            attribute bars) on the left. */}
+        <div className="hidden sm:flex sm:flex-row gap-4">
+          {/* Bike photo: on sm and up, deliberately cropped in half —
+              objectFit=cover with objectPosition anchored to the top
+              shows only the upper portion of the bike (windscreen
+              down to just above the front fender), cropping away the
+              lower half (front wheel and below) rather than shrinking
+              the whole bike to fit. Nothing is ever cut off AT the
+              top — the crop only ever eats into the bottom — and the
+              bottom fade blends that crop line into the panel instead
+              of a hard cutoff. */}
+          <div className="flex sm:flex-1 sm:justify-end sm:order-2">
+            <div className="relative overflow-hidden sm:w-[500px] sm:h-[308px] md:w-[580px] md:h-[356px]">
+              <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={180} sizeClassName="sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
+              <div className="absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
             </div>
           </div>
 
-          {/* The same 5 bike attributes/bars shown inside Desarrollo e
-              investigación (DevelopmentPanelBody), reused here in place
-              of the old Temporada actual / Próxima carrera stats — kept
-              to this column's own fixed width (not the full row), so
-              the bars stay proportionate and never stretch out under
-              the bike photo. */}
-          <div>
-            {BIKE_AREA_KEYS.map((k) => (
-              <StatBar key={k} label={BIKE_LABELS[k]} value={playerTeam.bike[k]} accent={accent} />
-            ))}
+          <div className="sm:order-1 sm:w-64 md:w-72 sm:flex-shrink-0 min-w-0">
+            {onOpenManufacturerProfile && playerTeam.manufacturer ? (
+              <button onClick={() => onOpenManufacturerProfile(playerTeam.manufacturer, category)}
+                className={`text-3xl sm:text-4xl font-bold leading-none text-left hover:opacity-80 ${model ? "mb-1" : "mb-3"}`}
+                style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
+                {playerTeam.manufacturer}
+              </button>
+            ) : (
+              <div className={`text-3xl sm:text-4xl font-bold leading-none ${model ? "mb-1" : "mb-3"}`} style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>
+                {playerTeam.manufacturer || "—"}
+              </div>
+            )}
+            {model && (
+              <div className="text-xl sm:text-2xl font-bold leading-tight mb-3 sm:mb-4" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>
+                {model}
+              </div>
+            )}
+
+            <BikePerformanceAndBars avg={avg} bike={effectiveBike} accent={accent} />
           </div>
         </div>
       </div>
@@ -201,7 +257,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
             <div className="flex justify-center sm:flex-1 sm:justify-end sm:order-2">
               <div className="relative overflow-hidden sm:w-[320px] sm:h-[210px] md:w-[380px] md:h-[240px]">
                 <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={160} sizeClassName="w-[160px] h-[160px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
-                <div className="hidden sm:block absolute inset-x-0 bottom-0 h-14 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
+                <div className="absolute inset-x-0 bottom-0 h-12 sm:h-14 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
               </div>
             </div>
 

@@ -389,9 +389,9 @@ export default function MotorbikeManager() {
      for the seat-tier side of things is already built into
      reassignCustomerTopSeats, but the manufacturer-conversation UI
      itself is a player-facing tool only, for now). */
-  function resolveManufacturerRequest(requestType, outcome, targetManufacturer) {
+  function resolveManufacturerRequest(requestType, outcome, targetManufacturer, offeredBikes) {
     if (!outcome) return;
-    const { team, motogpSeatTiers: nextTiers } = applyManufacturerRequestSuccess(requestType, playerTeam, motogpSeatTiers, category, targetManufacturer);
+    const { team, motogpSeatTiers: nextTiers } = applyManufacturerRequestSuccess(requestType, playerTeam, motogpSeatTiers, category, targetManufacturer, offeredBikes);
     setPlayerTeam(() => team);
     setMotogpSeatTiers(nextTiers);
   }
@@ -3673,6 +3673,8 @@ export default function MotorbikeManager() {
         onClose={() => setManufacturerProfileTarget(null)}
         onOpenTeamProfile={openTeamProfile}
         onOpenRiderProfile={openProfile}
+        motogpSeatTiers={motogpSeatTiers}
+        manufacturerPreviousBikes={manufacturerPreviousBikes}
         onTop={topProfileModal === "manufacturer"}
       />
       {manufacturerNegotiationOpen && playerTeam && (
@@ -3681,6 +3683,7 @@ export default function MotorbikeManager() {
           categoryKey={category}
           riderStandings={riderStandings}
           motogpSeatTiers={motogpSeatTiers}
+          allMotoGpTeams={category === "motogp" ? [playerTeam, ...rivalTeams] : (otherCategories.motogp?.teams || [])}
           accent={playerTeam.color}
           onResolve={resolveManufacturerRequest}
           onClose={() => setManufacturerNegotiationOpen(false)}

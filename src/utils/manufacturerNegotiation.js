@@ -105,8 +105,59 @@ export function computeManufacturerRequestScore(requestType, team, riderStanding
  * baseline slightly harder to win over than a request to your OWN
  * manufacturer would be — poaching a team away from a rival is a
  * bigger commitment than keeping one you already have. */
-export function computeOtherManufacturerInterest(team, riderStandings) {
-  return clamp(0.14 + teamMeritScore(team, riderStandings), 0.03, 0.95);
+/** Bug fixed (feature): every candidate manufacturer used to score a
+ * team identically, using only the team's OWN merit — meaning a
+ * manufacturer thriving with a great existing satellite showed
+ * exactly the same interest as one whose satellite was struggling,
+ * which never made sense. Each manufacturer now ALSO factors in how
+ * satisfied it already is with whatever satellite team(s) it
+ * currently has (using this exact same teamMeritScore, scored on
+ * THEM instead of the approaching team) — a manufacturer riding high
+ * with its own satellite has little reason to go looking elsewhere,
+ * while one whose satellite is struggling is genuinely more open to
+ * a switch. A manufacturer with no satellite at all yet (shouldn't
+ * currently happen — every MotoGP manufacturer already fields one —
+ * but handled safely regardless) has nothing to compare against, so
+ * satisfaction stays neutral. */
+/** Bug fixed (feature): this used to reduce interest based on how
+ * SATISFIED the manufacturer already was with its existing satellite's
+ * own performance — treating the switch as if it would REPLACE that
+ * satellite. That's wrong: a manufacturer can genuinely run two
+ * satellite teams alongside its factory one at once (exactly what
+ * Ducati already does with Gresini and VR46 today — a 6-bike
+ * manufacturer, not a straight swap between two 4-bike ones), so a
+ * thriving existing satellite was never actually a reason to turn a
+ * strong new team away. What genuinely matters is whether the
+ * manufacturer has ROOM to grow at all: the practical cap modeled
+ * here is 2 satellite TEAMS per manufacturer (the same 3-teams-total
+ * shape Ducati already demonstrates) — a manufacturer already running
+ * two has nowhere to put a third, no matter how good the approaching
+ * team is; one running zero or one has real room, and judges the
+ * approaching team purely on merit, with no penalty at all for
+ * however well its current satellite (if any) happens to be doing. */
+export function computeOtherManufacturerInterest(team, riderStandings, targetManufacturer, allTeams, tiersMap) {
+  const baseline = 0.14 + teamMeritScore(team, riderStandings);
+
+  const existingSatelliteTeams = (allTeams || []).filter((t) => {
+    const tiers = tiersMap?.[t.name];
+    return t.manufacturer === targetManufacturer && tiers && !tiers.every((tier) => tier === "factory");
+  });
+  if (existingSatelliteTeams.length >= 2) return 0.03; // no room — already at the practical 2-satellite cap
+
+  return clamp(baseline, 0.03, 0.95);
+}
+
+/** What tier composition a manufacturer is actually willing to open
+ * with, derived from the same interest score the negotiation itself
+ * is scored on — shown to the team BEFORE they commit to a switch, so
+ * "sondear otras marcas" means something concrete rather than a bare
+ * yes/no. A manufacturer that's genuinely excited opens with its best
+ * available spec on both seats; lukewarm interest gets a mixed offer;
+ * a marginal "yes" only ever offers the weaker tier, on both seats. */
+export function manufacturerBikeOffer(interestScore) {
+  if (interestScore >= 0.65) return ["customerTop", "customerTop"];
+  if (interestScore >= 0.4) return ["customerTop", "previous"];
+  return ["previous", "previous"];
 }
 
 /** A manufacturer besides the team's own current one, currently the
@@ -115,8 +166,29 @@ export function computeOtherManufacturerInterest(team, riderStandings) {
  * no factory presence in the game at all (there's no "sleeping brand
  * returns" system yet — see the session's own earlier design notes —
  * so this only ever offers a switch to a manufacturer already racing). */
-export function otherManufacturerCandidates(currentManufacturer) {
-  return Object.keys(MANUFACTURERS).filter((m) => m !== currentManufacturer && ["Ducati", "Aprilia", "Yamaha", "KTM", "Honda"].includes(m));
+/** Every OTHER manufacturer with a real factory presence in the game
+ * (there's no "sleeping brand returns" system yet — see this
+ * session's own earlier design notes — so this only ever offers a
+ * switch to a manufacturer already racing), further narrowed to only
+ * those that actually have room: a manufacturer already running two
+ * satellite teams (the practical cap this whole system models — see
+ * computeOtherManufacturerInterest's own comment) has nowhere to put
+ * a third, so there's no point even showing it as an option to
+ * approach — sondear a team with zero realistic chance isn't a
+ * meaningful choice, it's a trap. allTeams/tiersMap are optional; when
+ * omitted, every manufacturer besides the current one is shown (used
+ * by contexts that don't have live team data on hand, though every
+ * real caller today does pass them). */
+export function otherManufacturerCandidates(currentManufacturer, allTeams, tiersMap) {
+  const named = Object.keys(MANUFACTURERS).filter((m) => m !== currentManufacturer && ["Ducati", "Aprilia", "Yamaha", "KTM", "Honda"].includes(m));
+  if (!allTeams || !tiersMap) return named;
+  return named.filter((mfr) => {
+    const satelliteCount = allTeams.filter((t) => {
+      const tiers = tiersMap[t.name];
+      return t.manufacturer === mfr && tiers && !tiers.every((tier) => tier === "factory");
+    }).length;
+    return satelliteCount < 2;
+  });
 }
 
 /** Applies whatever a successful ("favorable") outcome for this
@@ -149,7 +221,7 @@ export function otherManufacturerCandidates(currentManufacturer) {
  * Returns { team, motogpSeatTiers } — motogpSeatTiers is only ever
  * returned unchanged now; kept in the return shape so callers don't
  * need to change how they read the result. */
-export function applyManufacturerRequestSuccess(requestType, team, motogpSeatTiers, categoryKey, targetManufacturer) {
+export function applyManufacturerRequestSuccess(requestType, team, motogpSeatTiers, categoryKey, targetManufacturer, offeredBikes) {
   if (requestType === "renew") {
     return {
       team: { ...team, manufacturerContract: { manufacturer: team.manufacturer, yearsLeft: MANUFACTURER_CONTRACT_YEARS } },
@@ -177,8 +249,12 @@ export function applyManufacturerRequestSuccess(requestType, team, motogpSeatTie
     // to approach first (each one judges the team independently, via
     // computeOtherManufacturerInterest), so targetManufacturer arrives
     // here already decided — this just records it as pending.
+    // offeredBikes (see manufacturerBikeOffer) is the concrete tier
+    // composition that manufacturer showed the team BEFORE they
+    // committed — carried along so the promise actually gets honored
+    // once the switch lands (see applyPendingManufacturerSwitch).
     if (!targetManufacturer) return { team, motogpSeatTiers };
-    return { team: { ...team, pendingManufacturerSwitch: targetManufacturer }, motogpSeatTiers };
+    return { team: { ...team, pendingManufacturerSwitch: targetManufacturer, pendingManufacturerOffer: offeredBikes || ["previous", "previous"] }, motogpSeatTiers };
   }
 
   return { team, motogpSeatTiers };
@@ -218,6 +294,16 @@ export function applyPendingManufacturerSwitch(team, tiersMap) {
     // nowhere" that fades immediately, rather than a permanent
     // advantage.
     justSwitchedManufacturer: true,
+    // The concrete tier composition (see manufacturerBikeOffer) this
+    // manufacturer actually promised before the team committed —
+    // carried as a per-seat bonus rather than seeded directly into
+    // tiersMap, for the same reason customerTop/isNewTeamThisSeason
+    // above are bonuses and not direct seeds: seeding two fresh
+    // customerTop seats here on top of whatever the existing satellite
+    // already holds would silently create more customerTop bikes than
+    // the manufacturer actually has. Consumed by
+    // candidateSeatsByManufacturer's own scoring below, then cleared.
+    pendingManufacturerOffer: team.pendingManufacturerOffer || ["previous", "previous"],
   };
   const nextTiersMap = { ...tiersMap, [team.name]: ["previous", "previous"] };
   return { team: nextTeam, tiersMap: nextTiersMap };
@@ -246,6 +332,7 @@ export function tickManufacturerContract(team, categoryKey) {
     // shot at a customerTop seat has already been spent either way.
     manufacturerFavorNextSeason: false,
     justSwitchedManufacturer: false,
+    pendingManufacturerOffer: null,
     manufacturerContract: yearsLeft > 0
       ? { manufacturer: team.manufacturer, yearsLeft }
       : { manufacturer: team.manufacturer, yearsLeft: MANUFACTURER_CONTRACT_YEARS },

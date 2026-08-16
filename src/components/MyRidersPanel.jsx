@@ -20,18 +20,6 @@ function currentRank(riderStandings, riderId) {
   return idx === -1 ? null : idx + 1;
 }
 
-function StatCard({ icon: Icon, value, label }) {
-  return (
-    <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
-      <Icon size={15} style={{ color: COLORS.gold }} className="flex-shrink-0" />
-      <div>
-        <div className="text-base font-bold leading-none" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{value}</div>
-        <div className="text-[8px] uppercase tracking-wider" style={{ color: COLORS.muted }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
 /**
  * A single rider's row — matches the reference layout: number + photo,
  * then name/nationality/contract info, then the attribute hexagon,
@@ -45,21 +33,73 @@ export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums
   return (
     <button
       onClick={() => openProfile(rider, teamName, category)}
-      className="w-full text-left rounded-lg overflow-hidden mb-3 last:mb-0 block"
+      className="w-full text-left rounded-lg overflow-hidden mb-2.5 sm:mb-3 last:mb-0 block"
       style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}`, borderLeft: `3px solid ${accent}` }}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3">
-        {/* Photo (bigger now) + number moved underneath it */}
-        <div className="flex sm:flex-col items-center gap-2 flex-shrink-0">
+      {/* ============ MOBILE (below sm) ============ */}
+      <div className="sm:hidden">
+        <div className="flex items-center gap-3 p-3">
+          <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+            <RiderPhoto rider={rider} size={64} className="rounded-lg" />
+            {!isSubstitute && <RiderNumber rider={rider} size={30} categoryKey={category} plain />}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+              <CountryFlag nat={rider.nat} width={18} />
+              <span className="text-base font-bold leading-tight truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{rider.name}</span>
+              <OverallBadge value={overallRating(rider)} accent={accent} />
+            </div>
+
+            {isSubstitute ? (
+              <div className="text-xs flex items-center gap-1.5" style={{ color: COLORS.gold }}>
+                <ArrowLeftRight size={12} className="flex-shrink-0" /> Sustituto de {ownerName || "piloto lesionado"}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{rider.age} años</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Edad</div></div>
+                <div><div className="text-xs font-bold" style={{ color: COLORS.text }}>{rider.contractYears ?? 0} año{(rider.contractYears ?? 0) === 1 ? "" : "s"}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Contrato</div></div>
+                <div><div className="text-xs font-bold truncate" style={{ color: COLORS.text }}>€{(rider.salary || 0).toLocaleString()}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Salario</div></div>
+                <div><div className="text-xs font-bold truncate" style={{ color: COLORS.text }}>{MOTOGP_BIKE_TIER_LABELS[bikeTier] || teamTier || "—"}</div><div className="text-[9px] uppercase tracking-wider" style={{ color: COLORS.muted }}>Estatus</div></div>
+              </div>
+            )}
+
+            {rider.injury && rider.injury.gpRemaining > 0 && (
+              <div className="text-xs mt-1.5 flex items-center gap-1" style={{ color: COLORS.danger }}>
+                <AlertTriangle size={11} className="flex-shrink-0" />
+                {rider.injury.sidelined ? `Lesión ${rider.injury.severityLabel} · vuelve en ${rider.injury.gpRemaining} GP${rider.injury.gpRemaining === 1 ? "" : "s"}` : `Lesión leve (${rider.injury.gpRemaining} GP) · rendimiento mermado`}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-3 pb-3">
+          <div className="grid grid-cols-4 gap-1.5">
+            <MiniStat icon={Trophy} v={podiums} label="Podios" />
+            <MiniStat icon={Flag} v={wins} label="Victorias" />
+            <MiniStat icon={Award} v={rank != null ? `${rank}º` : "—"} label="Puesto" />
+            <div className="rounded-md px-1.5 py-1 flex flex-col items-center justify-center" style={{ background: COLORS.panel }}>
+              <span className="text-sm font-bold leading-none" style={{ fontFamily: "Rajdhani, sans-serif", color: accent }}>{points}</span>
+              <span className="text-[8px] uppercase tracking-wider mt-0.5" style={{ color: COLORS.muted }}>Pts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============ DESKTOP/TABLET (sm and up) — restored to the
+          original, correct layout: photo+number column, name/contract
+          column, and a third Rendimiento column with 3 stat cards +
+          points, all in a single row, ending in a chevron. ============ */}
+      <div className="hidden sm:flex sm:items-center gap-3 p-3">
+        <div className="flex flex-col items-center gap-2 flex-shrink-0">
           <RiderPhoto rider={rider} size={88} className="rounded-lg" />
           {!isSubstitute && <RiderNumber rider={rider} size={44} categoryKey={category} plain />}
         </div>
 
-        {/* Name (with the country flag right before it now, instead of the number), contract grid */}
-        <div className="flex-1 min-w-0 sm:w-56 sm:flex-shrink-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="w-96 flex-shrink-0 min-w-0">
+          <div className="flex items-center gap-2 flex-nowrap mb-1">
             <CountryFlag nat={rider.nat} width={22} />
-            <span className="text-xl sm:text-2xl font-bold leading-tight" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{rider.name}</span>
+            <span className="text-2xl font-bold leading-tight truncate min-w-0" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{rider.name}</span>
             <OverallBadge value={overallRating(rider)} accent={accent} size="lg" />
           </div>
 
@@ -84,8 +124,9 @@ export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums
           )}
         </div>
 
-        {/* Season stats + points */}
-        <div className="sm:flex-1 sm:min-w-0">
+        <div className="flex-1" />
+
+        <div className="w-72 flex-shrink-0 min-w-0">
           <div className="text-[9px] uppercase tracking-wider mb-1.5" style={{ color: COLORS.muted }}>Rendimiento {seasonNumber}</div>
           <div className="grid grid-cols-3 gap-1.5 mb-1.5">
             <StatCard icon={Trophy} value={podiums} label="Podios" />
@@ -98,9 +139,33 @@ export function RiderRow({ rider, isSubstitute, ownerName, points, wins, podiums
           </div>
         </div>
 
-        <ChevronRight size={20} style={{ color: COLORS.muted }} className="hidden sm:block flex-shrink-0" />
+        <ChevronRight size={20} style={{ color: COLORS.muted }} className="flex-shrink-0" />
       </div>
     </button>
+  );
+}
+
+function StatCard({ icon: Icon, value, label }) {
+  return (
+    <div className="rounded-lg px-2.5 py-2 flex items-center gap-2" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+      <Icon size={15} style={{ color: COLORS.gold }} className="flex-shrink-0" />
+      <div>
+        <div className="text-base font-bold leading-none" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{value}</div>
+        <div className="text-[8px] uppercase tracking-wider" style={{ color: COLORS.muted }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ icon: Icon, v, label }) {
+  return (
+    <div className="rounded-md px-1.5 py-1 flex flex-col items-center justify-center gap-0.5" style={{ background: COLORS.panel }}>
+      <div className="flex items-center gap-1">
+        <Icon size={11} style={{ color: COLORS.gold }} className="flex-shrink-0" />
+        <span className="text-sm font-bold leading-none" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{v}</span>
+      </div>
+      <span className="text-[8px] uppercase tracking-wider" style={{ color: COLORS.muted }}>{label}</span>
+    </div>
   );
 }
 

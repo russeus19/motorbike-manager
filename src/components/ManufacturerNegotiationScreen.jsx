@@ -6,8 +6,9 @@ import { MANUFACTURER_DIALOGUE } from "../data/manufacturerDialogue.js";
 import { thermometerZone } from "../utils/negotiationDialogue.js";
 import {
   MANUFACTURER_REQUEST_TYPES, availableManufacturerRequests, computeManufacturerRequestScore,
-  computeOtherManufacturerInterest, otherManufacturerCandidates, ensureManufacturerContract,
+  computeOtherManufacturerInterest, otherManufacturerCandidates, ensureManufacturerContract, manufacturerBikeOffer,
 } from "../utils/manufacturerNegotiation.js";
+import { MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
 const ZONE_COLOR = { frio: COLORS.danger, dudoso: COLORS.gold, favorable: COLORS.success };
@@ -43,7 +44,7 @@ function pickLine(zone, usedLines) {
  * real consequences (see utils/manufacturerNegotiation.js's own
  * applyManufacturerRequestSuccess) for a "favorable" outcome.
  */
-export function ManufacturerNegotiationScreen({ team, categoryKey, riderStandings, motogpSeatTiers, accent, onResolve, onClose }) {
+export function ManufacturerNegotiationScreen({ team, categoryKey, riderStandings, motogpSeatTiers, allMotoGpTeams, accent, onResolve, onClose }) {
   const contract = ensureManufacturerContract(team, categoryKey);
   const requestTypes = availableManufacturerRequests(team, categoryKey, motogpSeatTiers);
 
@@ -59,12 +60,13 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
 
   function computeScore() {
     return isSwitch
-      ? computeOtherManufacturerInterest(team, riderStandings)
+      ? computeOtherManufacturerInterest(team, riderStandings, targetManufacturer, allMotoGpTeams, motogpSeatTiers)
       : computeManufacturerRequestScore(requestType, team, riderStandings, categoryKey);
   }
 
   const liveScore = requestType && !awaitingTargetPick ? computeScore() : null;
   const liveZone = liveScore != null ? thermometerZone(liveScore) : null;
+  const liveOffer = isSwitch && liveScore != null ? manufacturerBikeOffer(liveScore) : null;
 
   function handleSend() {
     if (!requestType || reaction || awaitingTargetPick) return;
@@ -74,7 +76,7 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
     const line = pickLine(zone, usedLines);
     setUsedLines((prev) => [...prev.slice(-3), line]);
     setReaction({ zone, line, outcome });
-    onResolve(requestType, outcome, isSwitch ? targetManufacturer : undefined);
+    onResolve(requestType, outcome, isSwitch ? targetManufacturer : undefined, isSwitch ? manufacturerBikeOffer(score) : undefined);
   }
 
   function handleClose() {
@@ -124,13 +126,19 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
           ) : awaitingTargetPick ? (
             <div className="space-y-2">
               <p className="text-sm mb-1" style={{ color: COLORS.muted }}>¿A qué fabricante os acercáis primero? Cada uno os juzgará por vuestros propios méritos — {team.manufacturer} no tiene voz aquí.</p>
-              {otherManufacturerCandidates(team.manufacturer).map((mfr) => (
-                <button key={mfr} onClick={() => setTargetManufacturer(mfr)}
-                  className="w-full flex items-center gap-3 text-left rounded-xl p-3" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
-                  <ManufacturerLogo name={mfr} accent={accent} size={36} />
-                  <span className="text-sm font-bold" style={{ color: COLORS.text }}>{mfr}</span>
-                </button>
-              ))}
+              {(() => {
+                const candidates = otherManufacturerCandidates(team.manufacturer, allMotoGpTeams, motogpSeatTiers);
+                if (!candidates.length) {
+                  return <p className="text-xs italic" style={{ color: COLORS.muted }}>Ninguna otra marca tiene sitio libre para un tercer equipo ahora mismo — todas ya tienen dos equipos satélite propios.</p>;
+                }
+                return candidates.map((mfr) => (
+                  <button key={mfr} onClick={() => setTargetManufacturer(mfr)}
+                    className="w-full flex items-center gap-3 text-left rounded-xl p-3" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+                    <ManufacturerLogo name={mfr} accent={accent} size={36} />
+                    <span className="text-sm font-bold" style={{ color: COLORS.text }}>{mfr}</span>
+                  </button>
+                ));
+              })()}
             </div>
           ) : (
             <>
@@ -138,6 +146,19 @@ export function ManufacturerNegotiationScreen({ team, categoryKey, riderStanding
                 <div className="text-sm font-bold" style={{ color: COLORS.text }}>{isSwitch ? `Fichar por ${targetManufacturer}` : MANUFACTURER_REQUEST_TYPES[requestType].label}</div>
                 <div className="text-xs mt-0.5" style={{ color: COLORS.muted }}>{isSwitch ? `Convencer a ${targetManufacturer} de que os acepte como su nuevo equipo cliente.` : MANUFACTURER_REQUEST_TYPES[requestType].description}</div>
               </div>
+
+              {isSwitch && liveOffer && (
+                <div>
+                  <div className="text-xs mb-1.5" style={{ color: COLORS.muted }}>Lo que {targetManufacturer} os ofrece para vuestros dos pilotos:</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {liveOffer.map((tier, i) => (
+                      <div key={i} className="rounded-lg px-3 py-2 text-center" style={{ background: `${accent}18`, border: `1px solid ${accent}55` }}>
+                        <span className="text-sm font-bold" style={{ color: accent }}>{MOTOGP_BIKE_TIER_LABELS[tier]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5" style={{ color: COLORS.muted }}>

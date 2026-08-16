@@ -8,6 +8,7 @@ import { CountryFlag } from "./CountryFlag.jsx";
 import { RiderPhoto } from "./RiderPhoto.jsx";
 import { OverallBadge } from "./UIPrimitives.jsx";
 import { bikeAvg } from "../utils/bikeDevelopment.js";
+import { bikeForSeat, bikeTierForSeat, teamHasSplitBikeTiers, MOTOGP_BIKE_TIER_LABELS } from "../data/motogpBikeTiers.js";
 import { overallRating } from "../utils/riders.js";
 import { teamDisplayName } from "../utils/teamNaming.js";
 
@@ -20,7 +21,7 @@ import { teamDisplayName } from "../utils/teamNaming.js";
  * MotoGP roster has nothing to do with its WorldSBK one), so this is
  * always scoped to a single categoryKey, never "every category at once".
  */
-export function ManufacturerProfileModal({ target, onClose, onOpenTeamProfile, onOpenRiderProfile, onTop = true }) {
+export function ManufacturerProfileModal({ target, onClose, onOpenTeamProfile, onOpenRiderProfile, motogpSeatTiers, manufacturerPreviousBikes, onTop = true }) {
   if (!target) return null;
   const { manufacturer, categoryKey, teams } = target;
   const { nat } = manufacturerInfo(manufacturer);
@@ -49,25 +50,44 @@ export function ManufacturerProfileModal({ target, onClose, onOpenTeamProfile, o
           <div className="text-xs uppercase tracking-wider mb-2" style={{ color: COLORS.muted }}>{teams.length} equipo{teams.length === 1 ? "" : "s"} con {manufacturer}</div>
           <div className="space-y-3">
             {teams.map((team) => {
-              const avg = Math.round(bikeAvg(team.bike));
+              const isSplit = teamHasSplitBikeTiers(team, categoryKey, motogpSeatTiers);
+              // Bug fixed: this used to read team.bike directly,
+              // regardless of tier — for a team whose seats are
+              // uniformly "previous" (demoted together, not split,
+              // since split means the two seats DIFFER), that showed
+              // a stale customerTop-era value that was never updated
+              // when the team got demoted, instead of the real,
+              // 10%-penalized frozen snapshot. bikeForSeat resolves
+              // the correct value for whichever tier the team's seats
+              // actually hold now.
+              const avg = isSplit ? null : Math.round(bikeAvg(bikeForSeat(team, 0, categoryKey, manufacturerPreviousBikes, motogpSeatTiers)));
               const teamAccent = team.color || accent;
               return (
                 <div key={team.id} className="rounded-xl p-3" style={{ background: COLORS.panel2, border: `1px solid ${COLORS.rule}` }}>
                   <button onClick={() => onOpenTeamProfile(team, categoryKey)} className="w-full flex items-center gap-2.5 mb-2 text-left">
                     <TeamLogo team={team} size={32} className="rounded flex-shrink-0" />
                     <span className="flex-1 min-w-0 text-sm font-bold truncate" style={{ fontFamily: "Rajdhani, sans-serif", color: COLORS.text }}>{teamDisplayName(team)}</span>
-                    <span className="text-xs font-mono flex-shrink-0" style={{ color: teamAccent }}>Moto: {avg}</span>
+                    {avg != null && <span className="text-xs font-mono flex-shrink-0" style={{ color: teamAccent }}>Moto: {avg}</span>}
                     <ChevronRight size={16} style={{ color: COLORS.muted }} className="flex-shrink-0" />
                   </button>
                   <div className="grid grid-cols-2 gap-2">
-                    {(team.riders || []).map((r) => (
-                      <button key={r.id} onClick={() => onOpenRiderProfile(r, teamDisplayName(team), categoryKey)}
-                        className="flex items-center gap-2 rounded-lg p-1.5 text-left" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
-                        <RiderPhoto rider={r} size={32} className="rounded flex-shrink-0" />
-                        <span className="flex-1 min-w-0 text-xs font-semibold truncate" style={{ color: COLORS.text }}>{r.name}</span>
-                        <OverallBadge value={overallRating(r)} accent={teamAccent} />
-                      </button>
-                    ))}
+                    {(team.riders || []).map((r, i) => {
+                      const tier = bikeTierForSeat(team, i, categoryKey, motogpSeatTiers);
+                      const riderBikeAvg = isSplit ? Math.round(bikeAvg(bikeForSeat(team, i, categoryKey, manufacturerPreviousBikes, motogpSeatTiers))) : null;
+                      return (
+                        <button key={r.id} onClick={() => onOpenRiderProfile(r, teamDisplayName(team), categoryKey)}
+                          className="flex items-center gap-2 rounded-lg p-1.5 text-left" style={{ background: COLORS.panel, border: `1px solid ${COLORS.rule}` }}>
+                          <RiderPhoto rider={r} size={32} className="rounded flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold truncate" style={{ color: COLORS.text }}>{r.name}</div>
+                            {isSplit && tier && (
+                              <div className="text-[9px] truncate" style={{ color: teamAccent }}>{MOTOGP_BIKE_TIER_LABELS[tier]} · {riderBikeAvg}</div>
+                            )}
+                          </div>
+                          <OverallBadge value={overallRating(r)} accent={teamAccent} />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );

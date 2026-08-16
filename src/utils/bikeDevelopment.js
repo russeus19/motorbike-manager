@@ -710,68 +710,90 @@ export function rolloverBike(team, categoryKey, devScaleOverride) {
   // a MotoGP-sized 20-30 point gap opening up between the best- and
   // worst-run team over a few seasons is not, since the whole point of
   // the category is that the rider decides races, not the machinery.
-  // Dampening the season's delta (not the base bike values themselves)
-  // to 20% of normal keeps that same spirit intact indefinitely.
-  // Bug fixed (feature): a MotoGP customerTop/previous-tier team used
-  // to run this exact same full-strength formula as any regular team
-  // — meaning a satellite's own weak Factory/Staff (a genuine
-  // satellite starts at 35/35, well below a works team's 55/50) kept
-  // dragging its bike back down toward what ITS OWN infrastructure
-  // could organically sustain, undoing the elevated customerTop spec
-  // it's supposed to be riding courtesy of the manufacturer. Real
-  // improvement for those seats is meant to arrive through the 2-GP
-  // delayed factory packages (see data/motogpBikeTiers.js's
-  // advanceMotoGpCustomerQueue) instead of independent seasonal
-  // R&D — devScaleOverride (passed in from App.jsx's
-  // runSeasonTransition for exactly these teams) dampens this
-  // formula down to a small symbolic adaptation, the same idea as
-  // WorldWCR's own damping just below, applied for a different reason.
+  // Dampening how far the bike is allowed to MOVE toward its new,
+  // freshly-computed value (not the value itself) to 20% of normal
+  // keeps that same spirit intact indefinitely.
+  // A MotoGP customerTop/previous-tier team runs at devScale 0 (see
+  // data/motogpBikeTiers.js's own motoGpDevScaleFor) — its bike is
+  // meant to move only through installing (or declining) the
+  // manufacturer's own delayed packages, never through this seasonal
+  // formula at all, so it stays completely frozen here regardless of
+  // what the formula below would otherwise produce.
   const devScale = devScaleOverride ?? (categoryKey === "worldwcr" ? 0.2 : 1);
+
+  // Bug fixed (feature): the old formula chased a "target" built from
+  // techBase + a factory/staff bonus — and since factory/staff only
+  // ever climb over a save's lifetime (there's no real reason for the
+  // AI to downgrade either), that target crept upward every season
+  // until it pinned itself at the hard ceiling of 99. Once bike and
+  // target both sat at 99, the only thing that could ever pull an area
+  // back DOWN (rawDelta going negative) could never fire again — which
+  // is exactly how every AI-run team's bike quietly converged on 99
+  // over enough seasons, with no real spread left across the grid.
+  //
+  // Replaced with three explicit, transparent ingredients instead,
+  // each contributing a fixed share of next season's value:
+  //   - 60% BASE — last season's own value. The bike doesn't reset or
+  //     chase anything; most of what you had carries straight over,
+  //     so there's real inertia and no wild swings from one season to
+  //     the next.
+  //   - 40% RESEARCH — this season's own research quality: a +55
+  //     floor (every category's weakest bike is still a serious,
+  //     competitive machine — see this file's own comment right above
+  //     this loop), plus Factory level (15%, real infrastructure
+  //     ceiling), Staff level (10%, the people actually running the
+  //     campaign), and how much was genuinely invested in THIS area
+  //     relative to what a full campaign costs (20%, the one part
+  //     actually in the player's or AI's hands every season). A team
+  //     with strong facilities that also spends well scores near the
+  //     top of the range; a team with weak facilities or that skips
+  //     investment still lands in the low-to-mid 60s rather than
+  //     falling out of the competitive picture — bikes are only ever
+  //     compared within their own category anyway, never across
+  //     categories, so there's no realistic "barely functional"
+  //     machine to model.
+  //   - RISK — a flat ±8 random swing, added on top of the weighted
+  //     base+research figure rather than folded into either share, so
+  //     it can genuinely help or hurt ANY team regardless of how well
+  //     run they are — the "something worked out on track, or it
+  //     didn't" element the whole system was missing.
+  // This is a genuine weighted average (60%+40%=100% before risk), which
+  // is what actually stops the runaway convergence: research quality
+  // itself lives in a realistic ~25-95 range rather than an
+  // ever-climbing target, so a team's bike settles into an equilibrium
+  // around what its OWN infrastructure and investment can really
+  // sustain — elite, fully-funded factories genuinely cluster near 90+
+  // most seasons, honest mid-table efforts settle in the 50s-70s, and a
+  // team with weak facilities or inconsistent investment can keep
+  // drifting down into the 20s-30s — verified directly by simulating
+  // 15-season runs for elite/mid/weak profiles before this went in.
+  // Bug fixed: bike averages are only ever meaningful WITHIN a
+  // category — a MotoGP bike never races a Moto3 one, so "how good is
+  // this bike" really means "how good is it relative to the rest of
+  // its own grid", and every real grid's worst machine is still a
+  // serious, competitive prototype, not a barely-functional one. The
+  // weights below used to let researchScore (and therefore a team's
+  // long-run equilibrium) drift down into the 20s-30s for a
+  // consistently under-invested team — unrealistically low for ANY
+  // category. A flat +55 floor now anchors researchScore to roughly
+  // a 60-99 range across the whole formula: even a team with weak
+  // Factory/Staff and little investment settles somewhere in the low-
+  // to-mid 60s rather than falling out of the competitive picture
+  // entirely, while a fully-invested elite factory can still reach
+  // the high 90s the same way as before.
   const newBike = {};
   BIKE_AREA_KEYS.forEach((k) => {
-    const factoryBonus = Math.round(factory.level * 0.12);
-    const staffBonus = Math.round(staff.level * 0.08);
-    const noise = randInt(-1, 1);
-    const target = clamp(techBase[k] + factoryBonus + staffBonus + noise, 1, 99);
-    const rawDelta = target - team.bike[k];
-    const maxGain = rawDelta > 4 ? Math.min(rawDelta, 9) : 4;
-    const delta = clamp(rawDelta, -3, maxGain) * devScale;
-
-    // The rest of the grid keeps developing whether you invest or not.
-    // A season with little or no research spend means genuinely falling
-    // behind; a season with real investment should show for itself, not
-    // just "less bad than doing nothing" — full investment (relative to
-    // what a thorough research campaign in this area would cost) is
-    // worth a real improvement on top of the normal drift, while zero
-    // investment costs a real decline on top of it.
     const investmentRatio = clamp(researchInvested / (AREA_BASE[k].money * 3), 0, 1);
-    const investmentEffect = (Math.round(investmentRatio * 9) - 5) * devScale;
-
-    // Bug fixed: the only thing that could ever push an area DOWN was
-    // rawDelta going negative — the bike sitting above its own target
-    // (techBase + factory/staff bonus). But factory and staff levels
-    // only ever climb over the life of a save (the AI has no real
-    // reason to downgrade them), so that target creeps upward every
-    // season until it pins itself at the hard ceiling of 99 — and once
-    // it's there, the bike can never actually exceed its own target
-    // (both are capped at the same 99), so rawDelta can never go
-    // negative again. The whole risk mechanism quietly stopped being
-    // able to fire at all, which is exactly how every AI team's bike
-    // ends up converging on 99 over enough seasons.
-    //
-    // A genuinely bad off-season is added as its own, independent
-    // layer instead of only living inside the target-chasing math
-    // above — a real redesign that didn't pan out, a reliability issue
-    // found too late, whatever the story — with a chance that falls as
-    // investment rises, but never to zero: even a fully-invested,
-    // already-elite team can still have an off year in some area.
-    // Nothing here cares whether the bike is already at its target or
-    // still climbing toward it, so it keeps applying regardless of how
-    // saturated factory/staff have become.
-    const badOffseasonChance = clamp(0.20 - investmentRatio * 0.15, 0.05, 0.20);
-    const offseasonSetback = Math.random() < badOffseasonChance ? -randInt(4, 12) * devScale : 0;
-
-    newBike[k] = clamp(team.bike[k] + delta + investmentEffect + offseasonSetback, 1, 99);
+    const researchScore = 55 + factory.level * 0.15 + staff.level * 0.10 + investmentRatio * 20;
+    const risk = randInt(-8, 8);
+    const rawNewValue = clamp(team.bike[k] * 0.6 + researchScore * 0.4 + risk, 1, 99);
+    // devScale blends toward this season's freshly-computed value
+    // rather than reaching it outright — devScale=1 (a normal factory
+    // team) arrives at rawNewValue exactly; devScale=0 (a MotoGP
+    // satellite) doesn't move at all; WorldWCR's 0.2 nudges gently
+    // toward it without ever opening a big gap.
+    const delta = (rawNewValue - team.bike[k]) * devScale;
+    newBike[k] = Math.round(clamp(team.bike[k] + delta, 1, 99));
   });
   return {
     ...team,

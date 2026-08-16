@@ -52,7 +52,7 @@ function CompactRiderRow({ rider, tier, points, categoryKey, accent, onOpen }) {
 
 /** "La moto" — a compact, read-only echo of BikeHero's own layout for
  * whichever OTHER team this profile belongs to. */
-function SingleBikeBlock({ team, categoryKey, accent, model, avg }) {
+function SingleBikeBlock({ team, categoryKey, accent, model, avg, bike }) {
   return (
     <div className="flex items-center gap-4">
       <BikePhoto team={team} categoryKey={categoryKey} accent={accent} size={100} sizeClassName="w-[100px] h-[100px] rounded-lg flex-shrink-0" objectFit="cover" objectPosition="center top" />
@@ -68,7 +68,7 @@ function SingleBikeBlock({ team, categoryKey, accent, model, avg }) {
         <div className="grid grid-cols-5 gap-1.5">
           {BIKE_AREA_KEYS.map((k) => (
             <div key={k} className="text-center rounded-md py-1" style={{ background: COLORS.panel }}>
-              <div className="text-xs font-mono font-bold" style={{ color: COLORS.text }}>{team.bike[k]}</div>
+              <div className="text-xs font-mono font-bold" style={{ color: COLORS.text }}>{Math.round(bike[k])}</div>
               <div className="text-[8px] uppercase truncate px-0.5" style={{ color: COLORS.muted }}>{BIKE_LABELS[k]}</div>
             </div>
           ))}
@@ -119,8 +119,22 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onOpenMa
   const accent = team.color || COLORS.gold;
   const teamName = teamDisplayName(team);
   const isSplit = teamHasSplitBikeTiers(team, categoryKey, motogpSeatTiers);
-  const model = bikeModelFor(categoryKey, team.manufacturer, seasonNumber, "factory");
-  const avg = Math.round(bikeAvg(team.bike));
+  // Bug fixed: a non-split MotoGP team used to always be treated as
+  // "must be factory" for its model name and bike values — true for
+  // most non-split teams (a works team, or a 4-bike manufacturer's
+  // satellite), but NOT for a team whose two seats are uniformly
+  // "previous" (both riders demoted together, same tier — not split,
+  // since split specifically means the two seats DIFFER). Reading the
+  // seat's own real tier (0 works fine here since a non-split team's
+  // two seats share the same one by definition) fixes both the model
+  // year label (GP27 instead of GP28) and the actual attribute values
+  // (the real, 10%-penalized frozen snapshot instead of a stale
+  // customerTop-era team.bike that was never updated when the team
+  // got demoted).
+  const uniformTier = bikeTierForSeat(team, 0, categoryKey, motogpSeatTiers) || "factory";
+  const model = bikeModelFor(categoryKey, team.manufacturer, seasonNumber, uniformTier);
+  const effectiveBike = bikeForSeat(team, 0, categoryKey, manufacturerPreviousBikes, motogpSeatTiers);
+  const avg = Math.round(bikeAvg(effectiveBike));
   const sponsors = team.sponsors || {};
   const sponsorList = [
     sponsors.main ? { ...sponsors.main, roleLabel: "Principal" } : null,
@@ -171,7 +185,7 @@ export function TeamProfileModal({ target, onClose, onOpenRiderProfile, onOpenMa
             {isSplit ? (
               <SplitBikeBlock team={team} categoryKey={categoryKey} accent={accent} seasonNumber={seasonNumber} manufacturerPreviousBikes={manufacturerPreviousBikes} motogpSeatTiers={motogpSeatTiers} />
             ) : (
-              <SingleBikeBlock team={team} categoryKey={categoryKey} accent={accent} model={model} avg={avg} />
+              <SingleBikeBlock team={team} categoryKey={categoryKey} accent={accent} model={model} avg={avg} bike={effectiveBike} />
             )}
           </div>
 
