@@ -81,13 +81,19 @@ export function StandingsPanel({ category, riderStandings, teamStandings, otherC
         onHeaderClick={() => setShowAll((v) => !v)}
         headerRight={showAll ? <ChevronUp size={16} style={{ color: COLORS.muted }} /> : <ChevronDown size={16} style={{ color: COLORS.muted }} />}
       >
-        <ol className={`text-sm space-y-1 ${showAll ? "max-h-80 overflow-y-auto pr-1" : ""}`}>
+        <ol className={`text-sm space-y-1.5 ${showAll ? "max-h-80 overflow-y-auto pr-1" : ""}`}>
           {riderRows.map((r, i) => (
-            <li key={r.id} className="flex justify-between">
-              <span style={{ color: i < 3 ? COLORS.gold : COLORS.text }}>
-                {i + 1}. <RiderNameButton rider={{ name: r.name }} onClick={() => handleRiderClick(r.id)} /> <span style={{ color: COLORS.muted }}>({r.teamName})</span>
-              </span>
-              <span className="font-mono" style={{ color: COLORS.muted }}>{r.points}</span>
+            <li key={r.id} className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-1.5 min-w-0">
+                <span className="flex-shrink-0" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}.</span>
+                <div className="min-w-0">
+                  <div className="truncate" style={{ color: i < 3 ? COLORS.gold : COLORS.text }}>
+                    <RiderNameButton rider={{ name: r.name }} onClick={() => handleRiderClick(r.id)} />
+                  </div>
+                  <div className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</div>
+                </div>
+              </div>
+              <span className="font-mono flex-shrink-0" style={{ color: COLORS.muted }}>{r.points}</span>
             </li>
           ))}
         </ol>
@@ -206,15 +212,17 @@ export function DetailedStandingsPanel({ category, riderStandings, teamStandings
           <span className="w-12 text-right">Pts</span>
         </div>
         {riderRows.map((r, i) => (
-          <div key={r.id} className="flex items-center px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
-            <span className="w-6 text-right font-mono" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}</span>
-            <span className="flex-1 ml-2 min-w-0 truncate">
-              <RiderNameButton rider={{ name: r.name }} onClick={() => handleRiderClick(r.id)} />
-              <span className="text-xs ml-1" style={{ color: COLORS.muted }}>{r.teamName}</span>
-            </span>
-            <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{r.wins}</span>
-            <span className="w-8 text-right font-mono text-xs" style={{ color: COLORS.muted }}>{r.podiums}</span>
-            <span className="w-12 text-right font-mono" style={{ color: accent }}>{r.points}</span>
+          <div key={r.id} className="flex items-start px-1 py-1.5 text-sm" style={{ borderBottom: `1px solid ${COLORS.rule}` }}>
+            <span className="w-6 text-right font-mono flex-shrink-0 pt-0.5" style={{ color: i < 3 ? COLORS.gold : COLORS.muted }}>{i + 1}</span>
+            <div className="flex-1 ml-2 min-w-0">
+              <div className="truncate">
+                <RiderNameButton rider={{ name: r.name }} onClick={() => handleRiderClick(r.id)} />
+              </div>
+              <div className="text-xs truncate" style={{ color: COLORS.muted }}>{r.teamName}</div>
+            </div>
+            <span className="w-8 text-right font-mono text-xs flex-shrink-0 pt-0.5" style={{ color: COLORS.muted }}>{r.wins}</span>
+            <span className="w-8 text-right font-mono text-xs flex-shrink-0 pt-0.5" style={{ color: COLORS.muted }}>{r.podiums}</span>
+            <span className="w-12 text-right font-mono flex-shrink-0 pt-0.5" style={{ color: accent }}>{r.points}</span>
           </div>
         ))}
       </div>

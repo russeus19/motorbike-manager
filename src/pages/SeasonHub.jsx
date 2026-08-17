@@ -185,7 +185,7 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
           <div className="flex items-center justify-between gap-3 mb-3" style={{ animation: "seasonHubIn 0.45s ease-out both", animationDelay: "50ms" }}>
             <div className="flex items-center gap-3 min-w-0">
               <TeamLogo team={playerTeam} sizeClassName="w-9 h-9 sm:w-[72px] sm:h-[72px]" className="rounded-lg flex-shrink-0" />
-              <div className="text-[16.1px] sm:text-2xl font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
+              <div className="text-[17.71px] sm:text-[26.4px] font-bold leading-tight" style={{ color: accent, fontFamily: "Rajdhani, sans-serif", wordBreak: "break-word" }}>{teamDisplayName(playerTeam)}</div>
             </div>
             <div className="flex-shrink-0">{renderBudget(false)}</div>
           </div>
@@ -411,10 +411,23 @@ export function SeasonScreen({ playerTeam, rivalTeams, otherCategories, category
       <BottomNavBar
         active={seasonTab}
         onChange={(key) => {
-          if (key === "inicio" && seasonTab === "inicio") {
+          // Same behavior on every tab, not just "inicio": tapping the
+          // tab you're ALREADY on scrolls back to the top of that
+          // screen, instead of only working for one specific tab while
+          // the other four silently did nothing when tapped again.
+          if (key === seasonTab) {
             window.scrollTo({ top: 0, behavior: "smooth" });
             return;
           }
+          // Bug fixed: switching to a genuinely DIFFERENT tab swapped
+          // the content but left the scroll position exactly where it
+          // was on the previous tab — landing halfway down "Pilotos"
+          // if that's where "Inicio" happened to be scrolled to.
+          // Every fresh tab should start at the top, same as opening
+          // it for the first time. Instant, not smooth — this is a
+          // new screen's content appearing, not a scroll animation
+          // within the same one.
+          window.scrollTo(0, 0);
           setSeasonTab(key);
         }}
         accent={accent}

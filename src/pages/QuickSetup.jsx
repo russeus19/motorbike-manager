@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Flag } from "lucide-react";
 import { TeamPickCard, TEAM_PICK_CARD_KEYFRAMES } from "../components/TeamPickCard.jsx";
-import { CATEGORY_DATA, CATEGORY_ORDER } from "../data/categories.js";
+import { CategoryTabSelector } from "../components/CategoryTabSelector.jsx";
 import { COLORS } from "../data/colors.js";
 import { randomManagerNamePlaceholder } from "../data/managerNameExamples.js";
-import { computeTechCapacity } from "../utils/bikeDevelopment.js";
+import { assignSeasonExpectations } from "../utils/teamExpectations.js";
 
 // "Independiente" es, con diferencia, el nivel más largo de los cuatro
 // (Fábrica, Puntero, Satélite, Independiente) — en la franja estrecha de
@@ -16,6 +16,29 @@ const TIER_LABEL_COMPACT = { "Independiente": "Indep." };
 export function SetupScreen({ managerName, setManagerName, category, pickCategory, teams, chooseTeam, goHome }) {
   const canPick = managerName.trim().length > 0;
   const [namePlaceholder] = useState(randomManagerNamePlaceholder);
+  // Rank every team in this category by real current strength (budget,
+  // bike, factory/staff level, riders) and give each one a single
+  // expected finishing position — "3º", "7º", etc. — the same pre-season
+  // strength ranking the game itself uses to set every team's own
+  // ambition for the year (see utils/teamExpectations.js). Far more
+  // decisive for picking a team than a raw R&D points number: it
+  // answers "where would this team realistically finish" instead of a
+  // number the player has no scale to judge on its own. includeResearch
+  // is false here to match how the game treats every brand-new season —
+  // no season has been played yet for research investment to have paid
+  // off differently between teams.
+  // Bug fixed: assignSeasonExpectations keys its internal ranking map by
+  // team.id — fine for live, instantiated teams (always id'd by then),
+  // but the raw team definitions this screen shows haven't gone through
+  // instantiateTeams yet and carry no .id at all. Every team's .id was
+  // undefined, so EVERY team collided under that same undefined key and
+  // all 11 ended up sharing whichever one team's expectation was
+  // computed last. A temporary index-based id, used only for this one
+  // calculation, is all assignSeasonExpectations actually needs to tell
+  // them apart correctly.
+  const teamsWithTempIds = teams.map((t, i) => ({ ...t, id: `temp_${i}` }));
+  const expectationById = {};
+  assignSeasonExpectations(teamsWithTempIds, false).forEach((t, i) => { expectationById[i] = t.expectation; });
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 overflow-x-hidden">
       <style>{TEAM_PICK_CARD_KEYFRAMES}</style>
@@ -39,20 +62,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
 
       <div className="mb-6">
         <label className="text-xs uppercase tracking-wider block mb-2" style={{ color: COLORS.muted }}>Categoría</label>
-        <div className="flex flex-wrap gap-2">
-          {CATEGORY_ORDER.map((ck) => (
-            <button key={ck} onClick={() => pickCategory(ck)}
-              className="px-4 py-2 rounded-full text-sm font-semibold transition-transform active:scale-95"
-              style={{
-                background: category === ck ? COLORS.gold : COLORS.panel,
-                color: category === ck ? "#12151A" : COLORS.text,
-                border: `1px solid ${category === ck ? COLORS.gold : COLORS.rule}`,
-                fontFamily: "Rajdhani, sans-serif",
-              }}>
-              {CATEGORY_DATA[ck].label}
-            </button>
-          ))}
-        </div>
+        <CategoryTabSelector value={category} onChange={pickCategory} accent={COLORS.gold} />
       </div>
 
       <div>
@@ -66,7 +76,7 @@ export function SetupScreen({ managerName, setManagerName, category, pickCategor
               disabled={!canPick}
               onClick={() => chooseTeam(idx)}
               delay={idx * 45}
-              badge={`${TIER_LABEL_COMPACT[t.tier] || t.tier} · ${computeTechCapacity(t, t.budget)} pts I+D`}
+              badge={`${TIER_LABEL_COMPACT[t.tier] || t.tier} · Se espera ${expectationById[idx]?.label || "—"}`}
             />
           ))}
         </div>

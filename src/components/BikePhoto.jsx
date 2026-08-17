@@ -40,10 +40,23 @@ const BIKE_BASE = "/assets/bikes";
  * front-on team livery photo — rather than shrinking the entire bike
  * down into a mostly-empty box.
  *
+ * `loading` defaults to "lazy" (fine for most usages — a bike photo
+ * inside a list or modal that isn't visible yet shouldn't compete for
+ * bandwidth). Bug fixed: a hero-sized bike photo shown above the fold
+ * the instant its panel renders (BikeHero.jsx's own "Mi moto") has
+ * nothing to gain from deferring its load, and on some mobile browsers
+ * a lazy-loaded image whose wrapping container has no explicit size at
+ * the current breakpoint can be judged "not yet in view" and never
+ * actually requested at all — the exact symptom of a bike photo that
+ * loads fine on desktop but silently falls back to the placeholder icon
+ * on mobile, despite the file existing and the desktop layout working.
+ * Callers showing this as immediately-visible hero content should pass
+ * loading="eager" explicitly.
+ *
  * Usage: <BikePhoto team={playerTeam} accent={accent} size={220} />
  * or:    <BikePhoto team={playerTeam} accent={accent} categoryKey="moto2" sizeClassName="w-40 sm:w-full" />
  */
-export function BikePhoto({ team, logoId, categoryKey, accent = COLORS.gold, size = 200, sizeClassName, objectFit = "contain", objectPosition = "center", className = "", alt }) {
+export function BikePhoto({ team, logoId, categoryKey, accent = COLORS.gold, size = 200, sizeClassName, objectFit = "contain", objectPosition = "center", className = "", alt, loading = "lazy" }) {
   const baseId = logoId || team?.logoId || null;
   const resolvedId = bikePhotoIdFor(baseId, categoryKey);
   const initialSrc = resolvedId ? `${BIKE_BASE}/${resolvedId}.png` : null;
@@ -72,7 +85,7 @@ export function BikePhoto({ team, logoId, categoryKey, accent = COLORS.gold, siz
     <img
       src={src}
       alt={alt || (team?.name ? `Moto de ${team.name}` : "Moto del equipo")}
-      loading="lazy"
+      loading={loading}
       decoding="async"
       className={`${sizeClassName || ""} ${className}`}
       style={sizeClassName ? { objectFit, objectPosition, flexShrink: 0 } : { width: size, height: "auto", maxHeight: size * 1.5, objectFit, objectPosition, flexShrink: 0 }}

@@ -180,7 +180,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
             )}
           </div>
           <div className="relative overflow-hidden rounded-lg flex-shrink-0" style={{ width: 110, height: 110 }}>
-            <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={110} sizeClassName="w-full h-full" objectFit="cover" objectPosition="center top" />
+            <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={110} sizeClassName="w-full h-full" objectFit="cover" objectPosition="center top" loading="eager" />
             <div className="absolute inset-x-0 bottom-0 h-8 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
           </div>
         </div>
@@ -203,7 +203,7 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
               of a hard cutoff. */}
           <div className="flex sm:flex-1 sm:justify-end sm:order-2">
             <div className="relative overflow-hidden sm:w-[500px] sm:h-[308px] md:w-[580px] md:h-[356px]">
-              <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={180} sizeClassName="sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
+              <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={180} sizeClassName="sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" loading="eager" />
               <div className="absolute inset-x-0 bottom-0 h-24 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
             </div>
           </div>
@@ -255,8 +255,8 @@ export function BikeHero({ playerTeam, budget, startProject, scale, onOpenPackag
               no visual difference. */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex justify-center sm:flex-1 sm:justify-end sm:order-2">
-              <div className="relative overflow-hidden sm:w-[320px] sm:h-[210px] md:w-[380px] md:h-[240px]">
-                <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={160} sizeClassName="w-[160px] h-[160px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" />
+              <div className="relative overflow-hidden w-[160px] h-[160px] sm:w-[320px] sm:h-[210px] md:w-[380px] md:h-[240px]">
+                <BikePhoto team={playerTeam} categoryKey={category} accent={accent} size={160} sizeClassName="w-[160px] h-[160px] sm:w-full sm:h-full" objectFit="cover" objectPosition="center top" loading="eager" />
                 <div className="absolute inset-x-0 bottom-0 h-12 sm:h-14 pointer-events-none" style={{ background: `linear-gradient(to top, ${COLORS.panel}, transparent)` }} />
               </div>
             </div>
